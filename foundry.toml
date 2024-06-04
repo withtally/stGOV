@@ -2,7 +2,12 @@
   evm_version = "paris"
   optimizer = true
   optimizer_runs = 10_000_000
-  solc_version = "0.8.26"
+  remappings = [
+    "forge-std/=lib/forge-std/src",
+    "openzeppelin/=lib/openzeppelin-contracts/contracts",
+    "unistaker/=lib/UniStaker/src",
+  ]
+  solc_version = "0.8.23"
   verbosity = 3
 
 [profile.ci]
