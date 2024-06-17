@@ -1,5 +1,7 @@
 [profile.default]
+  auto-detect-solc = true
   evm_version = "paris"
+  ignored_warnings_from = ["src/interfaces/IWETH9.sol"]
   optimizer = true
   optimizer_runs = 10_000_000
   remappings = [
@@ -7,7 +9,6 @@
     "openzeppelin/=lib/openzeppelin-contracts/contracts",
     "unistaker/=lib/UniStaker/src",
   ]
-  solc_version = "0.8.23"
   verbosity = 3
 
 [profile.ci]
