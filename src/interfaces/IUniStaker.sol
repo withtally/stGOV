@@ -33,6 +33,13 @@ interface IUniStaker {
   event StakeWithdrawn(DepositIdentifier indexed depositId, uint256 amount, uint256 depositBalance);
   event SurrogateDeployed(address indexed delegatee, address indexed surrogate);
 
+  struct Deposit {
+    uint96 balance;
+    address owner;
+    address delegatee;
+    address beneficiary;
+  }
+
   function ALTER_BENEFICIARY_TYPEHASH() external view returns (bytes32);
   function ALTER_DELEGATEE_TYPEHASH() external view returns (bytes32);
   function CLAIM_REWARD_TYPEHASH() external view returns (bytes32);
