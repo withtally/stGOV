@@ -1,0 +1,11 @@
+{
+  "generatedAt": 1720804554,
+  "reportName:": "lstGasReport",
+  "results": [
+    "First Stake to Default Delegate: 176442",
+    "Second Stake To Default Delegatee: 142242",
+    "First Stake After Updating To A New Delegatee: 228314",
+    "First Stake After Updating To An Existing LST Delegatee: 174331",
+    "Second Stake To A Custom Delegatee: 140131"
+  ]
+}

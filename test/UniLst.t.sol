@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
-import {Test, console2} from "forge-std/Test.sol";
+import {console2} from "forge-std/Test.sol";
 import {UniLst} from "src/UniLst.sol";
 import {IWETH9} from "src/interfaces/IWETH9.sol";
 import {IUni} from "src/interfaces/IUni.sol";
@@ -9,13 +9,13 @@ import {IUniStaker} from "src/interfaces/IUniStaker.sol";
 import {UnitTestBase} from "test/UnitTestBase.sol";
 import {PercentAssertions} from "test/helpers/PercentAssertions.sol";
 
-contract UniLstTest is Test, UnitTestBase, PercentAssertions {
+contract UniLstTest is UnitTestBase, PercentAssertions {
   IUniStaker staker;
   UniLst lst;
 
   address defaultDelegatee = makeAddr("Default Delegatee");
 
-  function setUp() public override {
+  function setUp() public virtual override {
     super.setUp();
 
     // UniStaker contracts from bytecode to avoid compiler conflicts.

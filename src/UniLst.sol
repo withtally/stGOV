@@ -78,6 +78,7 @@ contract UniLst {
 
     uint256 _balanceOf = balanceOf(msg.sender);
     uint256 _balanceCheckpoint = balanceCheckpoint[msg.sender];
+    // This is the number of tokens in the default pool that the msg.sender has claim to
     uint256 _checkpointDiff = _balanceOf - balanceCheckpoint[msg.sender];
 
     // OPTIMIZE: if the new or the old delegatee is the default, we can avoid one unneeded withdraw
