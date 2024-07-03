@@ -1,11 +1,27 @@
 {
-  "generatedAt": 1720804554,
+  "generatedAt": 1720804729,
   "reportName:": "lstGasReport",
   "results": [
-    "First Stake to Default Delegate: 176442",
-    "Second Stake To Default Delegatee: 142242",
-    "First Stake After Updating To A New Delegatee: 228314",
-    "First Stake After Updating To An Existing LST Delegatee: 174331",
-    "Second Stake To A Custom Delegatee: 140131"
+    "First Stake to Default Delegate: 175837",
+    "Second Stake To Default Delegatee: 141637",
+    "First Stake After Updating To A New Delegatee: 227709",
+    "First Stake After Updating To An Existing LST Delegatee: 173726",
+    "Second Stake To A Custom Delegatee: 139526",
+    "Sender With Default Delegatee Transfers Balance To New Receiver With Default Delegatee: 204196",
+    "Sender With Default Delegatee Transfers Partial Balance To New Receiver With Default Delegatee: 217941",
+    "Sender With Default Delegatee Transfers Balance To Existing Receiver With Default Delegatee: 173037",
+    "Sender With Default Delegatee Transfers Partial Balance To Existing Receiver With Default Delegatee: 183741",
+    "Sender With Custom Delegatee Transfers Balance To New Receiver With Default Delegatee: 236085",
+    "Sender With Custom Delegatee Transfers Partial Balance To New Receiver With Default Delegatee: 254630",
+    "Sender With Custom Delegatee Transfers Balance To Existing Receiver With Default Delegatee: 201885",
+    "Sender With Custom Delegatee Transfers Partial Balance To Existing Receiver With Default Delegatee: 220430",
+    "Sender With Custom Delegatee Transfers Balance To New Receiver With Same Delegatee: 219974",
+    "Sender With Custom Delegatee Transfers Partial Balance To New Receiver With Same Delegatee: 233719",
+    "Sender With Custom Delegatee Transfers Balance To Existing Receiver With Same Delegatee: 185774",
+    "Sender With Custom Delegatee Transfers Partial Balance To Existing Receiver With Same Delegatee: 199519",
+    "Sender With Custom Delegatee Transfers Balance To New Receiver With Custom Delegatee: 303957",
+    "Sender With Custom Delegatee Transfers Partial Balance To New Receiver With Custom Delegatee: 322502",
+    "Sender With Custom Delegatee Transfers Balance To Existing Receiver With Custom Delegatee: 215774",
+    "Sender With Custom Delegatee Transfers Partial Balance To Existing Receiver With Custom Delegatee: 234319"
   ]
 }

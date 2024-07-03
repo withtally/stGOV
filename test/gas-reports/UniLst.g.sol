@@ -31,6 +31,10 @@ contract UniLstGasReport is UniLstTest, GasReport {
     address _delegatee;
     uint256 _stakeAmount;
 
+    //-------------------------------------------------------------------------------------------//
+    // STAKING SCENARIOS
+    //-------------------------------------------------------------------------------------------//
+
     startScenario("First Stake to Default Delegate");
     {
       _staker = makeScenarioAddr("Staker");
@@ -102,6 +106,320 @@ contract UniLstGasReport is UniLstTest, GasReport {
       lst.updateDelegatee(_delegatee);
       stakeToken.approve(address(lst), _stakeAmount);
       lst.stake(_stakeAmount);
+      recordScenarioGasResult();
+      vm.stopPrank();
+    }
+    stopScenario();
+
+    //-------------------------------------------------------------------------------------------//
+    // TRANSFER SCENARIOS
+    //-------------------------------------------------------------------------------------------//
+
+    address _receiver;
+
+    startScenario("Sender With Default Delegatee Transfers Balance To New Receiver With Default Delegatee");
+    {
+      _staker = makeScenarioAddr("Sender");
+      _receiver = makeScenarioAddr("Receiver");
+      _stakeAmount = 135e18;
+      _mintAndStake(_staker, _stakeAmount);
+
+      vm.startPrank(_staker);
+      lst.transfer(_receiver, _stakeAmount);
+      recordScenarioGasResult();
+      vm.stopPrank();
+    }
+    stopScenario();
+
+    startScenario("Sender With Default Delegatee Transfers Partial Balance To New Receiver With Default Delegatee");
+    {
+      _staker = makeScenarioAddr("Sender");
+      _receiver = makeScenarioAddr("Receiver");
+      _stakeAmount = 135e18;
+      _mintAndStake(_staker, _stakeAmount);
+
+      // Send only partial balance
+      _stakeAmount = 125e18;
+      vm.startPrank(_staker);
+      lst.transfer(_receiver, _stakeAmount);
+      recordScenarioGasResult();
+      vm.stopPrank();
+    }
+    stopScenario();
+
+    startScenario("Sender With Default Delegatee Transfers Balance To Existing Receiver With Default Delegatee");
+    {
+      _staker = makeScenarioAddr("Sender");
+      _receiver = makeScenarioAddr("Receiver");
+      _stakeAmount = 135e18;
+      _mintAndStake(_staker, _stakeAmount);
+
+      // The receiver already has a balance
+      _stakeAmount = 55e18;
+      _mintAndStake(_receiver, _stakeAmount);
+
+      // Transfer the sender's full balance
+      _stakeAmount = lst.balanceOf(_staker);
+      vm.startPrank(_staker);
+      lst.transfer(_receiver, _stakeAmount);
+      recordScenarioGasResult();
+      vm.stopPrank();
+    }
+    stopScenario();
+
+    startScenario("Sender With Default Delegatee Transfers Partial Balance To Existing Receiver With Default Delegatee");
+    {
+      _staker = makeScenarioAddr("Sender");
+      _receiver = makeScenarioAddr("Receiver");
+      _stakeAmount = 135e18;
+      _mintAndStake(_staker, _stakeAmount);
+
+      // The receiver already has a balance
+      _stakeAmount = 55e18;
+      _mintAndStake(_receiver, _stakeAmount);
+
+      // Send only partial balance
+      _stakeAmount = lst.balanceOf(_staker) - 1e18;
+      vm.startPrank(_staker);
+      lst.transfer(_receiver, _stakeAmount);
+      recordScenarioGasResult();
+      vm.stopPrank();
+    }
+    stopScenario();
+
+    startScenario("Sender With Custom Delegatee Transfers Balance To New Receiver With Default Delegatee");
+    {
+      _staker = makeScenarioAddr("Sender");
+      _delegatee = makeScenarioAddr("Delegatee");
+      _receiver = makeScenarioAddr("Receiver");
+      _stakeAmount = 135e18;
+      _mintUpdateDelegateeAndStake(_staker, _stakeAmount, _delegatee);
+
+      vm.startPrank(_staker);
+      lst.transfer(_receiver, _stakeAmount);
+      recordScenarioGasResult();
+      vm.stopPrank();
+    }
+    stopScenario();
+
+    startScenario("Sender With Custom Delegatee Transfers Partial Balance To New Receiver With Default Delegatee");
+    {
+      _staker = makeScenarioAddr("Sender");
+      _delegatee = makeScenarioAddr("Delegatee");
+      _receiver = makeScenarioAddr("Receiver");
+      _stakeAmount = 135e18;
+      _mintUpdateDelegateeAndStake(_staker, _stakeAmount, _delegatee);
+
+      // Send only partial balance
+      _stakeAmount = 125e18;
+      vm.startPrank(_staker);
+      lst.transfer(_receiver, _stakeAmount);
+      recordScenarioGasResult();
+      vm.stopPrank();
+    }
+    stopScenario();
+
+    startScenario("Sender With Custom Delegatee Transfers Balance To Existing Receiver With Default Delegatee");
+    {
+      _staker = makeScenarioAddr("Sender");
+      _delegatee = makeScenarioAddr("Delegatee");
+      _receiver = makeScenarioAddr("Receiver");
+      _stakeAmount = 135e18;
+      _mintUpdateDelegateeAndStake(_staker, _stakeAmount, _delegatee);
+
+      // The receiver already has a balance
+      _stakeAmount = 55e18;
+      _mintAndStake(_receiver, _stakeAmount);
+
+      // Transfer the sender's full balance
+      _stakeAmount = lst.balanceOf(_staker);
+      vm.startPrank(_staker);
+      lst.transfer(_receiver, _stakeAmount);
+      recordScenarioGasResult();
+      vm.stopPrank();
+    }
+    stopScenario();
+
+    startScenario("Sender With Custom Delegatee Transfers Partial Balance To Existing Receiver With Default Delegatee");
+    {
+      _staker = makeScenarioAddr("Sender");
+      _delegatee = makeScenarioAddr("Delegatee");
+      _receiver = makeScenarioAddr("Receiver");
+      _stakeAmount = 135e18;
+      _mintUpdateDelegateeAndStake(_staker, _stakeAmount, _delegatee);
+
+      // The receiver already has a balance
+      _stakeAmount = 55e18;
+      _mintAndStake(_receiver, _stakeAmount);
+
+      // Send only partial balance
+      _stakeAmount = lst.balanceOf(_staker) - 1e18;
+      vm.startPrank(_staker);
+      lst.transfer(_receiver, _stakeAmount);
+      recordScenarioGasResult();
+      vm.stopPrank();
+    }
+    stopScenario();
+
+    startScenario("Sender With Custom Delegatee Transfers Balance To New Receiver With Same Delegatee");
+    {
+      _staker = makeScenarioAddr("Sender");
+      _delegatee = makeScenarioAddr("Delegatee");
+      _receiver = makeScenarioAddr("Receiver");
+      _stakeAmount = 135e18;
+      _mintUpdateDelegateeAndStake(_staker, _stakeAmount, _delegatee);
+
+      // The receiver has the same custom delegatee
+      _updateDelegatee(_receiver, _delegatee);
+
+      vm.startPrank(_staker);
+      lst.transfer(_receiver, _stakeAmount);
+      recordScenarioGasResult();
+      vm.stopPrank();
+    }
+    stopScenario();
+
+    startScenario("Sender With Custom Delegatee Transfers Partial Balance To New Receiver With Same Delegatee");
+    {
+      _staker = makeScenarioAddr("Sender");
+      _delegatee = makeScenarioAddr("Delegatee");
+      _receiver = makeScenarioAddr("Receiver");
+      _stakeAmount = 135e18;
+      _mintUpdateDelegateeAndStake(_staker, _stakeAmount, _delegatee);
+
+      // The receiver has the same custom delegatee
+      _updateDelegatee(_receiver, _delegatee);
+
+      // Send only partial balance
+      _stakeAmount = 125e18;
+      vm.startPrank(_staker);
+      lst.transfer(_receiver, _stakeAmount);
+      recordScenarioGasResult();
+      vm.stopPrank();
+    }
+    stopScenario();
+
+    startScenario("Sender With Custom Delegatee Transfers Balance To Existing Receiver With Same Delegatee");
+    {
+      _staker = makeScenarioAddr("Sender");
+      _delegatee = makeScenarioAddr("Delegatee");
+      _receiver = makeScenarioAddr("Receiver");
+      _stakeAmount = 135e18;
+      _mintUpdateDelegateeAndStake(_staker, _stakeAmount, _delegatee);
+
+      // The receiver already has a balance & same custom delegatee
+      _stakeAmount = 55e18;
+      _mintUpdateDelegateeAndStake(_receiver, _stakeAmount, _delegatee);
+
+      // Transfer the sender's full balance
+      _stakeAmount = lst.balanceOf(_staker);
+      vm.startPrank(_staker);
+      lst.transfer(_receiver, _stakeAmount);
+      recordScenarioGasResult();
+      vm.stopPrank();
+    }
+    stopScenario();
+
+    startScenario("Sender With Custom Delegatee Transfers Partial Balance To Existing Receiver With Same Delegatee");
+    {
+      _staker = makeScenarioAddr("Sender");
+      _delegatee = makeScenarioAddr("Sender Delegatee");
+      _receiver = makeScenarioAddr("Receiver");
+      _stakeAmount = 135e18;
+      _mintUpdateDelegateeAndStake(_staker, _stakeAmount, _delegatee);
+
+      // The receiver already has a balance & same custom delegatee
+      _stakeAmount = 55e18;
+      _mintUpdateDelegateeAndStake(_receiver, _stakeAmount, _delegatee);
+
+      // Send only partial balance
+      _stakeAmount = lst.balanceOf(_staker) - 1e18;
+      vm.startPrank(_staker);
+      lst.transfer(_receiver, _stakeAmount);
+      recordScenarioGasResult();
+      vm.stopPrank();
+    }
+    stopScenario();
+
+    startScenario("Sender With Custom Delegatee Transfers Balance To New Receiver With Custom Delegatee");
+    {
+      _staker = makeScenarioAddr("Sender");
+      _delegatee = makeScenarioAddr("Sender Delegatee");
+      _receiver = makeScenarioAddr("Receiver");
+      _stakeAmount = 135e18;
+      _mintUpdateDelegateeAndStake(_staker, _stakeAmount, _delegatee);
+
+      // The receiver has a different custom delegatee
+      _delegatee = makeScenarioAddr("Receiver Delegatee");
+      _updateDelegatee(_receiver, _delegatee);
+
+      vm.startPrank(_staker);
+      lst.transfer(_receiver, _stakeAmount);
+      recordScenarioGasResult();
+      vm.stopPrank();
+    }
+    stopScenario();
+
+    startScenario("Sender With Custom Delegatee Transfers Partial Balance To New Receiver With Custom Delegatee");
+    {
+      _staker = makeScenarioAddr("Sender");
+      _delegatee = makeScenarioAddr("Sender Delegatee");
+      _receiver = makeScenarioAddr("Receiver");
+      _stakeAmount = 135e18;
+      _mintUpdateDelegateeAndStake(_staker, _stakeAmount, _delegatee);
+
+      // The receiver has a different custom delegatee
+      _delegatee = makeScenarioAddr("Receiver Delegatee");
+      _updateDelegatee(_receiver, _delegatee);
+
+      // Send only partial balance
+      _stakeAmount = 125e18;
+      vm.startPrank(_staker);
+      lst.transfer(_receiver, _stakeAmount);
+      recordScenarioGasResult();
+      vm.stopPrank();
+    }
+    stopScenario();
+
+    startScenario("Sender With Custom Delegatee Transfers Balance To Existing Receiver With Custom Delegatee");
+    {
+      _staker = makeScenarioAddr("Sender");
+      _delegatee = makeScenarioAddr("Sender Delegatee");
+      _receiver = makeScenarioAddr("Receiver");
+      _stakeAmount = 135e18;
+      _mintUpdateDelegateeAndStake(_staker, _stakeAmount, _delegatee);
+
+      // The receiver already has a balance & different custom delegatee
+      _stakeAmount = 55e18;
+      _delegatee = makeScenarioAddr("Receiver Delegatee");
+      _mintUpdateDelegateeAndStake(_receiver, _stakeAmount, _delegatee);
+
+      // Transfer the sender's full balance
+      _stakeAmount = lst.balanceOf(_staker);
+      vm.startPrank(_staker);
+      lst.transfer(_receiver, _stakeAmount);
+      recordScenarioGasResult();
+      vm.stopPrank();
+    }
+    stopScenario();
+
+    startScenario("Sender With Custom Delegatee Transfers Partial Balance To Existing Receiver With Custom Delegatee");
+    {
+      _staker = makeScenarioAddr("Sender");
+      _delegatee = makeScenarioAddr("Sender Delegatee");
+      _receiver = makeScenarioAddr("Receiver");
+      _stakeAmount = 135e18;
+      _mintUpdateDelegateeAndStake(_staker, _stakeAmount, _delegatee);
+
+      // The receiver already has a balance & different custom delegatee
+      _stakeAmount = 55e18;
+      _delegatee = makeScenarioAddr("Receiver Delegatee");
+      _mintUpdateDelegateeAndStake(_receiver, _stakeAmount, _delegatee);
+
+      // Send only partial balance
+      _stakeAmount = lst.balanceOf(_staker) - 1e18;
+      vm.startPrank(_staker);
+      lst.transfer(_receiver, _stakeAmount);
       recordScenarioGasResult();
       vm.stopPrank();
     }

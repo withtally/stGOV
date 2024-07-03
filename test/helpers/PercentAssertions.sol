@@ -34,7 +34,9 @@ contract PercentAssertions is Test {
     uint256 _gt;
     uint256 _lt;
 
-    if (a > b) {
+    if (a == b) {
+      return;
+    } else if (a > b) {
       _gt = a;
       _lt = b;
     } else {
@@ -82,7 +84,9 @@ contract PercentAssertions is Test {
     uint256 _gt;
     uint256 _lt;
 
-    if (a > b) {
+    if (a == b) {
+      return;
+    } else if (a > b) {
       _gt = a;
       _lt = b;
     } else {
@@ -123,10 +127,41 @@ contract PercentAssertions is Test {
       fail();
     }
 
+    if (a == b) {
+      // Early return avoids underflow when a == b == 0
+      return;
+    }
+
     uint256 minBound = b - 1;
 
-    if (!((a == b) || (a == minBound))) {
+    if (a != minBound) {
       emit log("Error: a == b || a  == b-1");
+      emit log_named_uint("  Expected", b);
+      emit log_named_uint("    Actual", a);
+
+      fail();
+    }
+  }
+
+  // This helper is for normal rounding errors, i.e. if the number might be truncated up _or_ down by 1
+  function assertWithinOneUnit(uint256 a, uint256 b) public {
+    uint256 _gt;
+    uint256 _lt;
+
+    if (a == b) {
+      return;
+    } else if (a > b) {
+      _gt = a;
+      _lt = b;
+    } else {
+      _gt = b;
+      _lt = a;
+    }
+
+    uint256 minBound = _gt - 1;
+
+    if (!((a == b) || (_lt == minBound))) {
+      emit log("Error: a == b || a  == b-1 || a == b+1");
       emit log_named_uint("  Expected", b);
       emit log_named_uint("    Actual", a);
 

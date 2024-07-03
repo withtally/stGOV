@@ -13,13 +13,16 @@ contract UniLst {
   IWETH9 public immutable REWARD_TOKEN;
   uint256 public constant SHARE_SCALE_FACTOR = 1e18;
 
+  event Transfer(address indexed from, address indexed to, uint256 value);
+
   address public defaultDelegatee;
   uint256 public totalSupply;
   uint256 public totalShares;
   mapping(address delegatee => IUniStaker.DepositIdentifier depositId) public depositForDelegatee;
   mapping(address holder => address delegatee) private storedDelegateeForHolder;
   mapping(address holder => uint256 shares) public sharesOf;
-  mapping(address holer => uint256 balance) public balanceCheckpoint;
+  // CONSIDER: Maybe rename this to "delegatedBalance" or something similar
+  mapping(address holder => uint256 balance) public balanceCheckpoint;
 
   constructor(IUniStaker _staker, address _initialDefaultDelegatee) {
     STAKER = _staker;
@@ -101,10 +104,53 @@ contract UniLst {
     totalSupply += _amount;
     totalShares += _newShares;
     sharesOf[msg.sender] += _newShares;
-    balanceCheckpoint[msg.sender] = balanceOf(msg.sender);
+    balanceCheckpoint[msg.sender] += _amount;
     IUniStaker.DepositIdentifier _depositId = depositForDelegatee[delegateeForHolder(msg.sender)];
 
     STAKER.stakeMore(_depositId, uint96(_amount));
+  }
+
+  function transfer(address _receiver, uint256 _value) external returns (bool) {
+    IUniStaker.DepositIdentifier _senderDepositId = _depositIdForHolder(msg.sender);
+    IUniStaker.DepositIdentifier _receiverDepositId = _depositIdForHolder(_receiver);
+    IUniStaker.DepositIdentifier _defaultDepositId = depositForDelegatee[defaultDelegatee];
+
+    uint256 _balanceOf = balanceOf(msg.sender);
+    uint256 _balanceCheckpoint = balanceCheckpoint[msg.sender];
+    // This is the number of tokens in the default pool that the sender has claim to.
+    uint256 _checkpointDiff = _balanceOf - balanceCheckpoint[msg.sender];
+    // This is the number of tokens the sender will have after the transfer is complete.
+    uint256 _remainingBalance = _balanceOf - _value;
+
+    uint256 _shares = _sharesForStake(_value);
+    sharesOf[msg.sender] -= _shares;
+    sharesOf[_receiver] += _shares;
+
+    balanceCheckpoint[msg.sender] = balanceOf(msg.sender);
+    balanceCheckpoint[_receiver] += _value;
+
+    // OPTIMIZE: This is the most naive implementation of a transfer:
+    // 1. withdraw all tokens belonging to the sender from his designated deposit
+    // 2. withdraw all tokens belonging to the sender from the default deposit (tokens earned from rewards)
+    // 3. stakeMore the tokens being sent to the receiver's designated deposit
+    // 4. stakeMore the remaining tokens back to the sender's designated deposit
+    // There are many ways in which this can be optimized. For example, in certain conditions we could avoid having
+    // to stakeMore back to the sender's deposit if their balance in the default deposit + some subset of their
+    // designated deposit is sufficient to complete the transfer. Obviously, we can also avoid doing withdraws and
+    // stakeMores in conditions where the sender and receiver delegatees match. There are also considerations for
+    // optimizations that change the functionality to a certain degree. For example, if the senders checkpointDiff
+    // is more than is being transferred, do we _need_ to move what's left of the checkpointDiff to the sender's
+    // designated deposit? Or would it be acceptable to leave the remainder of their checkpointDiff in the default
+    // deposit? This, and many other potential optimizations should be measured and considered, with input from the
+    // broader team.
+    STAKER.withdraw(_senderDepositId, uint96(_balanceCheckpoint));
+    STAKER.withdraw(_defaultDepositId, uint96(_checkpointDiff));
+    STAKER.stakeMore(_receiverDepositId, uint96(_value));
+    STAKER.stakeMore(_senderDepositId, uint96(_remainingBalance));
+
+    emit Transfer(msg.sender, _receiver, _value);
+
+    return true;
   }
 
   // This method is a placeholder for the real rewards distribution mechanism which we will have to spec and add
@@ -131,5 +177,9 @@ contract UniLst {
     }
 
     return (_amount * totalSupply) / totalShares;
+  }
+
+  function _depositIdForHolder(address _holder) internal view returns (IUniStaker.DepositIdentifier) {
+    return depositForDelegatee[delegateeForHolder(_holder)];
   }
 }

@@ -44,12 +44,15 @@ contract UniLstTest is UnitTestBase, PercentAssertions, TestHelpers {
   function __dumpHolderState(address _holder) public view {
     console2.log("");
     console2.log("HOLDER: ", _holder);
+    console2.log("delegateeForHolder", lst.delegateeForHolder(_holder));
     console2.log("sharesOf");
     console2.log(lst.sharesOf(_holder));
     console2.log("balanceCheckpoint");
     console2.log(lst.balanceCheckpoint(_holder));
     console2.log("balanceOf");
     console2.log(lst.balanceOf(_holder));
+    console2.log("getCurrentVotes(delegatee)");
+    console2.log(stakeToken.getCurrentVotes(lst.delegateeForHolder(_holder)));
   }
 
   function _assumeSafeHolder(address _holder) internal view {
@@ -412,6 +415,55 @@ contract Stake is UniLstTest {
     assertEq(stakeToken.getCurrentVotes(_delegatee), _amount);
   }
 
+  function testFuzz_RecordsTheBalanceCheckpointForFirstTimeStaker(uint256 _amount, address _holder, address _delegatee)
+    public
+  {
+    _assumeSafeHolder(_holder);
+    _assumeSafeDelegatee(_delegatee);
+    _amount = _boundToReasonableStakeTokenAmount(_amount);
+
+    _mintUpdateDelegateeAndStake(_holder, _amount, _delegatee);
+
+    assertEq(lst.balanceCheckpoint(_holder), _amount);
+  }
+
+  function testFuzz_IncrementsTheBalanceCheckPointForAHolderAddingToTheirStake(
+    uint256 _amount1,
+    uint256 _amount2,
+    address _holder,
+    address _delegatee
+  ) public {
+    _assumeSafeHolder(_holder);
+    _assumeSafeDelegatee(_delegatee);
+    _amount1 = _boundToReasonableStakeTokenAmount(_amount1);
+    _amount2 = _boundToReasonableStakeTokenAmount(_amount2);
+
+    _mintUpdateDelegateeAndStake(_holder, _amount1, _delegatee);
+    _mintAndStake(_holder, _amount2);
+
+    assertEq(lst.balanceCheckpoint(_holder), _amount1 + _amount2);
+  }
+
+  function testFuzz_IncrementsTheBalanceCheckpointForAHolderAddingToTheirStakeWhoHasPreviouslyEarnedAReward(
+    uint256 _amount1,
+    uint256 _amount2,
+    uint256 _rewardAmount,
+    address _holder,
+    address _delegatee
+  ) public {
+    _assumeSafeHolder(_holder);
+    _assumeSafeDelegatee(_delegatee);
+    _amount1 = _boundToReasonableStakeTokenAmount(_amount1);
+    _amount2 = _boundToReasonableStakeTokenAmount(_amount2);
+    _rewardAmount = _boundToReasonableStakeTokenAmount(_rewardAmount);
+
+    _mintUpdateDelegateeAndStake(_holder, _amount1, _delegatee);
+    _distributeReward(_rewardAmount);
+    _mintAndStake(_holder, _amount2);
+
+    assertEq(lst.balanceCheckpoint(_holder), _amount1 + _amount2);
+  }
+
   function testFuzz_RevertIf_TheTransferFromTheStakeTokenFails(uint256 _amount, address _holder, address _delegatee)
     public
   {
@@ -584,5 +636,375 @@ contract BalanceOf is UniLstTest {
     assertLteWithinOneBip(
       lst.balanceOf(_holder1) + lst.balanceOf(_holder2), _stakeAmount1 + _stakeAmount2 + _rewardAmount1 + _rewardAmount2
     );
+  }
+}
+
+contract Transfer is UniLstTest {
+  function testFuzz_MovesFullBalanceToAReceiver(uint256 _amount, address _sender, address _receiver) public {
+    _assumeSafeHolders(_sender, _receiver);
+    _amount = _boundToReasonableStakeTokenAmount(_amount);
+
+    _mintAndStake(_sender, _amount);
+    vm.prank(_sender);
+    lst.transfer(_receiver, _amount);
+
+    assertEq(lst.balanceOf(_sender), 0);
+    assertEq(lst.balanceOf(_receiver), _amount);
+  }
+
+  function testFuzz_MovesPartialBalanceToAReceiver(
+    uint256 _stakeAmount,
+    uint256 _sendAmount,
+    address _sender,
+    address _receiver
+  ) public {
+    _assumeSafeHolders(_sender, _receiver);
+    _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
+    // Amount to send should be less than or equal to the full stake amount
+    _sendAmount = bound(_sendAmount, 0, _stakeAmount);
+
+    _mintAndStake(_sender, _stakeAmount);
+    vm.prank(_sender);
+    lst.transfer(_receiver, _sendAmount);
+
+    assertEq(lst.balanceOf(_sender), _stakeAmount - _sendAmount);
+    assertEq(lst.balanceOf(_receiver), _sendAmount);
+  }
+
+  function testFuzz_MovesFullBalanceToAReceiverWhenBalanceIncludesEarnedRewards(
+    uint256 _stakeAmount,
+    uint256 _rewardAmount,
+    address _sender,
+    address _receiver
+  ) public {
+    _assumeSafeHolders(_sender, _receiver);
+    _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
+    _rewardAmount = _boundToReasonableStakeTokenAmount(_rewardAmount);
+
+    _mintAndStake(_sender, _stakeAmount);
+    _distributeReward(_rewardAmount);
+    // As the only staker, the sender's balance should be the stake and rewards
+    vm.prank(_sender);
+    lst.transfer(_receiver, _stakeAmount + _rewardAmount);
+
+    assertEq(lst.balanceOf(_sender), 0);
+    assertEq(lst.balanceOf(_receiver), _stakeAmount + _rewardAmount);
+  }
+
+  function testFuzz_MovesPartialBalanceToAReceiverWhenBalanceIncludesEarnedRewards(
+    uint256 _stakeAmount,
+    uint256 _rewardAmount,
+    uint256 _sendAmount,
+    address _sender,
+    address _receiver
+  ) public {
+    _assumeSafeHolders(_sender, _receiver);
+    _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
+    _rewardAmount = _boundToReasonableStakeTokenAmount(_rewardAmount);
+    _sendAmount = bound(_sendAmount, 0, _stakeAmount + _rewardAmount);
+
+    _mintAndStake(_sender, _stakeAmount);
+    _distributeReward(_rewardAmount);
+    vm.prank(_sender);
+    lst.transfer(_receiver, _sendAmount);
+
+    // The sender should have the full balance of his stake and the reward, minus what was sent.
+    uint256 _expectedSenderBalance = _stakeAmount + _rewardAmount - _sendAmount;
+
+    // TODO: It's a bit concerning that you can transfer N tokens to the receiver but they end up receiving N-1 because
+    // of the rounding with shares. Do STETH or ATokens handle this in some way, or accept it as a tradeoff?
+    assertWithinOneUnit(lst.balanceOf(_sender), _expectedSenderBalance);
+    assertWithinOneUnit(lst.balanceOf(_receiver), _sendAmount);
+  }
+
+  function testFuzz_MovesVotingWeightToTheReceiversDelegatee(
+    uint256 _stakeAmount,
+    uint256 _sendAmount,
+    address _sender,
+    address _senderDelegatee,
+    address _receiver,
+    address _receiverDelegatee
+  ) public {
+    _assumeSafeHolders(_sender, _receiver);
+    _assumeSafeDelegatees(_senderDelegatee, _receiverDelegatee);
+    _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
+    _sendAmount = bound(_sendAmount, 0, _stakeAmount);
+
+    _mintUpdateDelegateeAndStake(_sender, _stakeAmount, _senderDelegatee);
+    _updateDelegatee(_receiver, _receiverDelegatee);
+
+    vm.prank(_sender);
+    lst.transfer(_receiver, _sendAmount);
+
+    assertEq(lst.balanceOf(_sender), _stakeAmount - _sendAmount);
+    assertEq(stakeToken.getCurrentVotes(_senderDelegatee), _stakeAmount - _sendAmount);
+    assertEq(lst.balanceOf(_receiver), _sendAmount);
+    assertEq(stakeToken.getCurrentVotes(_receiverDelegatee), _sendAmount);
+  }
+
+  function testFuzz_MovesFullVotingWeightToTheReceiversDelegateeWhenBalanceIncludesEarnedRewards(
+    uint256 _stakeAmount,
+    uint256 _rewardAmount,
+    address _sender,
+    address _senderDelegatee,
+    address _receiver,
+    address _receiverDelegatee
+  ) public {
+    _assumeSafeHolders(_sender, _receiver);
+    _assumeSafeDelegatees(_senderDelegatee, _receiverDelegatee);
+    _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
+    _rewardAmount = _boundToReasonableStakeTokenAmount(_rewardAmount);
+
+    _mintUpdateDelegateeAndStake(_sender, _stakeAmount, _senderDelegatee);
+    _updateDelegatee(_receiver, _receiverDelegatee);
+    _distributeReward(_rewardAmount);
+    vm.prank(_sender);
+    lst.transfer(_receiver, _stakeAmount + _rewardAmount); // As the only staker, sender has all rewards
+
+    assertEq(lst.balanceOf(_sender), 0);
+    assertEq(stakeToken.getCurrentVotes(_senderDelegatee), 0);
+    assertEq(lst.balanceOf(_receiver), _stakeAmount + _rewardAmount);
+    assertEq(stakeToken.getCurrentVotes(_receiverDelegatee), _stakeAmount + _rewardAmount);
+  }
+
+  function testFuzz_MovesPartialVotingWeightToTheReceiversDelegateeAndConsolidatesSendersVotingWeightWhenBalanceIncludesRewards(
+    uint256 _stakeAmount,
+    uint256 _rewardAmount,
+    uint256 _sendAmount,
+    address _sender,
+    address _senderDelegatee,
+    address _receiver,
+    address _receiverDelegatee
+  ) public {
+    _assumeSafeHolders(_sender, _receiver);
+    _assumeSafeDelegatees(_senderDelegatee, _receiverDelegatee);
+    _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
+    _rewardAmount = _boundToReasonableStakeTokenAmount(_rewardAmount);
+    _sendAmount = bound(_sendAmount, 0, _stakeAmount + _rewardAmount);
+
+    _mintUpdateDelegateeAndStake(_sender, _stakeAmount, _senderDelegatee);
+    _updateDelegatee(_receiver, _receiverDelegatee);
+    _distributeReward(_rewardAmount);
+    vm.prank(_sender);
+    lst.transfer(_receiver, _sendAmount);
+
+    uint256 _expectedSenderBalance = _stakeAmount + _rewardAmount - _sendAmount;
+
+    assertWithinOneUnit(lst.balanceOf(_sender), _expectedSenderBalance);
+    assertWithinOneUnit(lst.balanceOf(_receiver), _sendAmount);
+
+    // It's important the balances are less than the votes, since the votes represent the "real" underlying tokens,
+    // and balances being below the real tokens available means the rounding favors the protocol, which is desired.
+    assertLteWithinOneUnit(lst.balanceOf(_sender), stakeToken.getCurrentVotes(_senderDelegatee));
+    assertLteWithinOneUnit(lst.balanceOf(_receiver), stakeToken.getCurrentVotes(_receiverDelegatee));
+  }
+
+  function testFuzz_UpdatesTheBalanceCheckpointOfTheSenderToReflectConsolidatedVotingWeight(
+    uint256 _stakeAmount,
+    uint256 _rewardAmount,
+    uint256 _sendAmount,
+    address _sender,
+    address _senderDelegatee,
+    address _receiver,
+    address _receiverDelegatee
+  ) public {
+    _assumeSafeHolders(_sender, _receiver);
+    _assumeSafeDelegatees(_senderDelegatee, _receiverDelegatee);
+    _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
+    _rewardAmount = _boundToReasonableStakeTokenAmount(_rewardAmount);
+    _sendAmount = bound(_sendAmount, 0, _stakeAmount + _rewardAmount);
+
+    _mintUpdateDelegateeAndStake(_sender, _stakeAmount, _senderDelegatee);
+    _updateDelegatee(_receiver, _receiverDelegatee);
+    _distributeReward(_rewardAmount);
+    vm.prank(_sender);
+    lst.transfer(_receiver, _sendAmount);
+
+    // The sender's voting weight has been consolidated, so his checkpoint should equal his current balance.
+    assertEq(lst.balanceCheckpoint(_sender), lst.balanceOf(_sender));
+  }
+
+  function testFuzz_AddsToTheBalanceCheckpointOfTheReceiverToAdditionalVotingWeight(
+    uint256 _stakeAmount1,
+    uint256 _rewardAmount,
+    uint256 _sendAmount,
+    address _sender,
+    address _receiver,
+    address _senderDelegatee,
+    address _receiverDelegatee
+  ) public {
+    _assumeSafeHolders(_sender, _receiver);
+    _assumeSafeDelegatees(_senderDelegatee, _receiverDelegatee);
+    _stakeAmount1 = _boundToReasonableStakeTokenAmount(_stakeAmount1);
+    // The second user will stake 150% of the first user
+    uint256 _stakeAmount2 = _percentOf(_stakeAmount1, 150);
+    _rewardAmount = _boundToReasonableStakeTokenAmount(_rewardAmount);
+
+    // Both users stake
+    _mintUpdateDelegateeAndStake(_sender, _stakeAmount1, _senderDelegatee);
+    _mintUpdateDelegateeAndStake(_receiver, _stakeAmount2, _receiverDelegatee);
+    // A reward is distributed
+    _distributeReward(_rewardAmount);
+
+    // The send amount must be less than the sender's balance after the reward distribution
+    _sendAmount = bound(_sendAmount, 0, lst.balanceOf(_sender));
+
+    // The sender transfers to the receiver
+    vm.prank(_sender);
+    lst.transfer(_receiver, _sendAmount);
+
+    // The sender's full remaining balance is consolidated to their designated delegatee
+    assertEq(lst.balanceOf(_sender), stakeToken.getCurrentVotes(_senderDelegatee), "SENDER DELEGATEE IS WRONG");
+    // The rewards earned by the receiver are still assigned to the default delegatee
+    assertWithinOneBip(stakeToken.getCurrentVotes(defaultDelegatee), _percentOf(_rewardAmount, 60));
+    // The receiver's original stake and the tokens sent to him are staked to his designated delegatee
+    assertWithinOneBip(stakeToken.getCurrentVotes(_receiverDelegatee), _stakeAmount2 + _sendAmount);
+
+    // Invariant: Sum of balanceOf should always be less than or equal to total stake + rewards
+    assertLteWithinOneBip(
+      lst.balanceOf(_sender) + lst.balanceOf(_receiver), _stakeAmount1 + _stakeAmount2 + _rewardAmount
+    );
+
+    // Invariant: Total voting weight across delegatees equals the total tokens in the system
+    assertEq(
+      stakeToken.getCurrentVotes(_senderDelegatee) + stakeToken.getCurrentVotes(_receiverDelegatee)
+        + stakeToken.getCurrentVotes(defaultDelegatee),
+      _stakeAmount1 + _stakeAmount2 + _rewardAmount
+    );
+  }
+
+  function testFuzz_MovesPartialVotingWeightToTheReceiversDelegateeAndConsolidatesSendersVotingWeightWhenBothBalancesIncludeRewards(
+    uint256 _stakeAmount1,
+    uint256 _rewardAmount,
+    uint256 _sendAmount,
+    address _sender,
+    address _receiver,
+    address _senderDelegatee,
+    address _receiverDelegatee
+  ) public {
+    _assumeSafeHolders(_sender, _receiver);
+    _assumeSafeDelegatees(_senderDelegatee, _receiverDelegatee);
+    _stakeAmount1 = _boundToReasonableStakeTokenAmount(_stakeAmount1);
+    // The second user will stake 150% of the first user
+    uint256 _stakeAmount2 = _percentOf(_stakeAmount1, 150);
+    _rewardAmount = _boundToReasonableStakeTokenAmount(_rewardAmount);
+
+    // Both users stake
+    _mintUpdateDelegateeAndStake(_sender, _stakeAmount1, _senderDelegatee);
+    _mintUpdateDelegateeAndStake(_receiver, _stakeAmount2, _receiverDelegatee);
+    // A reward is distributed
+    _distributeReward(_rewardAmount);
+
+    // The send amount must be less than the sender's balance after the reward distribution
+    _sendAmount = bound(_sendAmount, 0, lst.balanceOf(_sender));
+
+    // The sender transfers to the receiver
+    vm.prank(_sender);
+    lst.transfer(_receiver, _sendAmount);
+
+    // The sender's checkpoint should be incremented by the send amount to reflect
+    assertEq(lst.balanceCheckpoint(_receiver), _stakeAmount2 + _sendAmount);
+  }
+
+  function testFuzz_TransfersTheBalanceAndMovesTheVotingWeightBetweenMultipleHoldersWhoHaveStakedAndReceivedRewards(
+    uint256 _stakeAmount1,
+    uint256 _stakeAmount2,
+    uint256 _rewardAmount,
+    uint256 _sendAmount1,
+    uint256 _sendAmount2,
+    address _sender1,
+    address _sender2,
+    address _receiver,
+    address _sender1Delegatee,
+    address _sender2Delegatee
+  ) public {
+    _assumeSafeHolders(_sender1, _sender2);
+    _assumeSafeHolder(_receiver);
+    vm.assume(_sender1 != _receiver && _sender2 != _receiver);
+    _assumeSafeDelegatees(_sender1Delegatee, _sender2Delegatee);
+    _stakeAmount1 = _boundToReasonableStakeTokenAmount(_stakeAmount1);
+    _stakeAmount2 = _boundToReasonableStakeTokenAmount(_stakeAmount2);
+    _rewardAmount = _boundToReasonableStakeTokenAmount(_rewardAmount);
+    _sendAmount1 = bound(_sendAmount1, 0.0001e18, _stakeAmount1);
+    _sendAmount2 = bound(_sendAmount2, 0.0001e18, _stakeAmount2 + _sendAmount1);
+
+    // Two users stake
+    _mintUpdateDelegateeAndStake(_sender1, _stakeAmount1, _sender1Delegatee);
+    _mintUpdateDelegateeAndStake(_sender2, _stakeAmount2, _sender2Delegatee);
+    // A reward is distributed
+    _distributeReward(_rewardAmount);
+    // Remember the the sender balances after they receive their reward
+    uint256 _balance1AfterReward = lst.balanceOf(_sender1);
+    uint256 _balance2AfterReward = lst.balanceOf(_sender2);
+
+    // First sender transfers to the second sender
+    vm.prank(_sender1);
+    lst.transfer(_sender2, _sendAmount1);
+    // Second sender transfers to the receiver
+    vm.prank(_sender2);
+    lst.transfer(_receiver, _sendAmount2);
+
+    // Balances have been updated correctly after the transfers
+    assertWithinOneUnit(lst.balanceOf(_sender1), _balance1AfterReward - _sendAmount1);
+    assertWithinOneUnit(lst.balanceOf(_sender2), _balance2AfterReward + _sendAmount1 - _sendAmount2);
+    assertWithinOneUnit(lst.balanceOf(_receiver), _sendAmount2);
+
+    // The sender balances should match their delegatee's voting weights because their voting weight has been
+    // consolidated by doing the send.
+    // TODO: These assertions show the balance of can be more than the current votes, which means the balance is more
+    // than the "real" underlying. We have to understand this better and it is probably needed to make sure the
+    // rounding favors the protocol.
+    assertWithinOneUnit(lst.balanceOf(_sender1), stakeToken.getCurrentVotes(_sender1Delegatee));
+    assertWithinOneUnit(lst.balanceOf(_sender2), stakeToken.getCurrentVotes(_sender2Delegatee));
+    // Because the two transfer errors could have stacked, the error can be more than 1 unit
+    assertWithinOneBip(lst.balanceOf(_receiver), stakeToken.getCurrentVotes(defaultDelegatee));
+  }
+
+  function testFuzz_EmitsATransferEvent(
+    uint256 _stakeAmount,
+    uint256 _rewardAmount,
+    uint256 _sendAmount,
+    address _sender,
+    address _senderDelegatee,
+    address _receiver,
+    address _receiverDelegatee
+  ) public {
+    _assumeSafeHolders(_sender, _receiver);
+    _assumeSafeDelegatees(_senderDelegatee, _receiverDelegatee);
+    _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
+    _rewardAmount = _boundToReasonableStakeTokenAmount(_rewardAmount);
+    _sendAmount = bound(_sendAmount, 0, _stakeAmount + _rewardAmount);
+
+    _mintUpdateDelegateeAndStake(_sender, _stakeAmount, _senderDelegatee);
+    _distributeReward(_rewardAmount);
+
+    vm.expectEmit();
+    emit UniLst.Transfer(_sender, _receiver, _sendAmount);
+    vm.prank(_sender);
+    lst.transfer(_receiver, _sendAmount);
+  }
+
+  function testFuzz_RevertIf_TheHolderTriesToTransferMoreThanTheirBalance(
+    uint256 _stakeAmount,
+    uint256 _rewardAmount,
+    uint256 _sendAmount,
+    address _sender,
+    address _senderDelegatee,
+    address _receiver
+  ) public {
+    _assumeSafeHolders(_sender, _receiver);
+    _assumeSafeDelegatee(_senderDelegatee);
+    _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
+    _rewardAmount = _boundToReasonableStakeTokenAmount(_rewardAmount);
+    uint256 _totalAmount = _rewardAmount + _stakeAmount;
+    // Send amount will be some value more than the sender's balance, up to 2x as much
+    _sendAmount = bound(_sendAmount, _totalAmount + 1, 2 * _totalAmount);
+
+    _mintUpdateDelegateeAndStake(_sender, _stakeAmount, _senderDelegatee);
+    _distributeReward(_rewardAmount);
+
+    vm.prank(_sender);
+    vm.expectRevert(); // TODO: can we specifically expect an overflow?
+    lst.transfer(_receiver, _sendAmount);
   }
 }
