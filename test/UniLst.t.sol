@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
-import {console2} from "forge-std/Test.sol";
+import {console2, stdError} from "forge-std/Test.sol";
 import {UniLst, Ownable} from "src/UniLst.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IWETH9} from "src/interfaces/IWETH9.sol";
 import {IUni} from "src/interfaces/IUni.sol";
 import {IUniStaker} from "src/interfaces/IUniStaker.sol";
@@ -141,6 +142,12 @@ contract UniLstTest is UnitTestBase, PercentAssertions, TestHelpers {
     vm.startPrank(_distributor);
     stakeToken.approve(address(lst), _amount);
     lst.temp_distributeRewards(_amount);
+    vm.stopPrank();
+  }
+
+  function _approve(address _staker, address _caller, uint256 _amount) internal {
+    vm.startPrank(_staker);
+    lst.approve(_caller, _amount);
     vm.stopPrank();
   }
 }
@@ -729,6 +736,22 @@ contract Unstake is UniLstTest {
   }
 }
 
+contract Approve is UniLstTest {
+  function testFuzz_CorrectlySetAllowance(address _caller, address _spender, uint256 _amount) public {
+    vm.prank(_caller);
+    bool approved = lst.approve(_spender, _amount);
+    assertEq(lst.allowance(_caller, _spender), _amount);
+    assertTrue(approved);
+  }
+
+  function testFuzz_SettingAllowanceEmitsApprovalEvent(address _caller, address _spender, uint256 _amount) public {
+    vm.prank(_caller);
+    vm.expectEmit();
+    emit IERC20.Approval(_caller, _spender, _amount);
+    lst.approve(_spender, _amount);
+  }
+}
+
 contract BalanceOf is UniLstTest {
   function testFuzz_CalculatesTheCorrectBalanceWhenASingleHolderMakesASingleDeposit(
     uint256 _amount,
@@ -921,6 +944,114 @@ contract BalanceOf is UniLstTest {
     _unstake(_holder, _unstakeAmount);
 
     assertEq(lst.balanceOf(_holder), _stakeAmount + _rewardAmount - _unstakeAmount);
+  }
+}
+
+contract TransferFrom is UniLstTest {
+  function testFuzz_MovesFullBalanceToAReceiver(uint256 _amount, address _caller, address _sender, address _receiver)
+    public
+  {
+    _assumeSafeHolders(_sender, _receiver);
+    _amount = _boundToReasonableStakeTokenAmount(_amount);
+
+    _mintAndStake(_sender, _amount);
+
+    vm.prank(_sender);
+    lst.approve(_caller, _amount);
+
+    vm.prank(_caller);
+    lst.transferFrom(_sender, _receiver, _amount);
+
+    assertEq(lst.balanceOf(_sender), 0);
+    assertEq(lst.balanceOf(_receiver), _amount);
+  }
+
+  function testFuzz_MovesPartialBalanceToAReceiver(
+    uint256 _stakeAmount,
+    uint256 _sendAmount,
+    address _caller,
+    address _sender,
+    address _receiver
+  ) public {
+    _assumeSafeHolders(_sender, _receiver);
+    _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
+    // Amount to send should be less than or equal to the full amount
+    _sendAmount = bound(_sendAmount, 0, _stakeAmount);
+
+    _mintAndStake(_sender, _stakeAmount);
+    vm.prank(_sender);
+    lst.approve(_caller, _sendAmount);
+
+    vm.prank(_caller);
+    lst.transferFrom(_sender, _receiver, _sendAmount);
+
+    assertEq(lst.balanceOf(_sender), _stakeAmount - _sendAmount);
+    assertEq(lst.balanceOf(_receiver), _sendAmount);
+  }
+
+  function testFuzz_CorrectlyDecrementsAllowance(
+    uint256 _stakeAmount,
+    uint256 _sendAmount,
+    address _caller,
+    address _sender,
+    address _receiver
+  ) public {
+    _assumeSafeHolders(_sender, _receiver);
+    _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
+    // Amount to send should be less than or equal to the full amount
+    _sendAmount = bound(_sendAmount, 0, _stakeAmount);
+
+    _mintAndStake(_sender, _stakeAmount);
+    vm.prank(_sender);
+    lst.approve(_caller, _stakeAmount);
+
+    vm.prank(_caller);
+    lst.transferFrom(_sender, _receiver, _sendAmount);
+
+    assertEq(lst.allowance(_sender, _caller), _stakeAmount - _sendAmount);
+  }
+
+  function testFuzz_DoesNotDecrementAllowanceIfMaxUint(
+    uint256 _stakeAmount,
+    uint256 _sendAmount,
+    address _caller,
+    address _sender,
+    address _receiver
+  ) public {
+    _assumeSafeHolders(_sender, _receiver);
+    _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
+    // Amount to send should be less than or equal to the full amount
+    _sendAmount = bound(_sendAmount, 0, _stakeAmount);
+
+    _mintAndStake(_sender, _stakeAmount);
+    vm.prank(_sender);
+    lst.approve(_caller, type(uint256).max);
+
+    vm.prank(_caller);
+    lst.transferFrom(_sender, _receiver, _sendAmount);
+
+    assertEq(lst.allowance(_sender, _caller), type(uint256).max);
+  }
+
+  function testFuzz_RevertIf_NotEnoughAllowanceGiven(
+    uint256 _amount,
+    uint256 _allowanceAmount,
+    address _caller,
+    address _sender,
+    address _receiver
+  ) public {
+    _assumeSafeHolders(_sender, _receiver);
+    _amount = _boundToReasonableStakeTokenAmount(_amount);
+    // Amount to send should be less than or equal to the full stake amount
+    _allowanceAmount = bound(_allowanceAmount, 0, _amount - 1);
+
+    _mintAndStake(_sender, _allowanceAmount);
+    vm.prank(_sender);
+    lst.approve(_caller, _allowanceAmount);
+
+    vm.prank(_caller);
+    vm.expectRevert(stdError.arithmeticError);
+    lst.transferFrom(_sender, _receiver, _amount);
   }
 }
 
@@ -1264,7 +1395,7 @@ contract Transfer is UniLstTest {
     _distributeReward(_rewardAmount);
 
     vm.expectEmit();
-    emit UniLst.Transfer(_sender, _receiver, _sendAmount);
+    emit IERC20.Transfer(_sender, _receiver, _sendAmount);
     vm.prank(_sender);
     lst.transfer(_receiver, _sendAmount);
   }

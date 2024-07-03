@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IUniStaker} from "src/interfaces/IUniStaker.sol";
 import {IUni} from "src/interfaces/IUni.sol";
 import {IWETH9} from "src/interfaces/IWETH9.sol";
 import {IWithdrawalGate} from "src/interfaces/IWithdrawalGate.sol";
 import {Ownable} from "openzeppelin/access/Ownable.sol";
 
-contract UniLst is Ownable {
+contract UniLst is IERC20, Ownable {
   error UniLst__StakeTokenOperationFailed();
   error UniLst__InsufficientBalance();
 
@@ -16,7 +17,6 @@ contract UniLst is Ownable {
   IWETH9 public immutable REWARD_TOKEN;
   uint256 public constant SHARE_SCALE_FACTOR = 1e18;
 
-  event Transfer(address indexed from, address indexed to, uint256 value);
   event WithdrawalGateSet(address indexed oldWithdrawalGate, address indexed newWithdrawalGate);
 
   address public defaultDelegatee;
@@ -28,6 +28,7 @@ contract UniLst is Ownable {
   mapping(address holder => uint256 shares) public sharesOf;
   // CONSIDER: Maybe rename this to "delegatedBalance" or something similar
   mapping(address holder => uint256 balance) public balanceCheckpoint;
+  mapping(address holder => mapping(address spender => uint256 amount)) public allowance;
 
   constructor(IUniStaker _staker, address _initialDefaultDelegatee, address _initialOwner) Ownable(_initialOwner) {
     STAKER = _staker;
@@ -43,6 +44,12 @@ contract UniLst is Ownable {
     // Create initial deposit for default so other methods can assume it exists.
     // OPTIMIZE: Store this as an immutable to avoid having to ever look it up from storage
     depositForDelegatee[_initialDefaultDelegatee] = STAKER.stake(0, _initialDefaultDelegatee);
+  }
+
+  function approve(address _spender, uint256 _amount) public virtual returns (bool) {
+    allowance[msg.sender][_spender] = _amount;
+    emit Approval(msg.sender, _spender, _amount);
+    return true;
   }
 
   function balanceOf(address _holder) public view returns (uint256 _balance) {
@@ -176,46 +183,15 @@ contract UniLst is Ownable {
   }
 
   function transfer(address _receiver, uint256 _value) external returns (bool) {
-    IUniStaker.DepositIdentifier _senderDepositId = _depositIdForHolder(msg.sender);
-    IUniStaker.DepositIdentifier _receiverDepositId = _depositIdForHolder(_receiver);
-    IUniStaker.DepositIdentifier _defaultDepositId = depositForDelegatee[defaultDelegatee];
+    return _transfer(msg.sender, _receiver, _value);
+  }
 
-    uint256 _balanceOf = balanceOf(msg.sender);
-    uint256 _balanceCheckpoint = balanceCheckpoint[msg.sender];
-    // This is the number of tokens in the default pool that the sender has claim to.
-    uint256 _checkpointDiff = _balanceOf - balanceCheckpoint[msg.sender];
-    // This is the number of tokens the sender will have after the transfer is complete.
-    uint256 _remainingBalance = _balanceOf - _value;
-
-    uint256 _shares = _sharesForStake(_value);
-    sharesOf[msg.sender] -= _shares;
-    sharesOf[_receiver] += _shares;
-
-    balanceCheckpoint[msg.sender] = balanceOf(msg.sender);
-    balanceCheckpoint[_receiver] += _value;
-
-    // OPTIMIZE: This is the most naive implementation of a transfer:
-    // 1. withdraw all tokens belonging to the sender from his designated deposit
-    // 2. withdraw all tokens belonging to the sender from the default deposit (tokens earned from rewards)
-    // 3. stakeMore the tokens being sent to the receiver's designated deposit
-    // 4. stakeMore the remaining tokens back to the sender's designated deposit
-    // There are many ways in which this can be optimized. For example, in certain conditions we could avoid having
-    // to stakeMore back to the sender's deposit if their balance in the default deposit + some subset of their
-    // designated deposit is sufficient to complete the transfer. Obviously, we can also avoid doing withdraws and
-    // stakeMores in conditions where the sender and receiver delegatees match. There are also considerations for
-    // optimizations that change the functionality to a certain degree. For example, if the senders checkpointDiff
-    // is more than is being transferred, do we _need_ to move what's left of the checkpointDiff to the sender's
-    // designated deposit? Or would it be acceptable to leave the remainder of their checkpointDiff in the default
-    // deposit? This, and many other potential optimizations should be measured and considered, with input from the
-    // broader team.
-    STAKER.withdraw(_senderDepositId, uint96(_balanceCheckpoint));
-    STAKER.withdraw(_defaultDepositId, uint96(_checkpointDiff));
-    STAKER.stakeMore(_receiverDepositId, uint96(_value));
-    STAKER.stakeMore(_senderDepositId, uint96(_remainingBalance));
-
-    emit Transfer(msg.sender, _receiver, _value);
-
-    return true;
+  function transferFrom(address _from, address _to, uint256 _amount) external returns (bool) {
+    uint256 allowed = allowance[_from][msg.sender];
+    if (allowed != type(uint256).max) {
+      allowance[_from][msg.sender] = allowed - _amount;
+    }
+    return _transfer(_from, _to, _amount);
   }
 
   // This method is a placeholder for the real rewards distribution mechanism which we will have to spec and add
@@ -252,5 +228,48 @@ contract UniLst is Ownable {
 
   function _depositIdForHolder(address _holder) internal view returns (IUniStaker.DepositIdentifier) {
     return depositForDelegatee[delegateeForHolder(_holder)];
+  }
+
+  function _transfer(address _sender, address _receiver, uint256 _value) internal returns (bool) {
+    IUniStaker.DepositIdentifier _senderDepositId = _depositIdForHolder(_sender);
+    IUniStaker.DepositIdentifier _receiverDepositId = _depositIdForHolder(_receiver);
+    IUniStaker.DepositIdentifier _defaultDepositId = depositForDelegatee[defaultDelegatee];
+
+    uint256 _balanceOf = balanceOf(_sender);
+    uint256 _balanceCheckpoint = balanceCheckpoint[_sender];
+    // This is the number of tokens in the default pool that the sender has claim to.
+    uint256 _checkpointDiff = _balanceOf - balanceCheckpoint[_sender];
+    // This is the number of tokens the sender will have after the transfer is complete.
+    uint256 _remainingBalance = _balanceOf - _value;
+
+    // OPTIMIZE: This is the most naive implementation of a transfer:
+    // 1. withdraw all tokens belonging to the sender from his designated deposit
+    // 2. withdraw all tokens belonging to the sender from the default deposit (tokens earned from rewards)
+    // 3. stakeMore the tokens being sent to the receiver's designated deposit
+    // 4. stakeMore the remaining tokens back to the sender's designated deposit
+    // There are many ways in which this can be optimized. For example, in certain conditions we could avoid having
+    // to stakeMore back to the sender's deposit if their balance in the default deposit + some subset of their
+    // designated deposit is sufficient to complete the transfer. Obviously, we can also avoid doing withdraws and
+    // stakeMores in conditions where the sender and receiver delegatees match. There are also considerations for
+    // optimizations that change the functionality to a certain degree. For example, if the senders checkpointDiff
+    // is more than is being transferred, do we _need_ to move what's left of the checkpointDiff to the sender's
+    // designated deposit? Or would it be acceptable to leave the remainder of their checkpointDiff in the default
+    // deposit? This, and many other potential optimizations should be measured and considered, with input from the
+    // broader team.
+    STAKER.withdraw(_senderDepositId, uint96(_balanceCheckpoint));
+    STAKER.withdraw(_defaultDepositId, uint96(_checkpointDiff));
+    STAKER.stakeMore(_receiverDepositId, uint96(_value));
+    STAKER.stakeMore(_senderDepositId, uint96(_remainingBalance));
+
+    uint256 _shares = _sharesForStake(_value);
+    sharesOf[_sender] -= _shares;
+    sharesOf[_receiver] += _shares;
+
+    balanceCheckpoint[_sender] = balanceOf(_sender);
+    balanceCheckpoint[_receiver] += _value;
+
+    emit Transfer(_sender, _receiver, _value);
+
+    return true;
   }
 }
