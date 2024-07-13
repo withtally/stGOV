@@ -2,10 +2,11 @@
 pragma solidity 0.8.26;
 
 import {console2} from "forge-std/Test.sol";
-import {UniLst} from "src/UniLst.sol";
+import {UniLst, Ownable} from "src/UniLst.sol";
 import {IWETH9} from "src/interfaces/IWETH9.sol";
 import {IUni} from "src/interfaces/IUni.sol";
 import {IUniStaker} from "src/interfaces/IUniStaker.sol";
+import {IWithdrawalGate} from "src/interfaces/IWithdrawalGate.sol";
 import {UnitTestBase} from "test/UnitTestBase.sol";
 import {TestHelpers} from "test/helpers/TestHelpers.sol";
 import {PercentAssertions} from "test/helpers/PercentAssertions.sol";
@@ -13,11 +14,13 @@ import {PercentAssertions} from "test/helpers/PercentAssertions.sol";
 contract UniLstTest is UnitTestBase, PercentAssertions, TestHelpers {
   IUniStaker staker;
   UniLst lst;
+  address lstOwner;
 
   address defaultDelegatee = makeAddr("Default Delegatee");
 
   function setUp() public virtual override {
     super.setUp();
+    lstOwner = makeAddr("LST Owner");
 
     // UniStaker contracts from bytecode to avoid compiler conflicts.
     staker = IUniStaker(deployCode("UniStaker.sol", abi.encode(rewardToken, stakeToken, stakerAdmin)));
@@ -29,7 +32,7 @@ contract UniLstTest is UnitTestBase, PercentAssertions, TestHelpers {
     vm.stopPrank();
 
     // Finally, deploy the lst for tests
-    lst = new UniLst(staker, defaultDelegatee);
+    lst = new UniLst(staker, defaultDelegatee, lstOwner);
   }
 
   function __dumpGlobalState() public view {
@@ -131,6 +134,7 @@ contract Constructor is UniLstTest {
     assertEq(address(lst.STAKE_TOKEN()), address(stakeToken));
     assertEq(address(lst.REWARD_TOKEN()), address(rewardToken));
     assertEq(lst.defaultDelegatee(), defaultDelegatee);
+    assertEq(lst.owner(), lstOwner);
   }
 
   function test_MaxApprovesTheStakerContractToTransferStakeToken() public view {
@@ -145,10 +149,12 @@ contract Constructor is UniLstTest {
     address _staker,
     address _stakeToken,
     address _rewardToken,
-    address _defaultDelegatee
+    address _defaultDelegatee,
+    address _lstOwner
   ) public {
     _assumeSafeMockAddress(_staker);
     _assumeSafeMockAddress(_stakeToken);
+    vm.assume(_lstOwner != address(0));
     vm.mockCall(_staker, abi.encodeWithSelector(IUniStaker.STAKE_TOKEN.selector), abi.encode(_stakeToken));
     vm.mockCall(_staker, abi.encodeWithSelector(IUniStaker.REWARD_TOKEN.selector), abi.encode(_rewardToken));
     vm.mockCall(_stakeToken, abi.encodeWithSelector(IUni.approve.selector), abi.encode(true));
@@ -157,28 +163,31 @@ contract Constructor is UniLstTest {
     bytes4 _stakeWithArrity2Selector = hex"98f2b576";
     vm.mockCall(_staker, abi.encodeWithSelector(_stakeWithArrity2Selector), abi.encode(1));
 
-    UniLst _lst = new UniLst(IUniStaker(_staker), _defaultDelegatee);
+    UniLst _lst = new UniLst(IUniStaker(_staker), _defaultDelegatee, _lstOwner);
     assertEq(address(_lst.STAKER()), _staker);
     assertEq(address(_lst.STAKE_TOKEN()), _stakeToken);
     assertEq(address(_lst.REWARD_TOKEN()), _rewardToken);
     assertEq(_lst.defaultDelegatee(), _defaultDelegatee);
     assertEq(IUniStaker.DepositIdentifier.unwrap(_lst.depositForDelegatee(_defaultDelegatee)), 1);
+    assertEq(_lst.owner(), _lstOwner);
   }
 
   function testFuzz_RevertIf_MaxApprovalOfTheStakerContractOnTheStakeTokenFails(
     address _staker,
     address _stakeToken,
     address _rewardToken,
-    address _defaultDelegatee
+    address _defaultDelegatee,
+    address _lstOwner
   ) public {
     _assumeSafeMockAddress(_staker);
     _assumeSafeMockAddress(_stakeToken);
+    vm.assume(_lstOwner != address(0));
     vm.mockCall(_staker, abi.encodeWithSelector(IUniStaker.STAKE_TOKEN.selector), abi.encode(_stakeToken));
     vm.mockCall(_staker, abi.encodeWithSelector(IUniStaker.REWARD_TOKEN.selector), abi.encode(_rewardToken));
     vm.mockCall(_stakeToken, abi.encodeWithSelector(IUni.approve.selector), abi.encode(false));
 
     vm.expectRevert(UniLst.UniLst__StakeTokenOperationFailed.selector);
-    new UniLst(IUniStaker(_staker), _defaultDelegatee);
+    new UniLst(IUniStaker(_staker), _defaultDelegatee, _lstOwner);
   }
 }
 
@@ -1006,5 +1015,43 @@ contract Transfer is UniLstTest {
     vm.prank(_sender);
     vm.expectRevert(); // TODO: can we specifically expect an overflow?
     lst.transfer(_receiver, _sendAmount);
+  }
+}
+
+contract SetWithdrawalGate is UniLstTest {
+  function testFuzz_UpdatesTheWithdrawalGateWhenCalledByTheOwner(address _newWithdrawalGate) public {
+    vm.prank(lstOwner);
+    lst.setWithdrawalGate(IWithdrawalGate(_newWithdrawalGate));
+    assertEq(address(lst.withdrawalGate()), _newWithdrawalGate);
+  }
+
+  function testFuzz_EmitsWithdrawalGateSetEvent(address _newWithdrawalGate) public {
+    vm.prank(lstOwner);
+    vm.expectEmit();
+    emit UniLst.WithdrawalGateSet(address(0), _newWithdrawalGate);
+    lst.setWithdrawalGate(IWithdrawalGate(_newWithdrawalGate));
+  }
+
+  function testFuzz_UpdatesTheWithdrawalGateAndEmitsEventWhenCalledASecondTime(
+    address _firstNewWithdrawalGate,
+    address _secondNewWithdrawalGate
+  ) public {
+    // A non-zero withdrawal gate is already set
+    vm.prank(lstOwner);
+    lst.setWithdrawalGate(IWithdrawalGate(_firstNewWithdrawalGate));
+
+    vm.prank(lstOwner);
+    vm.expectEmit();
+    emit UniLst.WithdrawalGateSet(_firstNewWithdrawalGate, _secondNewWithdrawalGate);
+    lst.setWithdrawalGate(IWithdrawalGate(_secondNewWithdrawalGate));
+    assertEq(address(lst.withdrawalGate()), _secondNewWithdrawalGate);
+  }
+
+  function testFuzz_RevertIf_CalledByNonOwnerAccount(address _notLstOwner) public {
+    vm.assume(_notLstOwner != lstOwner);
+
+    vm.prank(_notLstOwner);
+    vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, _notLstOwner));
+    lst.setWithdrawalGate(IWithdrawalGate(_notLstOwner));
   }
 }

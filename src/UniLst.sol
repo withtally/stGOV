@@ -4,8 +4,10 @@ pragma solidity 0.8.26;
 import {IUniStaker} from "src/interfaces/IUniStaker.sol";
 import {IUni} from "src/interfaces/IUni.sol";
 import {IWETH9} from "src/interfaces/IWETH9.sol";
+import {IWithdrawalGate} from "src/interfaces/IWithdrawalGate.sol";
+import {Ownable} from "openzeppelin/access/Ownable.sol";
 
-contract UniLst {
+contract UniLst is Ownable {
   error UniLst__StakeTokenOperationFailed();
 
   IUniStaker public immutable STAKER;
@@ -14,8 +16,10 @@ contract UniLst {
   uint256 public constant SHARE_SCALE_FACTOR = 1e18;
 
   event Transfer(address indexed from, address indexed to, uint256 value);
+  event WithdrawalGateSet(address indexed oldWithdrawalGate, address indexed newWithdrawalGate);
 
   address public defaultDelegatee;
+  IWithdrawalGate public withdrawalGate;
   uint256 public totalSupply;
   uint256 public totalShares;
   mapping(address delegatee => IUniStaker.DepositIdentifier depositId) public depositForDelegatee;
@@ -24,7 +28,7 @@ contract UniLst {
   // CONSIDER: Maybe rename this to "delegatedBalance" or something similar
   mapping(address holder => uint256 balance) public balanceCheckpoint;
 
-  constructor(IUniStaker _staker, address _initialDefaultDelegatee) {
+  constructor(IUniStaker _staker, address _initialDefaultDelegatee, address _initialOwner) Ownable(_initialOwner) {
     STAKER = _staker;
     STAKE_TOKEN = IUni(_staker.STAKE_TOKEN());
     REWARD_TOKEN = IWETH9(payable(_staker.REWARD_TOKEN()));
@@ -159,6 +163,11 @@ contract UniLst {
     STAKE_TOKEN.transferFrom(msg.sender, address(this), _amount);
     totalSupply += _amount;
     STAKER.stakeMore(depositForDelegatee[defaultDelegatee], uint96(_amount));
+  }
+
+  function setWithdrawalGate(IWithdrawalGate _newWithdrawalGate) external onlyOwner {
+    emit WithdrawalGateSet(address(withdrawalGate), address(_newWithdrawalGate));
+    withdrawalGate = _newWithdrawalGate;
   }
 
   function _sharesForStake(uint256 _amount) internal view returns (uint256) {
