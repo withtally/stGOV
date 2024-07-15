@@ -7,6 +7,7 @@ import {IWETH9} from "src/interfaces/IWETH9.sol";
 import {IUni} from "src/interfaces/IUni.sol";
 import {IUniStaker} from "src/interfaces/IUniStaker.sol";
 import {IWithdrawalGate} from "src/interfaces/IWithdrawalGate.sol";
+import {MockWithdrawalGate} from "test/mocks/MockWithdrawalGate.sol";
 import {UnitTestBase} from "test/UnitTestBase.sol";
 import {TestHelpers} from "test/helpers/TestHelpers.sol";
 import {PercentAssertions} from "test/helpers/PercentAssertions.sol";
@@ -15,6 +16,7 @@ contract UniLstTest is UnitTestBase, PercentAssertions, TestHelpers {
   IUniStaker staker;
   UniLst lst;
   address lstOwner;
+  MockWithdrawalGate mockWithdrawalGate;
 
   address defaultDelegatee = makeAddr("Default Delegatee");
 
@@ -31,8 +33,13 @@ contract UniLstTest is UnitTestBase, PercentAssertions, TestHelpers {
     staker.stake(1e18, stakeMinter);
     vm.stopPrank();
 
-    // Finally, deploy the lst for tests
+    // Finally, deploy the lst for tests.
     lst = new UniLst(staker, defaultDelegatee, lstOwner);
+
+    // Deploy and set the mock withdrawal gate.
+    mockWithdrawalGate = new MockWithdrawalGate();
+    vm.prank(lstOwner);
+    lst.setWithdrawalGate(address(mockWithdrawalGate));
   }
 
   function __dumpGlobalState() public view {
@@ -115,6 +122,16 @@ contract UniLstTest is UnitTestBase, PercentAssertions, TestHelpers {
   function _mintUpdateDelegateeAndStake(address _holder, uint256 _amount, address _delegatee) internal {
     _mintStakeToken(_holder, _amount);
     _updateDelegateeAndStake(_holder, _amount, _delegatee);
+  }
+
+  function _unstake(address _holder, uint256 _amount) internal {
+    vm.prank(_holder);
+    lst.unstake(_amount);
+  }
+
+  function _setWithdrawalGate(address _newWithdrawalGate) internal {
+    vm.prank(lstOwner);
+    lst.setWithdrawalGate(_newWithdrawalGate);
   }
 
   function _distributeReward(uint256 _amount) internal {
@@ -293,7 +310,7 @@ contract UpdateDelegatee is UniLstTest {
     // After update:
     // New delegatee has both the stake voting weight and the rewards accumulated
     assertEq(stakeToken.getCurrentVotes(_newDelegatee), _stakeAmount + _rewardAmount);
-    // Defualt delegatee has had reward voting weight removed
+    // Default delegatee has had reward voting weight removed
     assertEq(stakeToken.getCurrentVotes(defaultDelegatee), 0);
     assertEq(lst.balanceOf(_holder), _stakeAmount + _rewardAmount);
   }
@@ -490,6 +507,228 @@ contract Stake is UniLstTest {
   }
 }
 
+contract Unstake is UniLstTest {
+  function testFuzz_TransfersToAValidWithdrawalGate(
+    uint256 _stakeAmount,
+    uint256 _unstakeAmount,
+    address _holder,
+    address _delegatee
+  ) public {
+    _assumeSafeHolder(_holder);
+    _assumeSafeDelegatee(_delegatee);
+    _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
+    _unstakeAmount = bound(_unstakeAmount, 0, _stakeAmount);
+
+    _mintUpdateDelegateeAndStake(_holder, _stakeAmount, _delegatee);
+    _unstake(_holder, _unstakeAmount);
+
+    assertEq(stakeToken.balanceOf(address(mockWithdrawalGate)), _unstakeAmount);
+  }
+
+  function testFuzz_InitiatesWithdrawalOnTheWithdrawalGate(
+    uint256 _stakeAmount,
+    uint256 _unstakeAmount,
+    address _holder,
+    address _delegatee
+  ) public {
+    _assumeSafeHolder(_holder);
+    _assumeSafeDelegatee(_delegatee);
+    _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
+    _unstakeAmount = bound(_unstakeAmount, 0, _stakeAmount);
+
+    _mintUpdateDelegateeAndStake(_holder, _stakeAmount, _delegatee);
+    _unstake(_holder, _unstakeAmount);
+
+    assertEq(mockWithdrawalGate.lastParam__initiateWithdrawal_amount(), _unstakeAmount);
+    assertEq(mockWithdrawalGate.lastParam__initiateWithdrawal_receiver(), _holder);
+  }
+
+  function testFuzz_TransfersDirectlyToHolderIfTheWithdrawalGateIsAddressZero(
+    uint256 _stakeAmount,
+    uint256 _unstakeAmount,
+    address _holder,
+    address _delegatee
+  ) public {
+    _assumeSafeHolder(_holder);
+    _assumeSafeDelegatee(_delegatee);
+    _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
+    _unstakeAmount = bound(_unstakeAmount, 0, _stakeAmount);
+
+    _setWithdrawalGate(address(0));
+    _mintUpdateDelegateeAndStake(_holder, _stakeAmount, _delegatee);
+    _unstake(_holder, _unstakeAmount);
+
+    assertEq(stakeToken.balanceOf(_holder), _unstakeAmount);
+  }
+
+  function testFuzz_TransfersToHolderIfWithdrawGateIsSetToANonContractAddress(
+    uint256 _stakeAmount,
+    uint256 _unstakeAmount,
+    address _holder,
+    address _delegatee,
+    address _withdrawalGate
+  ) public {
+    _assumeSafeHolders(_holder, _withdrawalGate);
+    vm.assume(_withdrawalGate.code.length == 0); // make sure fuzzer has not picked a contract address
+    _assumeSafeDelegatee(_delegatee);
+    _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
+    _unstakeAmount = bound(_unstakeAmount, 0, _stakeAmount);
+
+    _setWithdrawalGate(_withdrawalGate); // withdrawal gate is set to an EOA
+    _mintUpdateDelegateeAndStake(_holder, _stakeAmount, _delegatee);
+    _unstake(_holder, _unstakeAmount);
+
+    assertEq(stakeToken.balanceOf(_holder), _unstakeAmount);
+  }
+
+  function testFuzz_TransfersDirectlyToHolderIfCallToTheWithdrawalGateFails(
+    uint256 _stakeAmount,
+    uint256 _unstakeAmount,
+    address _holder,
+    address _delegatee
+  ) public {
+    _assumeSafeHolder(_holder);
+    _assumeSafeDelegatee(_delegatee);
+    _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
+    _unstakeAmount = bound(_unstakeAmount, 0, _stakeAmount);
+
+    mockWithdrawalGate.__setShouldRevertOnNextCall(true);
+    _mintUpdateDelegateeAndStake(_holder, _stakeAmount, _delegatee);
+    _unstake(_holder, _unstakeAmount);
+
+    assertEq(stakeToken.balanceOf(_holder), _unstakeAmount);
+  }
+
+  function testFuzz_TransfersDirectlyToHolderIfTheWithdrawalGateDoesNotImplementTheSelector(
+    uint256 _stakeAmount,
+    uint256 _unstakeAmount,
+    address _holder,
+    address _delegatee
+  ) public {
+    _assumeSafeHolder(_holder);
+    _assumeSafeDelegatee(_delegatee);
+    _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
+    _unstakeAmount = bound(_unstakeAmount, 0, _stakeAmount);
+
+    // We set the withdrawal gate to the stake token to act as an arbitrary contract that does not implement the
+    // `initiateWithdrawal` selector
+    _setWithdrawalGate(address(stakeToken));
+    _mintUpdateDelegateeAndStake(_holder, _stakeAmount, _delegatee);
+    _unstake(_holder, _unstakeAmount);
+
+    assertEq(stakeToken.balanceOf(_holder), _unstakeAmount);
+  }
+
+  function testFuzz_AllowsAHolderToWithdrawBalanceThatIncludesEarnedRewards(
+    uint256 _stakeAmount,
+    uint256 _rewardAmount,
+    uint256 _unstakeAmount,
+    address _holder,
+    address _delegatee
+  ) public {
+    _assumeSafeHolder(_holder);
+    _assumeSafeDelegatee(_delegatee);
+    _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
+    _rewardAmount = _boundToReasonableStakeTokenAmount(_rewardAmount);
+    _unstakeAmount = bound(_unstakeAmount, 0, _stakeAmount + _rewardAmount);
+
+    // One holder stakes and earns the full reward amount
+    _mintUpdateDelegateeAndStake(_holder, _stakeAmount, _delegatee);
+    _distributeReward(_rewardAmount);
+    _unstake(_holder, _unstakeAmount);
+
+    assertEq(stakeToken.balanceOf(address(mockWithdrawalGate)), _unstakeAmount);
+  }
+
+  function testFuzz_WithdrawsFromUndelegatedBalanceIfItCoversTheAmount(
+    uint256 _stakeAmount,
+    uint256 _rewardAmount,
+    uint256 _unstakeAmount,
+    address _holder,
+    address _delegatee
+  ) public {
+    _assumeSafeHolder(_holder);
+    _assumeSafeDelegatee(_delegatee);
+    _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
+    _rewardAmount = _boundToReasonableStakeTokenAmount(_rewardAmount);
+    // The unstake amount is _less_ than the reward amount.
+    _unstakeAmount = bound(_unstakeAmount, 0, _rewardAmount);
+
+    // One holder stakes and earns the full reward amount
+    _mintUpdateDelegateeAndStake(_holder, _stakeAmount, _delegatee);
+    _distributeReward(_rewardAmount);
+    _unstake(_holder, _unstakeAmount);
+
+    assertEq(stakeToken.getCurrentVotes(defaultDelegatee), _rewardAmount - _unstakeAmount);
+    assertEq(stakeToken.getCurrentVotes(_delegatee), _stakeAmount);
+    assertEq(stakeToken.balanceOf(address(mockWithdrawalGate)), _unstakeAmount);
+  }
+
+  function testFuzz_WithdrawsFromDelegatedBalanceAfterExhaustingUndelegatedBalance(
+    uint256 _stakeAmount,
+    uint256 _rewardAmount,
+    uint256 _unstakeAmount,
+    address _holder,
+    address _delegatee
+  ) public {
+    _assumeSafeHolder(_holder);
+    _assumeSafeDelegatee(_delegatee);
+    _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
+    _rewardAmount = _boundToReasonableStakeTokenAmount(_rewardAmount);
+    // The unstake amount is _more_ than the reward amount.
+    _unstakeAmount = bound(_unstakeAmount, _rewardAmount, _stakeAmount + _rewardAmount);
+
+    // One holder stakes and earns the full reward amount
+    _mintUpdateDelegateeAndStake(_holder, _stakeAmount, _delegatee);
+    _distributeReward(_rewardAmount);
+    _unstake(_holder, _unstakeAmount);
+
+    assertEq(stakeToken.getCurrentVotes(defaultDelegatee), 0);
+    assertEq(stakeToken.getCurrentVotes(_delegatee), _stakeAmount + _rewardAmount - _unstakeAmount);
+    assertEq(stakeToken.balanceOf(address(mockWithdrawalGate)), _unstakeAmount);
+  }
+
+  function testFuzz_RemovesUnstakedAmountFromHoldersBalance(
+    uint256 _stakeAmount,
+    address _holder,
+    address _delegatee,
+    uint256 _unstakeAmount,
+    uint256 _rewardAmount
+  ) public {
+    _assumeSafeHolder(_holder);
+    _assumeSafeDelegatee(_delegatee);
+    _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
+    _rewardAmount = _boundToReasonableStakeTokenAmount(_rewardAmount);
+    _unstakeAmount = bound(_unstakeAmount, 0, _stakeAmount + _rewardAmount);
+
+    _mintUpdateDelegateeAndStake(_holder, _stakeAmount, _delegatee);
+    _distributeReward(_rewardAmount);
+    _unstake(_holder, _unstakeAmount);
+
+    assertEq(lst.balanceOf(_holder), _stakeAmount + _rewardAmount - _unstakeAmount);
+  }
+
+  function testFuzz_RevertIf_UnstakeAmountExceedsBalance(
+    uint256 _stakeAmount,
+    address _holder1,
+    address _holder2,
+    address _delegatee
+  ) public {
+    _assumeSafeHolders(_holder1, _holder2);
+    _assumeSafeDelegatee(_delegatee);
+    _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
+
+    // Two holders stake with the same delegatee, ensuring their funds will be mixed in the same staker deposit
+    _mintUpdateDelegateeAndStake(_holder1, _stakeAmount, _delegatee);
+    _mintUpdateDelegateeAndStake(_holder2, _stakeAmount, _delegatee);
+    // One of the holders tries to withdraw more than their balance
+
+    vm.prank(_holder1);
+    vm.expectRevert(UniLst.UniLst__InsufficientBalance.selector);
+    lst.unstake(_stakeAmount + 1);
+  }
+}
+
 contract BalanceOf is UniLstTest {
   function testFuzz_CalculatesTheCorrectBalanceWhenASingleHolderMakesASingleDeposit(
     uint256 _amount,
@@ -645,6 +884,43 @@ contract BalanceOf is UniLstTest {
     assertLteWithinOneBip(
       lst.balanceOf(_holder1) + lst.balanceOf(_holder2), _stakeAmount1 + _stakeAmount2 + _rewardAmount1 + _rewardAmount2
     );
+  }
+
+  function testFuzz_CalculatesTheCorrectBalanceWhenAHolderUnstakes(
+    uint256 _stakeAmount,
+    address _holder,
+    address _delegatee,
+    uint256 _unstakeAmount
+  ) public {
+    _assumeSafeHolder(_holder);
+    _assumeSafeDelegatee(_delegatee);
+    _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
+    _unstakeAmount = bound(_unstakeAmount, 0, _stakeAmount);
+
+    _mintUpdateDelegateeAndStake(_holder, _stakeAmount, _delegatee);
+    _unstake(_holder, _unstakeAmount);
+
+    assertEq(lst.balanceOf(_holder), _stakeAmount - _unstakeAmount);
+  }
+
+  function testFuzz_CalculatesTheCorrectBalanceWhenAHolderUnstakesAfterARewardHasBeenDistributed(
+    uint256 _stakeAmount,
+    address _holder,
+    address _delegatee,
+    uint256 _unstakeAmount,
+    uint256 _rewardAmount
+  ) public {
+    _assumeSafeHolder(_holder);
+    _assumeSafeDelegatee(_delegatee);
+    _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
+    _rewardAmount = _boundToReasonableStakeTokenAmount(_rewardAmount);
+    _unstakeAmount = bound(_unstakeAmount, 0, _stakeAmount + _rewardAmount);
+
+    _mintUpdateDelegateeAndStake(_holder, _stakeAmount, _delegatee);
+    _distributeReward(_rewardAmount);
+    _unstake(_holder, _unstakeAmount);
+
+    assertEq(lst.balanceOf(_holder), _stakeAmount + _rewardAmount - _unstakeAmount);
   }
 }
 
@@ -1021,37 +1297,22 @@ contract Transfer is UniLstTest {
 contract SetWithdrawalGate is UniLstTest {
   function testFuzz_UpdatesTheWithdrawalGateWhenCalledByTheOwner(address _newWithdrawalGate) public {
     vm.prank(lstOwner);
-    lst.setWithdrawalGate(IWithdrawalGate(_newWithdrawalGate));
+    lst.setWithdrawalGate(_newWithdrawalGate);
     assertEq(address(lst.withdrawalGate()), _newWithdrawalGate);
   }
 
   function testFuzz_EmitsWithdrawalGateSetEvent(address _newWithdrawalGate) public {
     vm.prank(lstOwner);
     vm.expectEmit();
-    emit UniLst.WithdrawalGateSet(address(0), _newWithdrawalGate);
-    lst.setWithdrawalGate(IWithdrawalGate(_newWithdrawalGate));
+    emit UniLst.WithdrawalGateSet(address(mockWithdrawalGate), _newWithdrawalGate);
+    lst.setWithdrawalGate(_newWithdrawalGate);
   }
 
-  function testFuzz_UpdatesTheWithdrawalGateAndEmitsEventWhenCalledASecondTime(
-    address _firstNewWithdrawalGate,
-    address _secondNewWithdrawalGate
-  ) public {
-    // A non-zero withdrawal gate is already set
-    vm.prank(lstOwner);
-    lst.setWithdrawalGate(IWithdrawalGate(_firstNewWithdrawalGate));
-
-    vm.prank(lstOwner);
-    vm.expectEmit();
-    emit UniLst.WithdrawalGateSet(_firstNewWithdrawalGate, _secondNewWithdrawalGate);
-    lst.setWithdrawalGate(IWithdrawalGate(_secondNewWithdrawalGate));
-    assertEq(address(lst.withdrawalGate()), _secondNewWithdrawalGate);
-  }
-
-  function testFuzz_RevertIf_CalledByNonOwnerAccount(address _notLstOwner) public {
+  function testFuzz_RevertIf_CalledByNonOwnerAccount(address _notLstOwner, address _newWithdrawalGate) public {
     vm.assume(_notLstOwner != lstOwner);
 
     vm.prank(_notLstOwner);
     vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, _notLstOwner));
-    lst.setWithdrawalGate(IWithdrawalGate(_notLstOwner));
+    lst.setWithdrawalGate(_newWithdrawalGate);
   }
 }

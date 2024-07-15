@@ -9,6 +9,7 @@ import {Ownable} from "openzeppelin/access/Ownable.sol";
 
 contract UniLst is Ownable {
   error UniLst__StakeTokenOperationFailed();
+  error UniLst__InsufficientBalance();
 
   IUniStaker public immutable STAKER;
   IUni public immutable STAKE_TOKEN;
@@ -114,6 +115,63 @@ contract UniLst is Ownable {
     STAKER.stakeMore(_depositId, uint96(_amount));
   }
 
+  function unstake(uint256 _amount) external {
+    uint256 _balanceOf = balanceOf(msg.sender);
+
+    if (_amount > _balanceOf) {
+      revert UniLst__InsufficientBalance();
+    }
+
+    // Decreases the holder's balance by the amount being withdrawn
+    sharesOf[msg.sender] -= _sharesForStake(_amount);
+
+    uint256 _delegatedBalance = balanceCheckpoint[msg.sender];
+    uint256 _undelegatedBalance = _balanceOf - _delegatedBalance;
+    uint256 _undelegatedBalanceToWithdraw;
+
+    if (_amount > _undelegatedBalance) {
+      // Since the amount needed is more than the full undelegated balance, we'll withdraw all of it, plus some from
+      // the delegated balance.
+      _undelegatedBalanceToWithdraw = _undelegatedBalance;
+      STAKER.withdraw(_depositIdForHolder(msg.sender), uint96(_amount - _undelegatedBalanceToWithdraw));
+    } else {
+      // Since the amount is less than or equal to the undelegated balance, we'll source all of it from said balance.
+      _undelegatedBalanceToWithdraw = _amount;
+    }
+
+    // If the staker had zero undelegated balance, we won't waste gas executing the withdraw call.
+    if (_undelegatedBalanceToWithdraw > 0) {
+      STAKER.withdraw(depositForDelegatee[defaultDelegatee], uint96(_undelegatedBalanceToWithdraw));
+    }
+
+    // At this point, the LST holds _amount of stakeToken
+
+    // This logic determines if the unstaked funds go directly to the holder or to the withdrawal gate. The logic is
+    // more complicated than simply checking if the withdrawal gate is set or not in order to protect stakers from
+    // having their funds locked if an invalid address is set by the owner as the withdrawal gate. Ultimately, the
+    // owner could always seize funds by setting a valid but malicious withdrawal gate, thus this logic is primarily
+    // protection against an error.
+    // OPTIMIZE: given the above, we should assess the gas savings to be had from removing this logic and determine if
+    // it's worth the tradeoff. Another option would be to make the withdrawal gate an immutable variable set in the
+    // constructor, if we're confident the parameters the features we need can be achieved without ever needing to
+    // update the address. This would allow us to remove this check entirely. It would require some extra finagling in
+    // the deploy script to use create2.
+    address _withdrawalTarget = address(withdrawalGate);
+    if (_withdrawalTarget.code.length == 0) {
+      // If the withdrawal target is set to an address that is not a smart contract, unstaking should transfer directly
+      // to the holder.
+      _withdrawalTarget = msg.sender;
+    } else {
+      // Similarly, if the call to the withdrawal gate fails, tokens should be transferred directly to the holder.
+      try withdrawalGate.initiateWithdrawal(_amount, msg.sender) {}
+      catch {
+        _withdrawalTarget = msg.sender;
+      }
+    }
+
+    STAKE_TOKEN.transfer(_withdrawalTarget, _amount);
+  }
+
   function transfer(address _receiver, uint256 _value) external returns (bool) {
     IUniStaker.DepositIdentifier _senderDepositId = _depositIdForHolder(msg.sender);
     IUniStaker.DepositIdentifier _receiverDepositId = _depositIdForHolder(_receiver);
@@ -165,9 +223,10 @@ contract UniLst is Ownable {
     STAKER.stakeMore(depositForDelegatee[defaultDelegatee], uint96(_amount));
   }
 
-  function setWithdrawalGate(IWithdrawalGate _newWithdrawalGate) external onlyOwner {
-    emit WithdrawalGateSet(address(withdrawalGate), address(_newWithdrawalGate));
-    withdrawalGate = _newWithdrawalGate;
+  function setWithdrawalGate(address _newWithdrawalGate) external {
+    _checkOwner();
+    emit WithdrawalGateSet(address(withdrawalGate), _newWithdrawalGate);
+    withdrawalGate = IWithdrawalGate(_newWithdrawalGate);
   }
 
   function _sharesForStake(uint256 _amount) internal view returns (uint256) {
