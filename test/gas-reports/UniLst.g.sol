@@ -12,6 +12,9 @@ import {UniLstTest} from "test/UniLst.t.sol";
 contract UniLstGasReport is UniLstTest, GasReport {
   function setUp() public override {
     super.setUp();
+
+    // TODO: When the real withdrawal gate is completed, deploy it and update it on the lst here instead of using the
+    // mock version, which is appropriate for unit tests, but will not produce accurate gas estimates.
   }
 
   function REPORT_NAME() public pure override returns (string memory) {
@@ -420,6 +423,243 @@ contract UniLstGasReport is UniLstTest, GasReport {
       _stakeAmount = lst.balanceOf(_staker) - 1e18;
       vm.startPrank(_staker);
       lst.transfer(_receiver, _stakeAmount);
+      recordScenarioGasResult();
+      vm.stopPrank();
+    }
+    stopScenario();
+
+    //-------------------------------------------------------------------------------------------//
+    // UNSTAKE SCENARIOS
+    //-------------------------------------------------------------------------------------------//
+
+    uint256 _rewardAmount;
+
+    startScenario("Unstake Full Balance From The Default Delegatee");
+    {
+      _staker = makeScenarioAddr("Staker");
+      _stakeAmount = 100e18;
+      _mintAndStake(_staker, _stakeAmount);
+
+      vm.startPrank(_staker);
+      lst.unstake(_stakeAmount);
+      recordScenarioGasResult();
+      vm.stopPrank();
+    }
+    stopScenario();
+
+    startScenario("Unstake Partial Balance From The Default Delegatee");
+    {
+      _staker = makeScenarioAddr("Staker");
+      _stakeAmount = 100e18;
+      _mintAndStake(_staker, _stakeAmount);
+
+      vm.startPrank(_staker);
+      lst.unstake(_stakeAmount - 1);
+      recordScenarioGasResult();
+      vm.stopPrank();
+    }
+    stopScenario();
+
+    startScenario("Unstake Full Balance From Unique Custom Delegatee");
+    {
+      _staker = makeScenarioAddr("Staker");
+      _stakeAmount = 100e18;
+      _delegatee = makeScenarioAddr("Delegatee");
+      _mintUpdateDelegateeAndStake(_staker, _stakeAmount, _delegatee);
+
+      vm.startPrank(_staker);
+      lst.unstake(_stakeAmount);
+      recordScenarioGasResult();
+      vm.stopPrank();
+    }
+    stopScenario();
+
+    startScenario("Unstake Partial Balance From Unique Custom Delegatee");
+    {
+      _staker = makeScenarioAddr("Staker");
+      _stakeAmount = 100e18;
+      _delegatee = makeScenarioAddr("Delegatee");
+      _mintUpdateDelegateeAndStake(_staker, _stakeAmount, _delegatee);
+
+      vm.startPrank(_staker);
+      lst.unstake(_stakeAmount - 1);
+      recordScenarioGasResult();
+      vm.stopPrank();
+    }
+    stopScenario();
+
+    startScenario("Unstake Full Balance From a Non-Unique Custom Delegatee");
+    {
+      _staker = makeScenarioAddr("Staker 1");
+      _stakeAmount = 100e18;
+      _delegatee = makeScenarioAddr("Delegatee");
+
+      // Two stakers assign the same delegatee.
+      _mintUpdateDelegateeAndStake(_staker, _stakeAmount, _delegatee);
+      _staker = makeScenarioAddr("Staker 2");
+      _mintUpdateDelegateeAndStake(_staker, _stakeAmount, _delegatee);
+
+      // One of them withdraws
+      vm.startPrank(_staker);
+      lst.unstake(_stakeAmount);
+      recordScenarioGasResult();
+      vm.stopPrank();
+    }
+    stopScenario();
+
+    startScenario("Unstake Partial Balance From a Non-Unique Custom Delegatee");
+    {
+      _staker = makeScenarioAddr("Staker 1");
+      _stakeAmount = 100e18;
+      _delegatee = makeScenarioAddr("Delegatee");
+
+      // Two stakers assign the same delegatee.
+      _mintUpdateDelegateeAndStake(_staker, _stakeAmount, _delegatee);
+      _staker = makeScenarioAddr("Staker 2");
+      _mintUpdateDelegateeAndStake(_staker, _stakeAmount, _delegatee);
+
+      // One of them withdraws
+      vm.startPrank(_staker);
+      lst.unstake(_stakeAmount - 1);
+      recordScenarioGasResult();
+      vm.stopPrank();
+    }
+    stopScenario();
+
+    startScenario("Unstake Full Balance From The Default Delegatee After Rewards");
+    {
+      _staker = makeScenarioAddr("Staker");
+      _stakeAmount = 100e18;
+      _rewardAmount = 5000e18;
+      _mintAndStake(_staker, _stakeAmount);
+      _distributeReward(_rewardAmount);
+
+      vm.startPrank(_staker);
+      lst.unstake(lst.balanceOf(_staker));
+      recordScenarioGasResult();
+      vm.stopPrank();
+    }
+    stopScenario();
+
+    startScenario("Unstake Partial Balance From The Default Delegatee After Rewards");
+    {
+      _staker = makeScenarioAddr("Staker");
+      _stakeAmount = 100e18;
+      _rewardAmount = 5000e18;
+      _mintAndStake(_staker, _stakeAmount);
+      _distributeReward(_rewardAmount);
+
+      vm.startPrank(_staker);
+      // We unstake almost all their balance, so it will have to pull from rewards & original stake.
+      lst.unstake(lst.balanceOf(_staker) - 1);
+      recordScenarioGasResult();
+      vm.stopPrank();
+    }
+    stopScenario();
+
+    startScenario("Unstake Full Balance From Unique Custom Delegatee After Rewards");
+    {
+      _staker = makeScenarioAddr("Staker");
+      _stakeAmount = 100e18;
+      _rewardAmount = 5000e18;
+      _delegatee = makeScenarioAddr("Delegatee");
+      _mintUpdateDelegateeAndStake(_staker, _stakeAmount, _delegatee);
+      _distributeReward(_rewardAmount);
+
+      vm.startPrank(_staker);
+      lst.unstake(lst.balanceOf(_staker));
+      recordScenarioGasResult();
+      vm.stopPrank();
+    }
+    stopScenario();
+
+    startScenario("Unstake Partial Balance From Unique Custom Delegatee After Rewards");
+    {
+      _staker = makeScenarioAddr("Staker");
+      _stakeAmount = 100e18;
+      _rewardAmount = 5000e18;
+      _delegatee = makeScenarioAddr("Delegatee");
+      _mintUpdateDelegateeAndStake(_staker, _stakeAmount, _delegatee);
+      _distributeReward(_rewardAmount);
+
+      vm.startPrank(_staker);
+      lst.unstake(lst.balanceOf(_staker) - 1);
+      recordScenarioGasResult();
+      vm.stopPrank();
+    }
+    stopScenario();
+
+    startScenario("Unstake Full Balance From a Non-Unique Custom Delegatee After Rewards");
+    {
+      _staker = makeScenarioAddr("Staker 1");
+      _stakeAmount = 100e18;
+      _rewardAmount = 5000e18;
+      _delegatee = makeScenarioAddr("Delegatee");
+
+      // Two stakers assign the same delegatee.
+      _mintUpdateDelegateeAndStake(_staker, _stakeAmount, _delegatee);
+      _staker = makeScenarioAddr("Staker 2");
+      _mintUpdateDelegateeAndStake(_staker, _stakeAmount, _delegatee);
+      // Rewards are distributed
+      _distributeReward(_rewardAmount);
+
+      // One of them withdraws
+      vm.startPrank(_staker);
+      lst.unstake(lst.balanceOf(_staker));
+      recordScenarioGasResult();
+      vm.stopPrank();
+    }
+    stopScenario();
+
+    startScenario("Unstake Partial Balance From a Non-Unique Custom Delegatee After Rewards");
+    {
+      _staker = makeScenarioAddr("Staker 1");
+      _stakeAmount = 100e18;
+      _rewardAmount = 5000e18;
+      _delegatee = makeScenarioAddr("Delegatee");
+
+      // Two stakers assign the same delegatee.
+      _mintUpdateDelegateeAndStake(_staker, _stakeAmount, _delegatee);
+      _staker = makeScenarioAddr("Staker 2");
+      _mintUpdateDelegateeAndStake(_staker, _stakeAmount, _delegatee);
+      // Rewards are distributed
+      _distributeReward(_rewardAmount);
+
+      // One of them withdraws
+      vm.startPrank(_staker);
+      lst.unstake(lst.balanceOf(_staker) - 1);
+      recordScenarioGasResult();
+      vm.stopPrank();
+    }
+    stopScenario();
+
+    startScenario("Unstake Earned Rewards Only From The Default Delegatee After Rewards");
+    {
+      _staker = makeScenarioAddr("Staker");
+      _stakeAmount = 100e18;
+      _rewardAmount = 5000e18;
+      _mintAndStake(_staker, _stakeAmount);
+      _distributeReward(_rewardAmount);
+
+      vm.startPrank(_staker);
+      // We unstake a tiny amount, so it will have only have to pull from rewards.
+      lst.unstake(1);
+      recordScenarioGasResult();
+      vm.stopPrank();
+    }
+    stopScenario();
+
+    startScenario("Unstake Earned Rewards Only From Unique Custom Delegatee After Rewards");
+    {
+      _staker = makeScenarioAddr("Staker");
+      _stakeAmount = 100e18;
+      _rewardAmount = 5000e18;
+      _delegatee = makeScenarioAddr("Delegatee");
+      _mintUpdateDelegateeAndStake(_staker, _stakeAmount, _delegatee);
+      _distributeReward(_rewardAmount);
+
+      vm.startPrank(_staker);
+      lst.unstake(1);
       recordScenarioGasResult();
       vm.stopPrank();
     }

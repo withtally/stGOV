@@ -129,6 +129,9 @@ contract UniLst is Ownable {
     uint256 _undelegatedBalance = _balanceOf - _delegatedBalance;
     uint256 _undelegatedBalanceToWithdraw;
 
+    // OPTIMIZE: This can be smarter if the user is delegated to the default delegatee. It should only need to do one
+    // withdrawal in that case.
+
     if (_amount > _undelegatedBalance) {
       // Since the amount needed is more than the full undelegated balance, we'll withdraw all of it, plus some from
       // the delegated balance.
@@ -148,7 +151,7 @@ contract UniLst is Ownable {
 
     // This logic determines if the unstaked funds go directly to the holder or to the withdrawal gate. The logic is
     // more complicated than simply checking if the withdrawal gate is set or not in order to protect stakers from
-    // having their funds locked if an invalid address is set by the owner as the withdrawal gate. Ultimately, the
+    // having their funds lost if an invalid address is set by the owner as the withdrawal gate. Ultimately, the
     // owner could always seize funds by setting a valid but malicious withdrawal gate, thus this logic is primarily
     // protection against an error.
     // OPTIMIZE: given the above, we should assess the gas savings to be had from removing this logic and determine if
