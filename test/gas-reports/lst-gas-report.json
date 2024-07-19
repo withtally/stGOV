@@ -1,5 +1,5 @@
 {
-  "generatedAt": 1721858887,
+  "generatedAt": 1722008480,
   "reportName:": "lstGasReport",
   "results": [
     "First Stake to Default Delegate: 175793",
@@ -53,6 +53,7 @@
     "Unstake Full Balance From a Non-Unique Custom Delegatee After Rewards: 198930",
     "Unstake Partial Balance From a Non-Unique Custom Delegatee After Rewards: 198930",
     "Unstake Earned Rewards Only From The Default Delegatee After Rewards: 148040",
-    "Unstake Earned Rewards Only From Unique Custom Delegatee After Rewards: 145240"
+    "Unstake Earned Rewards Only From Unique Custom Delegatee After Rewards: 145240",
+    "Claim and distribute a reward: 172918"
   ]
 }

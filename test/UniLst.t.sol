@@ -18,6 +18,7 @@ contract UniLstTest is UnitTestBase, PercentAssertions, TestHelpers {
   UniLst lst;
   address lstOwner;
   MockWithdrawalGate mockWithdrawalGate;
+  uint256 initialPayoutAmount = 2500e18;
 
   address defaultDelegatee = makeAddr("Default Delegatee");
 
@@ -30,12 +31,16 @@ contract UniLstTest is UnitTestBase, PercentAssertions, TestHelpers {
 
     // We do the 0th deposit because the LST includes an assumption that deposit Id 0 is not held by it.
     vm.startPrank(stakeMinter);
-    stakeToken.approve(address(staker), 1e18);
-    staker.stake(1e18, stakeMinter);
+    stakeToken.approve(address(staker), 0);
+    staker.stake(0, stakeMinter);
     vm.stopPrank();
 
+    // The staker admin whitelists itself as a reward notifier so we can use it to distribute rewards in tests.
+    vm.prank(stakerAdmin);
+    staker.setRewardNotifier(stakerAdmin, true);
+
     // Finally, deploy the lst for tests.
-    lst = new UniLst(staker, defaultDelegatee, lstOwner);
+    lst = new UniLst(staker, defaultDelegatee, lstOwner, initialPayoutAmount);
 
     // Deploy and set the mock withdrawal gate.
     mockWithdrawalGate = new MockWithdrawalGate();
@@ -89,6 +94,11 @@ contract UniLstTest is UnitTestBase, PercentAssertions, TestHelpers {
     vm.assume(_delegatee1 != _delegatee2);
   }
 
+  function _boundToReasonableRewardTokenAmount(uint256 _amount) internal pure returns (uint256 _boundedAmount) {
+    // Bound to within 1/1,000,000th of an ETH and >2 times the current total supply
+    _boundedAmount = bound(_amount, 0.000001e18, 250_000_000e18);
+  }
+
   function _boundToReasonableStakeTokenAmount(uint256 _amount) internal pure returns (uint256 _boundedAmount) {
     // Bound to within 1/10,000th of a UNI and 4 times the current total supply of UNI
     _boundedAmount = uint256(bound(_amount, 0.0001e18, 2_000_000_000e18));
@@ -96,6 +106,14 @@ contract UniLstTest is UnitTestBase, PercentAssertions, TestHelpers {
 
   function _mintStakeToken(address _to, uint256 _amount) internal {
     deal(address(stakeToken), _to, _amount);
+  }
+
+  function _mintRewardToken(address _to, uint256 _amount) internal {
+    // give the address ETH
+    deal(_to, _amount);
+    // deposit to get WETH
+    vm.prank(_to);
+    rewardToken.deposit{value: _amount}();
   }
 
   function _updateDelegatee(address _holder, address _delegatee) internal {
@@ -135,14 +153,43 @@ contract UniLstTest is UnitTestBase, PercentAssertions, TestHelpers {
     lst.setWithdrawalGate(_newWithdrawalGate);
   }
 
-  function _distributeReward(uint256 _amount) internal {
-    address _distributor = makeAddr("Distributor");
-    _mintStakeToken(_distributor, _amount);
+  function _setPayoutAmount(uint256 _payoutAmount) internal {
+    vm.prank(lstOwner);
+    lst.setPayoutAmount(_payoutAmount);
+  }
 
-    vm.startPrank(_distributor);
-    stakeToken.approve(address(lst), _amount);
-    lst.temp_distributeRewards(_amount);
+  function _distributeStakerReward(uint256 _amount) internal {
+    _mintRewardToken(stakerAdmin, _amount);
+    // As the reward notifier, send tokens to the staker then notify it.
+    vm.startPrank(stakerAdmin);
+    rewardToken.transfer(address(staker), _amount);
+    staker.notifyRewardAmount(_amount);
     vm.stopPrank();
+    // Fast forward to the point that all staker rewards are distributed
+    vm.warp(block.timestamp + staker.REWARD_DURATION() + 1);
+  }
+
+  function _approveLstAndClaimAndDistributeReward(
+    address _claimer,
+    uint256 _rewardTokenAmount,
+    address _rewardTokenRecipient
+  ) internal {
+    // Puts reward token in the staker.
+    _distributeStakerReward(_rewardTokenAmount);
+    // Approve the LST and claim the reward.
+    vm.startPrank(_claimer);
+    stakeToken.approve(address(lst), lst.payoutAmount());
+    // Min expected rewards parameter is one less than reward amount due to truncation.
+    lst.claimAndDistributeReward(_rewardTokenRecipient, _rewardTokenAmount - 1);
+    vm.stopPrank();
+  }
+
+  function _distributeReward(uint256 _amount) internal {
+    _setPayoutAmount(_amount);
+    address _claimer = makeAddr("Claimer");
+    uint256 _rewardTokenAmount = 10e18; // arbitrary amount of reward token
+    _mintStakeToken(_claimer, _amount);
+    _approveLstAndClaimAndDistributeReward(_claimer, _rewardTokenAmount, _claimer);
   }
 
   function _approve(address _staker, address _caller, uint256 _amount) internal {
@@ -158,6 +205,7 @@ contract Constructor is UniLstTest {
     assertEq(address(lst.STAKE_TOKEN()), address(stakeToken));
     assertEq(address(lst.REWARD_TOKEN()), address(rewardToken));
     assertEq(lst.defaultDelegatee(), defaultDelegatee);
+    assertEq(lst.payoutAmount(), initialPayoutAmount);
     assertEq(lst.owner(), lstOwner);
   }
 
@@ -174,6 +222,7 @@ contract Constructor is UniLstTest {
     address _stakeToken,
     address _rewardToken,
     address _defaultDelegatee,
+    uint256 _payoutAmount,
     address _lstOwner
   ) public {
     _assumeSafeMockAddress(_staker);
@@ -187,12 +236,13 @@ contract Constructor is UniLstTest {
     bytes4 _stakeWithArrity2Selector = hex"98f2b576";
     vm.mockCall(_staker, abi.encodeWithSelector(_stakeWithArrity2Selector), abi.encode(1));
 
-    UniLst _lst = new UniLst(IUniStaker(_staker), _defaultDelegatee, _lstOwner);
+    UniLst _lst = new UniLst(IUniStaker(_staker), _defaultDelegatee, _lstOwner, _payoutAmount);
     assertEq(address(_lst.STAKER()), _staker);
     assertEq(address(_lst.STAKE_TOKEN()), _stakeToken);
     assertEq(address(_lst.REWARD_TOKEN()), _rewardToken);
     assertEq(_lst.defaultDelegatee(), _defaultDelegatee);
     assertEq(IUniStaker.DepositIdentifier.unwrap(_lst.depositForDelegatee(_defaultDelegatee)), 1);
+    assertEq(_lst.payoutAmount(), _payoutAmount);
     assertEq(_lst.owner(), _lstOwner);
   }
 
@@ -201,6 +251,7 @@ contract Constructor is UniLstTest {
     address _stakeToken,
     address _rewardToken,
     address _defaultDelegatee,
+    uint256 _payoutAmount,
     address _lstOwner
   ) public {
     _assumeSafeMockAddress(_staker);
@@ -211,7 +262,7 @@ contract Constructor is UniLstTest {
     vm.mockCall(_stakeToken, abi.encodeWithSelector(IUni.approve.selector), abi.encode(false));
 
     vm.expectRevert(UniLst.UniLst__StakeTokenOperationFailed.selector);
-    new UniLst(IUniStaker(_staker), _defaultDelegatee, _lstOwner);
+    new UniLst(IUniStaker(_staker), _defaultDelegatee, _lstOwner, _payoutAmount);
   }
 }
 
@@ -1422,6 +1473,146 @@ contract Transfer is UniLstTest {
     vm.prank(_sender);
     vm.expectRevert(); // TODO: can we specifically expect an overflow?
     lst.transfer(_receiver, _sendAmount);
+  }
+}
+
+contract ClaimAndDistributeReward is UniLstTest {
+  function testFuzz_TransfersStakeTokenPayoutFromTheClaimer(
+    address _claimer,
+    address _recipient,
+    uint256 _rewardAmount,
+    uint256 _payoutAmount,
+    uint256 _extraBalance,
+    address _holder,
+    uint256 _stakeAmount
+  ) public {
+    _assumeSafeHolders(_holder, _claimer);
+    _rewardAmount = _boundToReasonableRewardTokenAmount(_rewardAmount);
+    _payoutAmount = _boundToReasonableStakeTokenAmount(_payoutAmount);
+    _extraBalance = _boundToReasonableStakeTokenAmount(_extraBalance);
+    _setPayoutAmount(_payoutAmount);
+    // The claimer should hold at least the payout amount with some extra balance.
+    _mintStakeToken(_claimer, _payoutAmount + _extraBalance);
+    // There must be some stake in the LST for it to earn the underlying staker rewards
+    _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
+    _mintAndStake(_holder, _stakeAmount);
+
+    _approveLstAndClaimAndDistributeReward(_claimer, _rewardAmount, _recipient);
+
+    // Because the tokens were transferred from the claimer, his balance should have decreased by the payout amount.
+    assertEq(stakeToken.balanceOf(_claimer), _extraBalance);
+  }
+
+  function testFuzz_AssignsVotingWeightFromRewardsToTheDefaultDelegatee(
+    address _claimer,
+    address _recipient,
+    uint256 _rewardAmount,
+    uint256 _payoutAmount,
+    address _holder,
+    uint256 _stakeAmount
+  ) public {
+    _assumeSafeHolders(_holder, _claimer);
+    _rewardAmount = _boundToReasonableRewardTokenAmount(_rewardAmount);
+    _payoutAmount = _boundToReasonableStakeTokenAmount(_payoutAmount);
+    _setPayoutAmount(_payoutAmount);
+    _mintStakeToken(_claimer, _payoutAmount);
+    // There must be some stake in the LST for it to earn the underlying staker rewards
+    _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
+    _mintAndStake(_holder, _stakeAmount);
+
+    _approveLstAndClaimAndDistributeReward(_claimer, _rewardAmount, _recipient);
+
+    // If the LST moved the voting weight in the default delegatee's deposit, he should have its voting weight.
+    assertEq(stakeToken.getCurrentVotes(defaultDelegatee), _stakeAmount + _payoutAmount);
+  }
+
+  function testFuzz_SendsStakerRewardsToRewardRecipient(
+    address _claimer,
+    address _recipient,
+    uint256 _rewardAmount,
+    uint256 _payoutAmount,
+    address _holder,
+    uint256 _stakeAmount
+  ) public {
+    _assumeSafeHolders(_holder, _claimer);
+    _rewardAmount = _boundToReasonableRewardTokenAmount(_rewardAmount);
+    _payoutAmount = _boundToReasonableStakeTokenAmount(_payoutAmount);
+    _setPayoutAmount(_payoutAmount);
+    _mintStakeToken(_claimer, _payoutAmount);
+    // There must be some stake in the LST for it to earn the underlying staker rewards
+    _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
+    _mintAndStake(_holder, _stakeAmount);
+
+    _approveLstAndClaimAndDistributeReward(_claimer, _rewardAmount, _recipient);
+
+    assertLteWithinOneUnit(rewardToken.balanceOf(_recipient), _rewardAmount);
+  }
+
+  function testFuzz_IncreasesTheTotalSupplyByThePayoutAmount(
+    address _claimer,
+    address _recipient,
+    uint256 _rewardAmount,
+    uint256 _payoutAmount,
+    address _holder,
+    uint256 _stakeAmount
+  ) public {
+    _assumeSafeHolders(_holder, _claimer);
+    _rewardAmount = _boundToReasonableRewardTokenAmount(_rewardAmount);
+    _payoutAmount = _boundToReasonableStakeTokenAmount(_payoutAmount);
+    _setPayoutAmount(_payoutAmount);
+    _mintStakeToken(_claimer, _payoutAmount);
+    _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
+    _mintAndStake(_holder, _stakeAmount);
+
+    _approveLstAndClaimAndDistributeReward(_claimer, _rewardAmount, _recipient);
+
+    // Total balance is the amount staked + payout earned
+    assertEq(lst.totalSupply(), _stakeAmount + _payoutAmount);
+  }
+
+  function testFuzz_RevertIf_RewardsReceivedAreLessThanTheExpectedAmount(
+    address _claimer,
+    address _recipient,
+    uint256 _rewardAmount,
+    uint256 _payoutAmount,
+    uint256 _minExpectedReward
+  ) public {
+    _assumeSafeHolder(_claimer);
+    _rewardAmount = _boundToReasonableRewardTokenAmount(_rewardAmount);
+    _payoutAmount = _boundToReasonableStakeTokenAmount(_payoutAmount);
+    _setPayoutAmount(_payoutAmount);
+    // The claimer will request a minimum reward amount greater than the actual reward.
+    _minExpectedReward = bound(_minExpectedReward, _rewardAmount + 1, type(uint256).max);
+    _mintStakeToken(_claimer, _payoutAmount);
+
+    vm.startPrank(_claimer);
+    stakeToken.approve(address(lst), _payoutAmount);
+    vm.expectRevert(UniLst.UniLst__InsufficientRewards.selector);
+    lst.claimAndDistributeReward(_recipient, _minExpectedReward);
+    vm.stopPrank();
+  }
+}
+
+contract SetPayoutAmount is UniLstTest {
+  function testFuzz_UpdatesThePayoutAmountWhenCalledByTheOwner(uint256 _newPayoutAmount) public {
+    vm.prank(lstOwner);
+    lst.setPayoutAmount(_newPayoutAmount);
+    assertEq(lst.payoutAmount(), _newPayoutAmount);
+  }
+
+  function testFuzz_EmitsPayoutAmountSetEvent(uint256 _newPayoutAmount) public {
+    vm.prank(lstOwner);
+    vm.expectEmit();
+    emit UniLst.PayoutAmountSet(initialPayoutAmount, _newPayoutAmount);
+    lst.setPayoutAmount(_newPayoutAmount);
+  }
+
+  function testFuzz_RevertIf_CalledByNonOwnerAccount(address _notLstOwner, uint256 _newPayoutAmount) public {
+    vm.assume(_notLstOwner != lstOwner);
+
+    vm.prank(_notLstOwner);
+    vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, _notLstOwner));
+    lst.setPayoutAmount(_newPayoutAmount);
   }
 }
 

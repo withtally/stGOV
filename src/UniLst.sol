@@ -11,6 +11,7 @@ import {Ownable} from "openzeppelin/access/Ownable.sol";
 contract UniLst is IERC20, Ownable {
   error UniLst__StakeTokenOperationFailed();
   error UniLst__InsufficientBalance();
+  error UniLst__InsufficientRewards();
 
   IUniStaker public immutable STAKER;
   IUni public immutable STAKE_TOKEN;
@@ -18,11 +19,13 @@ contract UniLst is IERC20, Ownable {
   uint256 public constant SHARE_SCALE_FACTOR = 1e18;
 
   event WithdrawalGateSet(address indexed oldWithdrawalGate, address indexed newWithdrawalGate);
+  event PayoutAmountSet(uint256 oldPayoutAmount, uint256 newPayoutAmount);
 
   address public defaultDelegatee;
   IWithdrawalGate public withdrawalGate;
   uint256 public totalSupply;
   uint256 public totalShares;
+  uint256 public payoutAmount;
   mapping(address delegatee => IUniStaker.DepositIdentifier depositId) public depositForDelegatee;
   mapping(address holder => address delegatee) private storedDelegateeForHolder;
   mapping(address holder => uint256 shares) public sharesOf;
@@ -30,11 +33,14 @@ contract UniLst is IERC20, Ownable {
   mapping(address holder => uint256 balance) public balanceCheckpoint;
   mapping(address holder => mapping(address spender => uint256 amount)) public allowance;
 
-  constructor(IUniStaker _staker, address _initialDefaultDelegatee, address _initialOwner) Ownable(_initialOwner) {
+  constructor(IUniStaker _staker, address _initialDefaultDelegatee, address _initialOwner, uint256 _initialPayoutAmount)
+    Ownable(_initialOwner)
+  {
     STAKER = _staker;
     STAKE_TOKEN = IUni(_staker.STAKE_TOKEN());
     REWARD_TOKEN = IWETH9(payable(_staker.REWARD_TOKEN()));
     defaultDelegatee = _initialDefaultDelegatee;
+    payoutAmount = _initialPayoutAmount;
 
     // OPTIMIZE: We can actually remove these return value checks because UNI reverts (confirm)
     if (!STAKE_TOKEN.approve(address(_staker), type(uint256).max)) {
@@ -194,18 +200,36 @@ contract UniLst is IERC20, Ownable {
     return _transfer(_from, _to, _amount);
   }
 
-  // This method is a placeholder for the real rewards distribution mechanism which we will have to spec and add
-  // separately. We add this one for now to enable testing of the rebasing mechanism.
-  function temp_distributeRewards(uint256 _amount) external {
-    STAKE_TOKEN.transferFrom(msg.sender, address(this), _amount);
-    totalSupply += _amount;
-    STAKER.stakeMore(depositForDelegatee[defaultDelegatee], uint96(_amount));
+  function claimAndDistributeReward(address _recipient, uint256 _minExpectedReward) external {
+    // By increasing the total supply by the amount of tokens that are distributed as part of the reward, the balance
+    // of every holder increases proportional to the underlying shares which they hold.
+    totalSupply += payoutAmount;
+
+    // Transfer stake token to the LST
+    STAKE_TOKEN.transferFrom(msg.sender, address(this), payoutAmount);
+    // Stake the rewards with the default delegatee
+    STAKER.stakeMore(depositForDelegatee[defaultDelegatee], uint96(payoutAmount));
+    // Claim the reward tokens earned by the LST
+    uint256 _rewards = STAKER.claimReward();
+    // Ensure rewards distributed meet the claimers expectations; provides protection from frontrunning resulting in
+    // loss of funds for the MEV racers.
+    if (_rewards < _minExpectedReward) {
+      revert UniLst__InsufficientRewards();
+    }
+    // Transfer the reward tokens to the recipient
+    REWARD_TOKEN.transfer(_recipient, _rewards);
   }
 
   function setWithdrawalGate(address _newWithdrawalGate) external {
     _checkOwner();
     emit WithdrawalGateSet(address(withdrawalGate), _newWithdrawalGate);
     withdrawalGate = IWithdrawalGate(_newWithdrawalGate);
+  }
+
+  function setPayoutAmount(uint256 _newPayoutAmount) external {
+    _checkOwner();
+    emit PayoutAmountSet(payoutAmount, _newPayoutAmount);
+    payoutAmount = _newPayoutAmount;
   }
 
   function _sharesForStake(uint256 _amount) internal view returns (uint256) {
