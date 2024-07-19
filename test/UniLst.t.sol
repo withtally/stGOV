@@ -7,9 +7,10 @@ import {IWETH9} from "src/interfaces/IWETH9.sol";
 import {IUni} from "src/interfaces/IUni.sol";
 import {IUniStaker} from "src/interfaces/IUniStaker.sol";
 import {UnitTestBase} from "test/UnitTestBase.sol";
+import {TestHelpers} from "test/helpers/TestHelpers.sol";
 import {PercentAssertions} from "test/helpers/PercentAssertions.sol";
 
-contract UniLstTest is UnitTestBase, PercentAssertions {
+contract UniLstTest is UnitTestBase, PercentAssertions, TestHelpers {
   IUniStaker staker;
   UniLst lst;
 
@@ -49,14 +50,6 @@ contract UniLstTest is UnitTestBase, PercentAssertions {
     console2.log(lst.balanceCheckpoint(_holder));
     console2.log("balanceOf");
     console2.log(lst.balanceOf(_holder));
-  }
-
-  function _assumeSafeMockAddress(address _address) internal pure {
-    // console.sol and console2.sol work by executing a staticcall to this address.
-    address _console = 0x000000000000000000636F6e736F6c652e6c6f67;
-    // If the fuzzer chooses one of these special addresses and we use `mockCall`, we subsequently see test failures
-    // stating that the selector does not exist. Use this helper on any address that will have a mock call.
-    vm.assume(_address != address(vm) && _address != address(_console));
   }
 
   function _assumeSafeHolder(address _holder) internal view {
