@@ -12,6 +12,7 @@ contract UniLst is IERC20, Ownable {
   error UniLst__StakeTokenOperationFailed();
   error UniLst__InsufficientBalance();
   error UniLst__InsufficientRewards();
+  error UniLst__InvalidFeeParameters();
 
   IUniStaker public immutable STAKER;
   IUni public immutable STAKE_TOKEN;
@@ -20,12 +21,15 @@ contract UniLst is IERC20, Ownable {
 
   event WithdrawalGateSet(address indexed oldWithdrawalGate, address indexed newWithdrawalGate);
   event PayoutAmountSet(uint256 oldPayoutAmount, uint256 newPayoutAmount);
+  event FeeParametersSet(uint256 oldFeeAmount, uint256 newFeeAmount, address oldFeeCollector, address newFeeCollector);
 
   address public defaultDelegatee;
   IWithdrawalGate public withdrawalGate;
   uint256 public totalSupply;
   uint256 public totalShares;
   uint256 public payoutAmount;
+  uint256 public feeAmount;
+  address public feeCollector;
   mapping(address delegatee => IUniStaker.DepositIdentifier depositId) public depositForDelegatee;
   mapping(address holder => address delegatee) private storedDelegateeForHolder;
   mapping(address holder => uint256 shares) public sharesOf;
@@ -201,9 +205,29 @@ contract UniLst is IERC20, Ownable {
   }
 
   function claimAndDistributeReward(address _recipient, uint256 _minExpectedReward) external {
+    uint256 _feeAmount = feeAmount;
+
     // By increasing the total supply by the amount of tokens that are distributed as part of the reward, the balance
     // of every holder increases proportional to the underlying shares which they hold.
-    totalSupply += payoutAmount;
+    uint256 _newTotalSupply = totalSupply + payoutAmount;
+
+    if (_feeAmount > 0) {
+      uint256 _existingShares = totalShares;
+
+      // Our goal is to issue shares to the fee collector such that the new shares the fee collector receives are
+      // worth `feeAmount` of `stakeToken` after the reward is distributed. This can be expressed mathematically
+      // as feeAmount = (feeShares * newTotalSupply) / newTotalShares, where the newTotalShares is equal to the sum of
+      // the fee shares and the total existing shares. In this equation, all the terms are known except the fee shares.
+      // Solving for the fee shares yields the following calculation.
+      uint256 _feeShares = (_feeAmount * _existingShares) / (_newTotalSupply - _feeAmount);
+
+      // By issuing these new shares to the `feeCollector` we effectively give the it `feeAmount` of the reward by
+      // slightly diluting all other LST holders.
+      sharesOf[feeCollector] += _feeShares;
+      totalShares = _existingShares + _feeShares;
+    }
+
+    totalSupply = _newTotalSupply;
 
     // Transfer stake token to the LST
     STAKE_TOKEN.transferFrom(msg.sender, address(this), payoutAmount);
@@ -230,6 +254,21 @@ contract UniLst is IERC20, Ownable {
     _checkOwner();
     emit PayoutAmountSet(payoutAmount, _newPayoutAmount);
     payoutAmount = _newPayoutAmount;
+  }
+
+  function setFeeParameters(uint256 _newFeeAmount, address _newFeeCollector) external {
+    _checkOwner();
+    if (_newFeeAmount > payoutAmount) {
+      revert UniLst__InvalidFeeParameters();
+    }
+    if (_newFeeCollector == address(0)) {
+      revert UniLst__InvalidFeeParameters();
+    }
+
+    emit FeeParametersSet(feeAmount, _newFeeAmount, feeCollector, _newFeeCollector);
+
+    feeAmount = _newFeeAmount;
+    feeCollector = _newFeeCollector;
   }
 
   function _sharesForStake(uint256 _amount) internal view returns (uint256) {

@@ -1069,12 +1069,13 @@ contract UniLstGasReport is UniLstTest, GasReport {
     // CLAIM REWARD SCENARIOS
     //-------------------------------------------------------------------------------------------//
 
-    // Claiming rewards is not part of a normal user flow, but is instead will be carried out by searchers racing
+    // Claiming rewards is not part of a normal user flow, but instead will be carried out by searchers racing
     // to arbitrage the opportunity in what is essentially an MEV Dutch auction. That said, the lower the gas fees paid
-    // by the searchers, the more of the rewards are maintained in protocol, so we should seek to optimize it to some
+    // by the searchers, the more of the rewards go to LST holders, so we should seek to optimize it to some
     // extent. We can assume the searchers will take all relevant external steps to minimize the fees they pay, such as
-    // ensuring the receiver already has a balance of the reward token. We include one scenario here to monitor the
-    // impact of changes & optimization efforts on the gas of the core claim method.
+    // ensuring the receiver already has a balance of the reward token. We include two scenarios here to monitor the
+    // impact of changes & optimization efforts on the gas of the core claim method. One scenario includes fee payment
+    // while the other does not.
     startScenario("Claim and distribute a reward");
     {
       _staker = makeScenarioAddr("Staker");
@@ -1089,6 +1090,35 @@ contract UniLstGasReport is UniLstTest, GasReport {
       // Staker deposits to the default delegatee so it is also not an empty slot.
       _mintAndStake(_staker, _stakeAmount);
       _distributeStakerReward(_rewardAmount);
+
+      vm.startPrank(_claimer);
+      stakeToken.approve(address(lst), _payoutAmount);
+      lst.claimAndDistributeReward(_recipient, _rewardAmount);
+      recordScenarioGasResult();
+      vm.stopPrank();
+    }
+    stopScenario();
+
+    startScenario("Claim and distribute a reward that includes a fee");
+    {
+      _staker = makeScenarioAddr("Staker");
+      _stakeAmount = 100e18;
+      _rewardAmount = 5000e18;
+      uint256 _payoutAmount = lst.payoutAmount();
+      uint256 _feeAmount = 100e18;
+      address _claimer = makeScenarioAddr("Claimer");
+      address _recipient = makeScenarioAddr("Recipient");
+      address _feeCollector = makeScenarioAddr("Fee Collector");
+      _mintStakeToken(_claimer, _payoutAmount);
+      // Give the receiver a reward token balance so we're not writing to an empty slot
+      _mintRewardToken(_recipient, 1e18);
+      // Staker deposits to the default delegatee so it is also not an empty slot.
+      _mintAndStake(_staker, _stakeAmount);
+      _distributeStakerReward(_rewardAmount);
+      // Give the fee collector a balance as well, again, to avoid writing empty slots.
+      _mintAndStake(_feeCollector, _stakeAmount);
+      // Configure the fee parameters.
+      _setFeeParameters(_feeAmount, _feeCollector);
 
       vm.startPrank(_claimer);
       stakeToken.approve(address(lst), _payoutAmount);

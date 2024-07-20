@@ -158,6 +158,11 @@ contract UniLstTest is UnitTestBase, PercentAssertions, TestHelpers {
     lst.setPayoutAmount(_payoutAmount);
   }
 
+  function _setFeeParameters(uint256 _feeAmount, address _feeCollector) internal {
+    vm.prank(lstOwner);
+    lst.setFeeParameters(_feeAmount, _feeCollector);
+  }
+
   function _distributeStakerReward(uint256 _amount) internal {
     _mintRewardToken(stakerAdmin, _amount);
     // As the reward notifier, send tokens to the staker then notify it.
@@ -996,6 +1001,39 @@ contract BalanceOf is UniLstTest {
 
     assertEq(lst.balanceOf(_holder), _stakeAmount + _rewardAmount - _unstakeAmount);
   }
+
+  function testFuzz_CalculatesTheCorrectBalancesOfAHolderAndFeeCollectorWhenARewardDistributionIncludesAFee(
+    address _claimer,
+    address _recipient,
+    uint256 _rewardTokenAmount,
+    uint256 _rewardPayoutAmount,
+    address _holder,
+    uint256 _stakeAmount,
+    address _feeCollector,
+    uint256 _feeAmount
+  ) public {
+    // Apply constraints to parameters.
+    _assumeSafeHolders(_holder, _claimer);
+    _assumeSafeHolder(_feeCollector);
+    vm.assume(_feeCollector != address(0) && _feeCollector != _holder && _feeCollector != _claimer);
+    _rewardTokenAmount = _boundToReasonableRewardTokenAmount(_rewardTokenAmount);
+    _rewardPayoutAmount = _boundToReasonableStakeTokenAmount(_rewardPayoutAmount);
+    _feeAmount = bound(_feeAmount, 0, _rewardPayoutAmount);
+    _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
+    // Set up actors to enable reward distribution with fees.
+    _setPayoutAmount(_rewardPayoutAmount);
+    _setFeeParameters(_feeAmount, _feeCollector);
+    _mintStakeToken(_claimer, _rewardPayoutAmount);
+    _mintAndStake(_holder, _stakeAmount);
+
+    // Execute reward distribution that includes a fee payout.
+    _approveLstAndClaimAndDistributeReward(_claimer, _rewardTokenAmount, _recipient);
+
+    //  fee collector should now have a balance equal to (within one unit to account for truncation) the fee amount.
+    assertLteWithinOneUnit(lst.balanceOf(_feeCollector), _feeAmount);
+    // The holder should have earned all the rewards except the fee amount, which went to the fee collector.
+    assertEq(lst.balanceOf(_holder), _stakeAmount + _rewardPayoutAmount - _feeAmount);
+  }
 }
 
 contract TransferFrom is UniLstTest {
@@ -1570,6 +1608,37 @@ contract ClaimAndDistributeReward is UniLstTest {
     assertEq(lst.totalSupply(), _stakeAmount + _payoutAmount);
   }
 
+  function testFuzz_IssuesFeesToTheFeeCollectorEqualToTheFeeAmount(
+    address _claimer,
+    address _recipient,
+    uint256 _rewardAmount,
+    uint256 _payoutAmount,
+    address _holder,
+    uint256 _stakeAmount,
+    address _feeCollector,
+    uint256 _feeAmount
+  ) public {
+    // Apply constraints to parameters.
+    _assumeSafeHolders(_holder, _claimer);
+    _assumeSafeHolder(_feeCollector);
+    vm.assume(_feeCollector != address(0) && _feeCollector != _holder && _feeCollector != _claimer);
+    _rewardAmount = _boundToReasonableRewardTokenAmount(_rewardAmount);
+    _payoutAmount = _boundToReasonableStakeTokenAmount(_payoutAmount);
+    _feeAmount = bound(_feeAmount, 0, _payoutAmount);
+    _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
+    // Set up actors to enable reward distribution with fees.
+    _setPayoutAmount(_payoutAmount);
+    _setFeeParameters(_feeAmount, _feeCollector);
+    _mintStakeToken(_claimer, _payoutAmount);
+    _mintAndStake(_holder, _stakeAmount);
+
+    // Execute reward distribution that includes a fee payout.
+    _approveLstAndClaimAndDistributeReward(_claimer, _rewardAmount, _recipient);
+
+    // The fee collector should now have a balance equal to (within one unit to account for truncation) the fee amount.
+    assertLteWithinOneUnit(lst.balanceOf(_feeCollector), _feeAmount);
+  }
+
   function testFuzz_RevertIf_RewardsReceivedAreLessThanTheExpectedAmount(
     address _claimer,
     address _recipient,
@@ -1636,5 +1705,61 @@ contract SetWithdrawalGate is UniLstTest {
     vm.prank(_notLstOwner);
     vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, _notLstOwner));
     lst.setWithdrawalGate(_newWithdrawalGate);
+  }
+}
+
+contract SetFeeParameters is UniLstTest {
+  function testFuzz_UpdatesTheFeeParametersWhenCalledByTheOwner(uint256 _newFeeAmount, address _newFeeCollector) public {
+    vm.assume(_newFeeCollector != address(0));
+    _newFeeAmount = bound(_newFeeAmount, 0, lst.payoutAmount());
+
+    vm.prank(lstOwner);
+    lst.setFeeParameters(_newFeeAmount, _newFeeCollector);
+
+    assertEq(lst.feeAmount(), _newFeeAmount);
+    assertEq(lst.feeCollector(), _newFeeCollector);
+  }
+
+  function testFuzz_EmitsFeeParametersSetEvent(uint256 _newFeeAmount, address _newFeeCollector) public {
+    vm.assume(_newFeeCollector != address(0));
+    _newFeeAmount = bound(_newFeeAmount, 0, lst.payoutAmount());
+
+    vm.prank(lstOwner);
+    vm.expectEmit();
+    emit UniLst.FeeParametersSet(0, _newFeeAmount, address(0), _newFeeCollector);
+    lst.setFeeParameters(_newFeeAmount, _newFeeCollector);
+  }
+
+  function testFuzz_RevertIf_TheFeeAmountIsGreaterThanThePayoutAmount(uint256 _newFeeAmount, address _newFeeCollector)
+    public
+  {
+    vm.assume(_newFeeCollector != address(0));
+    _newFeeAmount = bound(_newFeeAmount, lst.payoutAmount() + 1, type(uint256).max);
+
+    vm.prank(lstOwner);
+    vm.expectRevert(UniLst.UniLst__InvalidFeeParameters.selector);
+    lst.setFeeParameters(_newFeeAmount, _newFeeCollector);
+  }
+
+  function testFuzz_RevertIf_TheFeeCollectorIsTheZeroAddress(uint256 _newFeeAmount) public {
+    _newFeeAmount = bound(_newFeeAmount, 0, lst.payoutAmount());
+
+    vm.prank(lstOwner);
+    vm.expectRevert(UniLst.UniLst__InvalidFeeParameters.selector);
+    lst.setFeeParameters(_newFeeAmount, address(0));
+  }
+
+  function testFuzz_RevertIf_CalledByNonOwnerAccount(
+    address _notLstOwner,
+    uint256 _newFeeAmount,
+    address _newFeeCollector
+  ) public {
+    vm.assume(_notLstOwner != lstOwner);
+    vm.assume(_newFeeCollector != address(0));
+    _newFeeAmount = bound(_newFeeAmount, 0, lst.payoutAmount());
+
+    vm.prank(_notLstOwner);
+    vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, _notLstOwner));
+    lst.setFeeParameters(_newFeeAmount, _newFeeCollector);
   }
 }
