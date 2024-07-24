@@ -6,6 +6,7 @@ import {WithdrawGate} from "src/WithdrawGate.sol";
 import {IUni} from "src/interfaces/IUni.sol";
 import {UniLst} from "src/UniLst.sol";
 import {TestHelpers} from "test/helpers/TestHelpers.sol";
+import {Ownable} from "openzeppelin/access/Ownable.sol";
 
 contract WithdrawGateTest is TestHelpers {
   WithdrawGate withdrawGate;
@@ -28,6 +29,10 @@ contract WithdrawGateTest is TestHelpers {
   function _assumeSafeAddress(address _address) internal pure {
     vm.assume(_address != address(0));
     _assumeSafeMockAddress(_address);
+  }
+
+  function _assumeNotOwnerAddress(address _address) internal view {
+    vm.assume(_address != owner);
   }
 
   function _boundToReasonableDelay(uint256 _delay) internal pure returns (uint256) {
@@ -81,5 +86,38 @@ contract Constructor is WithdrawGateTest {
 
     vm.expectRevert(WithdrawGate.WithdrawGate__InvalidDelay.selector);
     new WithdrawGate(_owner, _lst, _delay);
+  }
+}
+
+contract SetDelay is WithdrawGateTest {
+  function testFuzz_SetsTheDelayWhenCalledByTheOwnerWithAValidValue(uint256 _newDelay) public {
+    _newDelay = _boundToReasonableDelay(_newDelay);
+    vm.prank(owner);
+    withdrawGate.setDelay(_newDelay);
+    assertEq(withdrawGate.delay(), _newDelay);
+  }
+
+  function test_RevertIf_SetDelayCalledByNonOwner(address _owner, uint256 _newDelay) public {
+    _assumeNotOwnerAddress(_owner);
+    _newDelay = _boundToReasonableDelay(_newDelay);
+    vm.startPrank(_owner);
+    vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, _owner));
+    withdrawGate.setDelay(_newDelay);
+    vm.stopPrank();
+  }
+
+  function testFuzz_RevertIf_SetDelayExceedsMaximum(uint256 _newDelay) public {
+    _newDelay = _boundToUnreasonableDelay(_newDelay);
+    vm.prank(owner);
+    vm.expectRevert(WithdrawGate.WithdrawGate__InvalidDelay.selector);
+    withdrawGate.setDelay(_newDelay);
+  }
+
+  function testFuzz_EmitsSetDelayEventWhenCalledByTheOwnerWithAValidValue(uint256 _newDelay) public {
+    _newDelay = _boundToReasonableDelay(_newDelay);
+    vm.prank(owner);
+    vm.expectEmit();
+    emit WithdrawGate.DelaySet(initialDelay, _newDelay);
+    withdrawGate.setDelay(_newDelay);
   }
 }

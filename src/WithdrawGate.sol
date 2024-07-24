@@ -23,6 +23,9 @@ contract WithdrawGate is Ownable {
   /// @notice The maximum allowed delay for withdrawals.
   uint256 public constant DELAY_MAX = 30 days;
 
+  /// @notice Emitted when the delay period is set.
+  event DelaySet(uint256 oldDelay, uint256 newDelay);
+
   /// @notice The current delay period for withdrawals.
   uint256 public delay;
 
@@ -41,5 +44,21 @@ contract WithdrawGate is Ownable {
     LST = _lst;
     WITHDRAWAL_TOKEN = address(UniLst(_lst).STAKE_TOKEN());
     delay = _initialDelay;
+  }
+
+  /// @notice Sets a new delay period for withdrawals.
+  /// @param _newDelay The new delay period to set.
+  /// @dev Only the contract owner can call this function.
+  /// @dev Reverts if the new delay exceeds DELAY_MAX.
+  function setDelay(uint256 _newDelay) external {
+    _checkOwner();
+    if (_newDelay > DELAY_MAX) {
+      revert WithdrawGate__InvalidDelay();
+    }
+
+    uint256 _oldDelay = delay;
+
+    emit DelaySet(_oldDelay, _newDelay);
+    delay = _newDelay;
   }
 }
