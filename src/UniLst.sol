@@ -69,7 +69,7 @@ contract UniLst is IERC20, Ownable {
       return 0;
     }
 
-    _balance = _stakeForShares(_sharesOf);
+    _balance = stakeForShares(_sharesOf);
   }
 
   function delegateeForHolder(address _holder) public view returns (address _delegatee) {
@@ -121,12 +121,12 @@ contract UniLst is IERC20, Ownable {
       revert UniLst__StakeTokenOperationFailed();
     }
 
-    uint256 _newShares = _sharesForStake(_amount);
+    uint256 _newShares = sharesForStake(_amount);
 
     totalSupply += _amount;
     totalShares += _newShares;
     sharesOf[msg.sender] += _newShares;
-    balanceCheckpoint[msg.sender] += _stakeForShares(_newShares);
+    balanceCheckpoint[msg.sender] += stakeForShares(_newShares);
     IUniStaker.DepositIdentifier _depositId = depositForDelegatee[delegateeForHolder(msg.sender)];
 
     STAKER.stakeMore(_depositId, uint96(_amount));
@@ -140,7 +140,7 @@ contract UniLst is IERC20, Ownable {
     }
 
     // Decreases the holder's balance by the amount being withdrawn
-    sharesOf[msg.sender] -= _sharesForStake(_amount);
+    sharesOf[msg.sender] -= sharesForStake(_amount);
 
     uint256 _delegatedBalance = balanceCheckpoint[msg.sender];
     uint256 _undelegatedBalance = _balanceOf - _delegatedBalance;
@@ -273,7 +273,7 @@ contract UniLst is IERC20, Ownable {
     feeCollector = _newFeeCollector;
   }
 
-  function _sharesForStake(uint256 _amount) internal view returns (uint256) {
+  function sharesForStake(uint256 _amount) public view returns (uint256) {
     // OPTIMIZE: If we force the constructor to stake some initial amount sourced from a contract that can never call
     // `unstake` we should be able to remove these 0 checks altogether.
     if (totalSupply == 0) {
@@ -283,7 +283,7 @@ contract UniLst is IERC20, Ownable {
     return (_amount * totalShares) / totalSupply;
   }
 
-  function _stakeForShares(uint256 _amount) internal view returns (uint256) {
+  function stakeForShares(uint256 _amount) public view returns (uint256) {
     if (totalShares == 0) {
       return 0;
     }
@@ -326,12 +326,12 @@ contract UniLst is IERC20, Ownable {
     STAKER.stakeMore(_receiverDepositId, uint96(_value));
     STAKER.stakeMore(_senderDepositId, uint96(_remainingBalance));
 
-    uint256 _shares = _sharesForStake(_value);
+    uint256 _shares = sharesForStake(_value);
     sharesOf[_sender] -= _shares;
     sharesOf[_receiver] += _shares;
 
     balanceCheckpoint[_sender] = balanceOf(_sender);
-    balanceCheckpoint[_receiver] += _stakeForShares(_shares);
+    balanceCheckpoint[_receiver] += stakeForShares(_shares);
 
     emit Transfer(_sender, _receiver, _value);
 
