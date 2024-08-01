@@ -153,7 +153,9 @@ contract UniLst is IERC20, Ownable {
       // Since the amount needed is more than the full undelegated balance, we'll withdraw all of it, plus some from
       // the delegated balance.
       _undelegatedBalanceToWithdraw = _undelegatedBalance;
-      STAKER.withdraw(_depositIdForHolder(msg.sender), uint96(_amount - _undelegatedBalanceToWithdraw));
+      uint256 _delegatedBalanceToWithdraw = _amount - _undelegatedBalanceToWithdraw;
+      STAKER.withdraw(_depositIdForHolder(msg.sender), uint96(_delegatedBalanceToWithdraw));
+      balanceCheckpoint[msg.sender] = _delegatedBalance - _delegatedBalanceToWithdraw;
     } else {
       // Since the amount is less than or equal to the undelegated balance, we'll source all of it from said balance.
       _undelegatedBalanceToWithdraw = _amount;

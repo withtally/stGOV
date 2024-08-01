@@ -771,6 +771,30 @@ contract Unstake is UniLstTest {
     assertEq(lst.balanceOf(_holder), _stakeAmount + _rewardAmount - _unstakeAmount);
   }
 
+  function testFuzz_SubtractsFromTheHoldersDelegatedBalanceCheckpointIfUndelegatedBalanceIsUnstaked(
+    uint256 _stakeAmount,
+    uint256 _rewardAmount,
+    uint256 _unstakeAmount,
+    address _holder,
+    address _delegatee
+  ) public {
+    _assumeSafeHolder(_holder);
+    _assumeSafeDelegatee(_delegatee);
+    _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
+    _rewardAmount = _boundToReasonableStakeTokenAmount(_rewardAmount);
+    // The unstake amount is _more_ than the reward amount.
+    _unstakeAmount = bound(_unstakeAmount, _rewardAmount, _stakeAmount + _rewardAmount);
+
+    // One holder stakes and earns the full reward amount
+    _mintUpdateDelegateeAndStake(_holder, _stakeAmount, _delegatee);
+    _distributeReward(_rewardAmount);
+    _unstake(_holder, _unstakeAmount);
+
+    // Because the full undelegated balance was unstaked, whatever balance the holder has left must be reflected in
+    // their delegated balance checkpoint.
+    assertEq(lst.balanceCheckpoint(_holder), lst.balanceOf(_holder));
+  }
+
   function testFuzz_RevertIf_UnstakeAmountExceedsBalance(
     uint256 _stakeAmount,
     address _holder1,
@@ -997,6 +1021,7 @@ contract BalanceOf is UniLstTest {
 
     _mintUpdateDelegateeAndStake(_holder, _stakeAmount, _delegatee);
     _distributeReward(_rewardAmount);
+
     _unstake(_holder, _unstakeAmount);
 
     assertEq(lst.balanceOf(_holder), _stakeAmount + _rewardAmount - _unstakeAmount);
