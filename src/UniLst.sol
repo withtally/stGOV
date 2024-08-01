@@ -126,7 +126,7 @@ contract UniLst is IERC20, Ownable {
     totalSupply += _amount;
     totalShares += _newShares;
     sharesOf[msg.sender] += _newShares;
-    balanceCheckpoint[msg.sender] += _amount;
+    balanceCheckpoint[msg.sender] += _stakeForShares(_newShares);
     IUniStaker.DepositIdentifier _depositId = depositForDelegatee[delegateeForHolder(msg.sender)];
 
     STAKER.stakeMore(_depositId, uint96(_amount));
@@ -329,7 +329,7 @@ contract UniLst is IERC20, Ownable {
     sharesOf[_receiver] += _shares;
 
     balanceCheckpoint[_sender] = balanceOf(_sender);
-    balanceCheckpoint[_receiver] += _value;
+    balanceCheckpoint[_receiver] += _stakeForShares(_shares);
 
     emit Transfer(_sender, _receiver, _value);
 

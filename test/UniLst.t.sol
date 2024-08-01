@@ -550,7 +550,7 @@ contract Stake is UniLstTest {
     _distributeReward(_rewardAmount);
     _mintAndStake(_holder, _amount2);
 
-    assertEq(lst.balanceCheckpoint(_holder), _amount1 + _amount2);
+    assertLteWithinOneUnit(lst.balanceCheckpoint(_holder), _amount1 + _amount2);
   }
 
   function testFuzz_RevertIf_TheTransferFromTheStakeTokenFails(uint256 _amount, address _holder, address _delegatee)
@@ -1408,7 +1408,7 @@ contract Transfer is UniLstTest {
     lst.transfer(_receiver, _sendAmount);
 
     // The sender's checkpoint should be incremented by the send amount to reflect
-    assertEq(lst.balanceCheckpoint(_receiver), _stakeAmount2 + _sendAmount);
+    assertLteWithinOneUnit(lst.balanceCheckpoint(_receiver), _stakeAmount2 + _sendAmount);
   }
 
   function testFuzz_TransfersTheBalanceAndMovesTheVotingWeightBetweenMultipleHoldersWhoHaveStakedAndReceivedRewards(
