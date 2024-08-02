@@ -33,6 +33,38 @@ contract UniLstGasReport is UniLstTest, GasReport {
     address _staker;
     address _delegatee;
     uint256 _stakeAmount;
+    IUniStaker.DepositIdentifier _depositId;
+    uint256 _rewardAmount;
+
+    //-------------------------------------------------------------------------------------------//
+    // INITIALIZE SCENARIOS
+    //-------------------------------------------------------------------------------------------//
+
+    startScenario("Initialize a brand new delegate");
+    {
+      _delegatee = makeScenarioAddr("Delegatee");
+      _staker = makeScenarioAddr("Initializer");
+      vm.prank(_staker);
+      lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+      recordScenarioGasResult();
+    }
+    stopScenario();
+
+    startScenario("Initialize a delegate that exists on UniStaker");
+    {
+      _delegatee = makeScenarioAddr("Delegatee");
+      _staker = makeScenarioAddr("Initializer");
+      _mintStakeToken(_staker, _stakeAmount);
+
+      vm.startPrank(_staker);
+      // First stake directly on Staker to initialize the underlying DelegationSurrogate
+      staker.stake(0, _delegatee);
+      // Now initialize a deposit for the delegatee on the LST.
+      lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+      recordScenarioGasResult();
+      vm.stopPrank();
+    }
+    stopScenario();
 
     //-------------------------------------------------------------------------------------------//
     // STAKING SCENARIOS
@@ -71,8 +103,8 @@ contract UniLstGasReport is UniLstTest, GasReport {
       _delegatee = makeScenarioAddr("Delegatee");
       _stakeAmount = 100e18;
       _mintStakeToken(_staker, _stakeAmount);
+      _updateDelegatee(_staker, _delegatee);
       vm.startPrank(_staker);
-      lst.updateDelegatee(_delegatee);
       stakeToken.approve(address(lst), _stakeAmount);
       lst.stake(_stakeAmount);
       recordScenarioGasResult();
@@ -88,8 +120,8 @@ contract UniLstGasReport is UniLstTest, GasReport {
       _mintUpdateDelegateeAndStake(_staker, _stakeAmount, _delegatee);
       _staker = makeScenarioAddr("Staker 2");
       _mintStakeToken(_staker, _stakeAmount);
+      _updateDelegatee(_staker, _delegatee);
       vm.startPrank(_staker);
-      lst.updateDelegatee(_delegatee);
       stakeToken.approve(address(lst), _stakeAmount);
       lst.stake(_stakeAmount);
       recordScenarioGasResult();
@@ -105,8 +137,8 @@ contract UniLstGasReport is UniLstTest, GasReport {
       _mintUpdateDelegateeAndStake(_staker, _stakeAmount, _delegatee);
       _stakeAmount = 50e18;
       _mintStakeToken(_staker, _stakeAmount);
+      _updateDelegatee(_staker, _delegatee);
       vm.startPrank(_staker);
-      lst.updateDelegatee(_delegatee);
       stakeToken.approve(address(lst), _stakeAmount);
       lst.stake(_stakeAmount);
       recordScenarioGasResult();
@@ -832,8 +864,6 @@ contract UniLstGasReport is UniLstTest, GasReport {
     // UNSTAKE SCENARIOS
     //-------------------------------------------------------------------------------------------//
 
-    uint256 _rewardAmount;
-
     startScenario("Unstake Full Balance From The Default Delegatee");
     {
       _staker = makeScenarioAddr("Staker");
@@ -1125,6 +1155,97 @@ contract UniLstGasReport is UniLstTest, GasReport {
       lst.claimAndDistributeReward(_recipient, _rewardAmount);
       recordScenarioGasResult();
       vm.stopPrank();
+    }
+    stopScenario();
+
+    //-------------------------------------------------------------------------------------------//
+    // UPDATE DEPOSIT SCENARIOS
+    //-------------------------------------------------------------------------------------------//
+
+    startScenario("Updating from default deposit with nothing staked");
+    {
+      _delegatee = makeScenarioAddr("Delegatee");
+      _staker = makeScenarioAddr("Staker");
+      _depositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+      vm.prank(_staker);
+      lst.updateDeposit(_depositId);
+      recordScenarioGasResult();
+    }
+    stopScenario();
+
+    startScenario("Updating from custom deposit with nothing staked");
+    {
+      _delegatee = makeScenarioAddr("Initial Delegatee");
+      _staker = makeScenarioAddr("Staker");
+      _updateDelegatee(_staker, _delegatee);
+      _delegatee = makeScenarioAddr("Updated Delegatee");
+      _depositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+
+      vm.prank(_staker);
+      lst.updateDeposit(_depositId);
+      recordScenarioGasResult();
+    }
+    stopScenario();
+
+    startScenario("Updating from default deposit after staking");
+    {
+      _staker = makeScenarioAddr("Staker");
+      _stakeAmount = 100e18;
+      _mintAndStake(_staker, _stakeAmount);
+      _delegatee = makeScenarioAddr("Delegatee");
+      _depositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+
+      vm.prank(_staker);
+      lst.updateDeposit(_depositId);
+      recordScenarioGasResult();
+    }
+    stopScenario();
+
+    startScenario("Updating from custom deposit after staking");
+    {
+      _delegatee = makeScenarioAddr("Initial Delegatee");
+      _staker = makeScenarioAddr("Staker");
+      _stakeAmount = 100e18;
+      _mintUpdateDelegateeAndStake(_staker, _stakeAmount, _delegatee);
+      _delegatee = makeScenarioAddr("Updated Delegatee");
+      _depositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+
+      vm.prank(_staker);
+      lst.updateDeposit(_depositId);
+      recordScenarioGasResult();
+    }
+    stopScenario();
+
+    startScenario("Updating from default deposit after staking and earning rewards");
+    {
+      _staker = makeScenarioAddr("Staker");
+      _stakeAmount = 100e18;
+      _rewardAmount = 5000e18;
+      _mintAndStake(_staker, _stakeAmount);
+      _distributeReward(_rewardAmount);
+      _delegatee = makeScenarioAddr("Delegatee");
+      _depositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+
+      vm.prank(_staker);
+      lst.updateDeposit(_depositId);
+      recordScenarioGasResult();
+    }
+    stopScenario();
+
+    startScenario("Updating from custom deposit after staking and earning rewards");
+    {
+      _delegatee = makeScenarioAddr("Initial Delegatee");
+      _staker = makeScenarioAddr("Staker");
+      _stakeAmount = 100e18;
+      _rewardAmount = 5000e18;
+      _mintUpdateDelegateeAndStake(_staker, _stakeAmount, _delegatee);
+      _distributeReward(_rewardAmount);
+      _delegatee = makeScenarioAddr("Updated Delegatee");
+      _depositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+
+      vm.prank(_staker);
+      lst.updateDeposit(_depositId);
+      recordScenarioGasResult();
     }
     stopScenario();
   }

@@ -3,7 +3,7 @@ pragma solidity 0.8.26;
 
 import {ERC20Permit} from "openzeppelin/token/ERC20/extensions/ERC20Permit.sol";
 import {ERC20} from "openzeppelin/token/ERC20/ERC20.sol";
-import {UniLst} from "src/UniLst.sol";
+import {UniLst, IUniStaker} from "src/UniLst.sol";
 import {Ownable} from "openzeppelin/access/Ownable.sol";
 
 contract WrappedUniLst is ERC20Permit, Ownable {
@@ -14,7 +14,7 @@ contract WrappedUniLst is ERC20Permit, Ownable {
   event DelegateeSet(address indexed oldDelegatee, address indexed newDelegatee);
 
   UniLst public immutable LST;
-  address public delegatee;
+  IUniStaker.DepositIdentifier public depositId;
 
   constructor(string memory _name, string memory _symbol, UniLst _lst, address _delegatee, address _initialOwner)
     ERC20Permit(_name)
@@ -22,8 +22,12 @@ contract WrappedUniLst is ERC20Permit, Ownable {
     Ownable(_initialOwner)
   {
     LST = _lst;
-    delegatee = _delegatee;
-    _lst.updateDelegatee(_delegatee);
+    depositId = _lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+    _lst.updateDeposit(depositId);
+  }
+
+  function delegatee() public view returns (address) {
+    return LST.delegateeForHolder(address(this));
   }
 
   function wrap(uint256 _lstAmount) external returns (uint256 _wrappedAmount) {
@@ -51,8 +55,8 @@ contract WrappedUniLst is ERC20Permit, Ownable {
 
   function setDelegatee(address _newDelegatee) public {
     _checkOwner();
-    emit DelegateeSet(delegatee, _newDelegatee);
-    delegatee = _newDelegatee;
-    LST.updateDelegatee(_newDelegatee);
+    emit DelegateeSet(delegatee(), _newDelegatee);
+    depositId = LST.fetchOrInitializeDepositForDelegatee(_newDelegatee);
+    LST.updateDeposit(depositId);
   }
 }

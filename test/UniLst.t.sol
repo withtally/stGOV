@@ -116,9 +116,16 @@ contract UniLstTest is UnitTestBase, PercentAssertions, TestHelpers {
     rewardToken.deposit{value: _amount}();
   }
 
-  function _updateDelegatee(address _holder, address _delegatee) internal {
+  function _updateDeposit(address _holder, IUniStaker.DepositIdentifier _depositId) internal {
     vm.prank(_holder);
-    lst.updateDelegatee(_delegatee);
+    lst.updateDeposit(_depositId);
+  }
+
+  function _updateDelegatee(address _holder, address _delegatee) internal {
+    IUniStaker.DepositIdentifier _depositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+
+    vm.prank(_holder);
+    lst.updateDeposit(_depositId);
   }
 
   function _stake(address _holder, uint256 _amount) internal {
@@ -272,62 +279,102 @@ contract Constructor is UniLstTest {
 }
 
 contract DelegateeForHolder is UniLstTest {
-  function testFuzz_ReturnsTheDefaultDelegateeBeforeADelegateeIsSet(address _holder) public view {
+  function testFuzz_ReturnsTheDefaultDelegateeBeforeADepositIsSet(address _holder) public view {
     _assumeSafeHolder(_holder);
     assertEq(lst.delegateeForHolder(_holder), defaultDelegatee);
   }
 
-  function testFuzz_ReturnsTheValueSetViaUpdateDelegatee(address _holder, address _delegatee) public {
+  function testFuzz_ReturnsTheValueSetViaUpdateDeposit(address _holder, address _delegatee) public {
     _assumeSafeHolder(_holder);
     _assumeSafeDelegatee(_delegatee);
     _updateDelegatee(_holder, _delegatee);
     assertEq(lst.delegateeForHolder(_holder), _delegatee);
-  }
-
-  function testFuzz_ReturnsTheDefaultDelegateeIfTheDelegateeIsSetBackToTheZeroAddress(
-    address _holder,
-    address _delegatee
-  ) public {
-    _assumeSafeHolder(_holder);
-    _assumeSafeDelegatee(_delegatee);
-    _updateDelegatee(_holder, _delegatee);
-    _updateDelegatee(_holder, address(0));
-    assertEq(lst.delegateeForHolder(_holder), defaultDelegatee);
   }
 }
 
-contract UpdateDelegatee is UniLstTest {
-  function testFuzz_RecordsTheDelegateeWhenCalledByAHolderForTheFirstTime(address _holder, address _delegatee) public {
-    _assumeSafeHolder(_holder);
-    _assumeSafeDelegatee(_delegatee);
-
-    _updateDelegatee(_holder, _delegatee);
-
-    assertEq(lst.delegateeForHolder(_holder), _delegatee);
+contract DepositForDelegatee is UniLstTest {
+  function test_ReturnsTheDefaultDepositIdForTheZeroAddress() public view {
+    IUniStaker.DepositIdentifier _depositId = lst.depositForDelegatee(address(0));
+    assertEq(_depositId, lst.DEFAULT_DEPOSIT_ID());
   }
 
-  function testFuzz_UpdatesTheDelegateeWhenCalledByAHolderASecondTime(
+  function test_ReturnsTheDefaultDepositIdForTheDefaultDelegatee() public view {
+    IUniStaker.DepositIdentifier _depositId = lst.depositForDelegatee(defaultDelegatee);
+    assertEq(_depositId, lst.DEFAULT_DEPOSIT_ID());
+  }
+
+  function testFuzz_ReturnsZeroAddressForAnUninitializedDelegatee(address _delegatee) public view {
+    _assumeSafeDelegatee(_delegatee);
+    IUniStaker.DepositIdentifier _depositId = lst.depositForDelegatee(_delegatee);
+    assertEq(_depositId, IUniStaker.DepositIdentifier.wrap(0));
+  }
+
+  function testFuzz_ReturnsTheStoredDepositIdForAnInitializedDelegatee(address _delegatee) public {
+    _assumeSafeDelegatee(_delegatee);
+    IUniStaker.DepositIdentifier _initializedDepositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+    IUniStaker.DepositIdentifier _depositId = lst.depositForDelegatee(_delegatee);
+    assertEq(_depositId, _initializedDepositId);
+  }
+}
+
+contract FetchOrInitializeDepositForDelegatee is UniLstTest {
+  function testFuzz_CreatesANewDepositForAnUninitializedDelegatee(address _delegatee) public {
+    _assumeSafeDelegatee(_delegatee);
+    IUniStaker.DepositIdentifier _depositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+    (,, address _depositDelegatee,) = staker.deposits(_depositId);
+    assertEq(_depositDelegatee, _delegatee);
+  }
+
+  function testFuzz_ReturnsTheExistingDepositIdForAPreviouslyInitializedDelegatee(address _delegatee) public {
+    _assumeSafeDelegatee(_delegatee);
+    IUniStaker.DepositIdentifier _depositIdFirstCall = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+    IUniStaker.DepositIdentifier _depositIdSecondCall = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+    assertEq(_depositIdFirstCall, _depositIdSecondCall);
+  }
+
+  function test_ReturnsTheDefaultDepositIdForTheZeroAddress() public {
+    IUniStaker.DepositIdentifier _depositId = lst.fetchOrInitializeDepositForDelegatee(address(0));
+    assertEq(_depositId, lst.DEFAULT_DEPOSIT_ID());
+  }
+
+  function test_ReturnsTheDefaultDepositIdForTheDefaultDelegatee() public {
+    IUniStaker.DepositIdentifier _depositId = lst.fetchOrInitializeDepositForDelegatee(defaultDelegatee);
+    assertEq(_depositId, lst.DEFAULT_DEPOSIT_ID());
+  }
+
+  function testFuzz_EmitsADepositInitializedEventWhenANewDepositIsCreated(address _delegatee1, address _delegatee2)
+    public
+  {
+    _assumeSafeDelegatees(_delegatee1, _delegatee2);
+
+    vm.expectEmit();
+    // We did the 0th deposit in setUp() and the 1st deposit for the default deposit, so the next should be the 2nd
+    emit UniLst.DepositInitialized(_delegatee1, IUniStaker.DepositIdentifier.wrap(2));
+    lst.fetchOrInitializeDepositForDelegatee(_delegatee1);
+
+    vm.expectEmit();
+    // Initialize another deposit to make sure the identifier in the event increments to track the deposit identifier
+    emit UniLst.DepositInitialized(_delegatee2, IUniStaker.DepositIdentifier.wrap(3));
+    lst.fetchOrInitializeDepositForDelegatee(_delegatee2);
+  }
+}
+
+contract UpdateDeposit is UniLstTest {
+  function testFuzz_SetsTheHoldersDepositToOneAssociatedWithAGivenInitializedDelegatee(
     address _holder,
     address _delegatee1,
     address _delegatee2
   ) public {
     _assumeSafeHolder(_holder);
-    _assumeSafeDelegatee(_delegatee1);
-    _assumeSafeDelegatee(_delegatee2);
+    _assumeSafeDelegatees(_delegatee1, _delegatee2);
+    IUniStaker.DepositIdentifier _depositId1 = lst.fetchOrInitializeDepositForDelegatee(_delegatee1);
+    IUniStaker.DepositIdentifier _depositId2 = lst.fetchOrInitializeDepositForDelegatee(_delegatee2);
 
-    _updateDelegatee(_holder, _delegatee1);
-    _updateDelegatee(_holder, _delegatee2);
+    _updateDeposit(_holder, _depositId1);
+    assertEq(lst.delegateeForHolder(_holder), _delegatee1);
 
+    _updateDeposit(_holder, _depositId2);
     assertEq(lst.delegateeForHolder(_holder), _delegatee2);
-  }
-
-  function testFuzz_CreatesANewDepositForASingleNewLstDelegatee(address _holder, address _delegatee) public {
-    _assumeSafeHolder(_holder);
-    _assumeSafeDelegatee(_delegatee);
-
-    _updateDelegatee(_holder, _delegatee);
-
-    assertTrue(IUniStaker.DepositIdentifier.unwrap(lst.depositForDelegatee(_delegatee)) != 0);
   }
 
   function testFuzz_MovesVotingWeightForAHolderWhoHasNotAccruedAnyRewards(
@@ -340,10 +387,14 @@ contract UpdateDelegatee is UniLstTest {
     _assumeSafeDelegatee(_initialDelegatee);
     _assumeSafeDelegatee(_newDelegatee);
     _amount = _boundToReasonableStakeTokenAmount(_amount);
+    IUniStaker.DepositIdentifier _newDepositId = lst.fetchOrInitializeDepositForDelegatee(_newDelegatee);
 
+    // The user is first staking to a particular delegate.
     _mintUpdateDelegateeAndStake(_holder, _amount, _initialDelegatee);
-    _updateDelegatee(_holder, _newDelegatee);
+    // The user updates their deposit identifier.
+    _updateDeposit(_holder, _newDepositId);
 
+    // The voting weight should have moved to the new delegatee.
     assertEq(stakeToken.getCurrentVotes(_newDelegatee), _amount);
   }
 
@@ -361,6 +412,7 @@ contract UpdateDelegatee is UniLstTest {
     _mintUpdateDelegateeAndStake(_holder, _stakeAmount, _initialDelegatee);
     _rewardAmount = _boundToReasonableStakeTokenAmount(_rewardAmount);
     _distributeReward(_rewardAmount);
+    IUniStaker.DepositIdentifier _newDepositId = lst.fetchOrInitializeDepositForDelegatee(_newDelegatee);
 
     // Interim assertions after setup phase:
     // The amount staked by the user goes to their designated delegatee
@@ -368,13 +420,70 @@ contract UpdateDelegatee is UniLstTest {
     // The amount earned in rewards has been delegated to the default delegatee
     assertEq(stakeToken.getCurrentVotes(defaultDelegatee), _rewardAmount);
 
-    _updateDelegatee(_holder, _newDelegatee);
+    _updateDeposit(_holder, _newDepositId);
 
     // After update:
     // New delegatee has both the stake voting weight and the rewards accumulated
     assertEq(stakeToken.getCurrentVotes(_newDelegatee), _stakeAmount + _rewardAmount);
     // Default delegatee has had reward voting weight removed
     assertEq(stakeToken.getCurrentVotes(defaultDelegatee), 0);
+    assertEq(lst.balanceOf(_holder), _stakeAmount + _rewardAmount);
+  }
+
+  function testFuzz_MovesAllVotingWeightForAHolderWhoHasAccruedRewardsAndWasPreviouslyDelegatedToDefault(
+    uint256 _stakeAmount,
+    address _holder,
+    address _newDelegatee,
+    uint256 _rewardAmount
+  ) public {
+    _assumeSafeHolder(_holder);
+    _assumeSafeDelegatee(_newDelegatee);
+    _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
+    _mintAndStake(_holder, _stakeAmount);
+    _rewardAmount = _boundToReasonableStakeTokenAmount(_rewardAmount);
+    _distributeReward(_rewardAmount);
+    IUniStaker.DepositIdentifier _newDepositId = lst.fetchOrInitializeDepositForDelegatee(_newDelegatee);
+
+    // Interim assertions after setup phase:
+    // The amount staked by the user plus the rewards all go to the default delegatee
+    assertEq(stakeToken.getCurrentVotes(defaultDelegatee), _stakeAmount + _rewardAmount);
+
+    _updateDeposit(_holder, _newDepositId);
+
+    // After update:
+    // New delegatee has both the stake voting weight and the rewards accumulated
+    assertEq(stakeToken.getCurrentVotes(_newDelegatee), _stakeAmount + _rewardAmount);
+    // Default delegatee has had reward voting weight removed
+    assertEq(stakeToken.getCurrentVotes(defaultDelegatee), 0);
+    assertEq(lst.balanceOf(_holder), _stakeAmount + _rewardAmount);
+  }
+
+  function testFuzz_MovesAllVotingWeightForAHolderWhoHasAccruedRewardsAndUpdatesToTheDefaultDelegatee(
+    uint256 _stakeAmount,
+    address _holder,
+    address _initialDelegatee,
+    uint256 _rewardAmount
+  ) public {
+    _assumeSafeHolder(_holder);
+    _assumeSafeDelegatee(_initialDelegatee);
+    _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
+    _mintUpdateDelegateeAndStake(_holder, _stakeAmount, _initialDelegatee);
+    _rewardAmount = _boundToReasonableStakeTokenAmount(_rewardAmount);
+    _distributeReward(_rewardAmount);
+    // Returns the default deposit ID.
+    IUniStaker.DepositIdentifier _newDepositId = lst.depositForDelegatee(address(0));
+
+    // Interim assertions after setup phase:
+    // The amount staked by the user goes to their designated delegatee
+    assertEq(stakeToken.getCurrentVotes(_initialDelegatee), _stakeAmount);
+    // The amount earned in rewards has been delegated to the default delegatee
+    assertEq(stakeToken.getCurrentVotes(defaultDelegatee), _rewardAmount);
+
+    _updateDeposit(_holder, _newDepositId);
+
+    // After update:
+    // Default delegatee has both the stake voting weight and the rewards accumulated
+    assertEq(stakeToken.getCurrentVotes(defaultDelegatee), _stakeAmount + _rewardAmount);
     assertEq(lst.balanceOf(_holder), _stakeAmount + _rewardAmount);
   }
 
@@ -390,12 +499,14 @@ contract UpdateDelegatee is UniLstTest {
     _assumeSafeDelegatees(_delegatee1, _delegatee2);
     _stakeAmount1 = _boundToReasonableStakeTokenAmount(_stakeAmount1);
     _stakeAmount2 = _boundToReasonableStakeTokenAmount(_stakeAmount2);
+    IUniStaker.DepositIdentifier _depositId2 = lst.fetchOrInitializeDepositForDelegatee(_delegatee2);
 
     // Two holders stake to the same delegatee
     _mintUpdateDelegateeAndStake(_holder1, _stakeAmount1, _delegatee1);
     _mintUpdateDelegateeAndStake(_holder2, _stakeAmount2, _delegatee1);
-    // One holder updates their delegatee
-    _updateDelegatee(_holder1, _delegatee2);
+
+    // One holder updates their deposit
+    _updateDeposit(_holder1, _depositId2);
 
     assertEq(stakeToken.getCurrentVotes(_delegatee1), _stakeAmount2);
     assertEq(stakeToken.getCurrentVotes(_delegatee2), _stakeAmount1);
@@ -415,14 +526,15 @@ contract UpdateDelegatee is UniLstTest {
     _stakeAmount1 = _boundToReasonableStakeTokenAmount(_stakeAmount1);
     _stakeAmount2 = _boundToReasonableStakeTokenAmount(_stakeAmount2);
     _rewardAmount = _boundToReasonableStakeTokenAmount(_rewardAmount);
+    IUniStaker.DepositIdentifier _depositId2 = lst.fetchOrInitializeDepositForDelegatee(_delegatee2);
 
     // Two users stake to the same delegatee
     _mintUpdateDelegateeAndStake(_holder1, _stakeAmount1, _delegatee1);
     _mintUpdateDelegateeAndStake(_holder2, _stakeAmount2, _delegatee1);
     // A reward is distributed
     _distributeReward(_rewardAmount);
-    // One holder updates their delegatee
-    _updateDelegatee(_holder1, _delegatee2);
+    // One holder updates their deposit
+    _updateDeposit(_holder1, _depositId2);
 
     // The new delegatee should have voting weight equal to the balance of the holder that updated
     assertEq(stakeToken.getCurrentVotes(_delegatee2), lst.balanceOf(_holder1));
@@ -430,6 +542,15 @@ contract UpdateDelegatee is UniLstTest {
     assertEq(stakeToken.getCurrentVotes(_delegatee1), _stakeAmount2);
     // The default delegatee should have voting weight equal to the rewards distributed to the other holder
     assertEq(stakeToken.getCurrentVotes(defaultDelegatee), _stakeAmount1 + _rewardAmount - lst.balanceOf(_holder1));
+  }
+
+  function testFuzz_RevertIf_TheDepositIdProvidedDoesNotBelongToTheLstContract(address _holder) public {
+    _assumeSafeHolder(_holder);
+
+    vm.expectRevert(
+      abi.encodeWithSelector(IUniStaker.UniStaker__Unauthorized.selector, bytes32("not owner"), address(lst))
+    );
+    _updateDeposit(_holder, IUniStaker.DepositIdentifier.wrap(0));
   }
 }
 
@@ -501,6 +622,9 @@ contract Stake is UniLstTest {
 
     _mintUpdateDelegateeAndStake(_holder, _amount, _delegatee);
 
+    __dumpGlobalState();
+    __dumpHolderState(_holder);
+
     assertEq(stakeToken.getCurrentVotes(_delegatee), _amount);
   }
 
@@ -559,9 +683,9 @@ contract Stake is UniLstTest {
     _assumeSafeHolder(_holder);
     _assumeSafeDelegatee(_delegatee);
     _amount = _boundToReasonableStakeTokenAmount(_amount);
+    _updateDelegatee(_holder, _delegatee);
 
     vm.startPrank(_holder);
-    lst.updateDelegatee(_delegatee);
     stakeToken.approve(address(lst), _amount);
     vm.mockCall(address(stakeToken), abi.encodeWithSelector(IUni.transferFrom.selector), abi.encode(false));
     vm.expectRevert(UniLst.UniLst__StakeTokenOperationFailed.selector);

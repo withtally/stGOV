@@ -2,7 +2,7 @@
 pragma solidity 0.8.26;
 
 import {console2} from "forge-std/Test.sol";
-import {UniLstTest, UniLst} from "test/UniLst.t.sol";
+import {UniLstTest, UniLst, IUniStaker} from "test/UniLst.t.sol";
 import {WrappedUniLst, Ownable} from "src/WrappedUniLst.sol";
 import {IERC20Errors} from "openzeppelin/interfaces/draft-IERC6093.sol";
 
@@ -54,20 +54,29 @@ contract Constructor is WrappedUniLstTest {
     string memory _symbol,
     address _lst,
     address _delegatee,
-    address _owner
+    address _owner,
+    uint256 _depositId
   ) public {
     _assumeSafeMockAddress(_lst);
     _assumeSafeMockAddress(_delegatee);
     _assumeSafeMockAddress(_owner);
     vm.assume(_owner != address(0));
-    vm.mockCall(_lst, abi.encodeWithSelector(UniLst.updateDelegatee.selector, _delegatee), "");
+
+    // The constructor calls these methods on the LST to set up its own deposit, so we mock them here when testing the
+    // constructor with an arbitrary address for the LST.
+    vm.mockCall(
+      _lst,
+      abi.encodeWithSelector(UniLst.fetchOrInitializeDepositForDelegatee.selector, _delegatee),
+      abi.encode(_depositId)
+    );
+    vm.mockCall(_lst, abi.encodeWithSelector(UniLst.updateDeposit.selector, _depositId), "");
 
     WrappedUniLst _wrappedLst = new WrappedUniLst(_name, _symbol, UniLst(_lst), _delegatee, _owner);
 
     assertEq(_wrappedLst.name(), _name);
     assertEq(_wrappedLst.symbol(), _symbol);
     assertEq(address(_wrappedLst.LST()), _lst);
-    assertEq(_wrappedLst.delegatee(), _delegatee);
+    assertEq(IUniStaker.DepositIdentifier.unwrap(_wrappedLst.depositId()), _depositId);
     assertEq(_wrappedLst.owner(), _owner);
   }
 }

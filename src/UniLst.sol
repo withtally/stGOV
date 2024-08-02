@@ -23,6 +23,7 @@ contract UniLst is IERC20, Ownable {
   event WithdrawalGateSet(address indexed oldWithdrawalGate, address indexed newWithdrawalGate);
   event PayoutAmountSet(uint256 oldPayoutAmount, uint256 newPayoutAmount);
   event FeeParametersSet(uint256 oldFeeAmount, uint256 newFeeAmount, address oldFeeCollector, address newFeeCollector);
+  event DepositInitialized(address indexed delegatee, IUniStaker.DepositIdentifier depositId);
 
   address public defaultDelegatee;
   IWithdrawalGate public withdrawalGate;
@@ -31,8 +32,8 @@ contract UniLst is IERC20, Ownable {
   uint256 public payoutAmount;
   uint256 public feeAmount;
   address public feeCollector;
-  mapping(address delegatee => IUniStaker.DepositIdentifier depositId) private storedDepositForDelegatee;
-  mapping(address holder => address delegatee) private storedDelegateeForHolder;
+  mapping(address delegatee => IUniStaker.DepositIdentifier depositId) internal storedDepositIdForDelegatee;
+  mapping(address holder => IUniStaker.DepositIdentifier depositId) internal storedDepositIdForHolder;
   mapping(address holder => uint256 shares) public sharesOf;
   // CONSIDER: Maybe rename this to "delegatedBalance" or something similar
   mapping(address holder => uint256 balance) public balanceCheckpoint;
@@ -53,7 +54,6 @@ contract UniLst is IERC20, Ownable {
     }
 
     // Create initial deposit for default so other methods can assume it exists.
-    // OPTIMIZE: Store this as an immutable to avoid having to ever look it up from storage
     DEFAULT_DEPOSIT_ID = STAKER.stake(0, _initialDefaultDelegatee);
   }
 
@@ -73,42 +73,37 @@ contract UniLst is IERC20, Ownable {
     _balance = stakeForShares(_sharesOf);
   }
 
-  function delegateeForHolder(address _holder) public view returns (address _delegatee) {
-    _delegatee = storedDelegateeForHolder[_holder];
-
-    if ((_delegatee == address(0))) {
-      _delegatee = defaultDelegatee;
-    }
+  function delegateeForHolder(address _holder) external view returns (address _delegatee) {
+    (,, _delegatee,) = STAKER.deposits(_depositIdForHolder(_holder));
   }
 
   function depositForDelegatee(address _delegatee) public view returns (IUniStaker.DepositIdentifier) {
-    if (_delegatee == defaultDelegatee) {
+    if (_delegatee == defaultDelegatee || _delegatee == address(0)) {
       return DEFAULT_DEPOSIT_ID;
     } else {
-      return storedDepositForDelegatee[_delegatee];
+      return storedDepositIdForDelegatee[_delegatee];
     }
   }
 
-  // OPTIMIZE: This would be a bigger refactor with some tradeoffs, but if we assume that user can source the correct
-  // depositId for a given delegatee by observing events offchain, we can have the user specify the depositId for their
-  // updated delegatee, rather than the address. This would require adding a new method like "initializeDelegatee"
-  // that would create the deposit (and prevent re-initialization?). If your delegatee doesn't yet have a deposit,
-  // you'd first call `initializeDelegatee` rather than `updateDelegatee`. This would avoid having to store and lookup
-  // the depositId for the delegatee. We could pre-initialize dozens or hundreds of existing delegates.
-  function updateDelegatee(address _delegatee) external {
-    IUniStaker.DepositIdentifier _oldDepositId = _depositIdForHolder(msg.sender);
-    storedDelegateeForHolder[msg.sender] = _delegatee;
-    // OPTIMIZE: inefficient to do it this way, opportunity for optimization
-    IUniStaker.DepositIdentifier _newDepositId = _depositIdForHolder(msg.sender);
+  function fetchOrInitializeDepositForDelegatee(address _delegatee) external returns (IUniStaker.DepositIdentifier) {
+    IUniStaker.DepositIdentifier _depositId = depositForDelegatee(_delegatee);
 
-    // Create a new deposit for this delegatee if one is not yet managed by the LST
-    if (IUniStaker.DepositIdentifier.unwrap(_newDepositId) == 0) {
-      _newDepositId = STAKER.stake(0, _delegatee);
-      storedDepositForDelegatee[_delegatee] = _newDepositId;
+    if (IUniStaker.DepositIdentifier.unwrap(_depositId) != 0) {
+      return _depositId;
     }
 
-    // OPTIMIZE: Check if the deposit isn't changing to avoid unneeded movement, still consolidate checkpoint balance
+    // Create a new deposit for this delegatee if one is not yet managed by the LST
+    _depositId = STAKER.stake(0, _delegatee);
+    storedDepositIdForDelegatee[_delegatee] = _depositId;
+    emit DepositInitialized(_delegatee, _depositId);
+    return _depositId;
+  }
 
+  function updateDeposit(IUniStaker.DepositIdentifier _newDepositId) external {
+    IUniStaker.DepositIdentifier _oldDepositId = _depositIdForHolder(msg.sender);
+
+    // OPTIMIZE: We could skip all STAKER operations if balance is 0, but we still need to make sure the deposit
+    // chosen belongs to the LST.
     uint256 _balanceOf = balanceOf(msg.sender);
     uint256 _balanceCheckpoint = balanceCheckpoint[msg.sender];
     // This is the number of tokens in the default pool that the msg.sender has claim to
@@ -122,6 +117,8 @@ contract UniLst is IERC20, Ownable {
 
     STAKER.withdraw(_oldDepositId, uint96(_balanceCheckpoint));
     STAKER.stakeMore(_newDepositId, uint96(_balanceOf));
+
+    storedDepositIdForHolder[msg.sender] = _newDepositId;
   }
 
   function stake(uint256 _amount) public {
@@ -300,7 +297,13 @@ contract UniLst is IERC20, Ownable {
   }
 
   function _depositIdForHolder(address _holder) internal view returns (IUniStaker.DepositIdentifier) {
-    return depositForDelegatee(delegateeForHolder(_holder));
+    IUniStaker.DepositIdentifier _storedId = storedDepositIdForHolder[_holder];
+
+    if (IUniStaker.DepositIdentifier.unwrap(_storedId) == 0) {
+      return DEFAULT_DEPOSIT_ID;
+    } else {
+      return _storedId;
+    }
   }
 
   function _transfer(address _sender, address _receiver, uint256 _value) internal returns (bool) {

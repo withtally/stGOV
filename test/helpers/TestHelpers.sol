@@ -2,6 +2,7 @@
 pragma solidity 0.8.26;
 
 import {Test} from "forge-std/Test.sol";
+import {IUniStaker} from "src/interfaces/IUniStaker.sol";
 
 contract TestHelpers is Test {
   function _assumeSafeMockAddress(address _address) internal pure {
@@ -10,5 +11,9 @@ contract TestHelpers is Test {
     // If the fuzzer chooses one of these special addresses and we use `mockCall`, we subsequently see test failures
     // stating that the selector does not exist. Use this helper on any address that will have a mock call.
     vm.assume(_address != address(vm) && _address != address(_console));
+  }
+
+  function assertEq(IUniStaker.DepositIdentifier a, IUniStaker.DepositIdentifier b) public pure {
+    assertEq(IUniStaker.DepositIdentifier.unwrap(a), IUniStaker.DepositIdentifier.unwrap(b));
   }
 }
