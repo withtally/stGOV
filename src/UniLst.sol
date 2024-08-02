@@ -17,6 +17,7 @@ contract UniLst is IERC20, Ownable {
   IUniStaker public immutable STAKER;
   IUni public immutable STAKE_TOKEN;
   IWETH9 public immutable REWARD_TOKEN;
+  IUniStaker.DepositIdentifier public immutable DEFAULT_DEPOSIT_ID;
   uint256 public constant SHARE_SCALE_FACTOR = 1e18;
 
   event WithdrawalGateSet(address indexed oldWithdrawalGate, address indexed newWithdrawalGate);
@@ -30,7 +31,7 @@ contract UniLst is IERC20, Ownable {
   uint256 public payoutAmount;
   uint256 public feeAmount;
   address public feeCollector;
-  mapping(address delegatee => IUniStaker.DepositIdentifier depositId) public depositForDelegatee;
+  mapping(address delegatee => IUniStaker.DepositIdentifier depositId) private storedDepositForDelegatee;
   mapping(address holder => address delegatee) private storedDelegateeForHolder;
   mapping(address holder => uint256 shares) public sharesOf;
   // CONSIDER: Maybe rename this to "delegatedBalance" or something similar
@@ -53,7 +54,7 @@ contract UniLst is IERC20, Ownable {
 
     // Create initial deposit for default so other methods can assume it exists.
     // OPTIMIZE: Store this as an immutable to avoid having to ever look it up from storage
-    depositForDelegatee[_initialDefaultDelegatee] = STAKER.stake(0, _initialDefaultDelegatee);
+    DEFAULT_DEPOSIT_ID = STAKER.stake(0, _initialDefaultDelegatee);
   }
 
   function approve(address _spender, uint256 _amount) public virtual returns (bool) {
@@ -80,6 +81,14 @@ contract UniLst is IERC20, Ownable {
     }
   }
 
+  function depositForDelegatee(address _delegatee) public view returns (IUniStaker.DepositIdentifier) {
+    if (_delegatee == defaultDelegatee) {
+      return DEFAULT_DEPOSIT_ID;
+    } else {
+      return storedDepositForDelegatee[_delegatee];
+    }
+  }
+
   // OPTIMIZE: This would be a bigger refactor with some tradeoffs, but if we assume that user can source the correct
   // depositId for a given delegatee by observing events offchain, we can have the user specify the depositId for their
   // updated delegatee, rather than the address. This would require adding a new method like "initializeDelegatee"
@@ -87,16 +96,15 @@ contract UniLst is IERC20, Ownable {
   // you'd first call `initializeDelegatee` rather than `updateDelegatee`. This would avoid having to store and lookup
   // the depositId for the delegatee. We could pre-initialize dozens or hundreds of existing delegates.
   function updateDelegatee(address _delegatee) external {
-    IUniStaker.DepositIdentifier _oldDepositId = depositForDelegatee[delegateeForHolder(msg.sender)];
+    IUniStaker.DepositIdentifier _oldDepositId = _depositIdForHolder(msg.sender);
     storedDelegateeForHolder[msg.sender] = _delegatee;
     // OPTIMIZE: inefficient to do it this way, opportunity for optimization
-    IUniStaker.DepositIdentifier _newDepositId = depositForDelegatee[delegateeForHolder(msg.sender)];
-    IUniStaker.DepositIdentifier _defaultDepositId = depositForDelegatee[defaultDelegatee];
+    IUniStaker.DepositIdentifier _newDepositId = _depositIdForHolder(msg.sender);
 
     // Create a new deposit for this delegatee if one is not yet managed by the LST
     if (IUniStaker.DepositIdentifier.unwrap(_newDepositId) == 0) {
       _newDepositId = STAKER.stake(0, _delegatee);
-      depositForDelegatee[_delegatee] = _newDepositId;
+      storedDepositForDelegatee[_delegatee] = _newDepositId;
     }
 
     // OPTIMIZE: Check if the deposit isn't changing to avoid unneeded movement, still consolidate checkpoint balance
@@ -109,7 +117,7 @@ contract UniLst is IERC20, Ownable {
     // OPTIMIZE: if the new or the old delegatee is the default, we can avoid one unneeded withdraw
     if (_checkpointDiff > 0) {
       balanceCheckpoint[msg.sender] = _balanceOf;
-      STAKER.withdraw(_defaultDepositId, uint96(_checkpointDiff));
+      STAKER.withdraw(DEFAULT_DEPOSIT_ID, uint96(_checkpointDiff));
     }
 
     STAKER.withdraw(_oldDepositId, uint96(_balanceCheckpoint));
@@ -127,7 +135,7 @@ contract UniLst is IERC20, Ownable {
     totalShares += _newShares;
     sharesOf[msg.sender] += _newShares;
     balanceCheckpoint[msg.sender] += stakeForShares(_newShares);
-    IUniStaker.DepositIdentifier _depositId = depositForDelegatee[delegateeForHolder(msg.sender)];
+    IUniStaker.DepositIdentifier _depositId = _depositIdForHolder(msg.sender);
 
     STAKER.stakeMore(_depositId, uint96(_amount));
   }
@@ -163,7 +171,7 @@ contract UniLst is IERC20, Ownable {
 
     // If the staker had zero undelegated balance, we won't waste gas executing the withdraw call.
     if (_undelegatedBalanceToWithdraw > 0) {
-      STAKER.withdraw(depositForDelegatee[defaultDelegatee], uint96(_undelegatedBalanceToWithdraw));
+      STAKER.withdraw(DEFAULT_DEPOSIT_ID, uint96(_undelegatedBalanceToWithdraw));
     }
 
     // At this point, the LST holds _amount of stakeToken
@@ -234,7 +242,7 @@ contract UniLst is IERC20, Ownable {
     // Transfer stake token to the LST
     STAKE_TOKEN.transferFrom(msg.sender, address(this), payoutAmount);
     // Stake the rewards with the default delegatee
-    STAKER.stakeMore(depositForDelegatee[defaultDelegatee], uint96(payoutAmount));
+    STAKER.stakeMore(DEFAULT_DEPOSIT_ID, uint96(payoutAmount));
     // Claim the reward tokens earned by the LST
     uint256 _rewards = STAKER.claimReward();
     // Ensure rewards distributed meet the claimers expectations; provides protection from frontrunning resulting in
@@ -292,13 +300,12 @@ contract UniLst is IERC20, Ownable {
   }
 
   function _depositIdForHolder(address _holder) internal view returns (IUniStaker.DepositIdentifier) {
-    return depositForDelegatee[delegateeForHolder(_holder)];
+    return depositForDelegatee(delegateeForHolder(_holder));
   }
 
   function _transfer(address _sender, address _receiver, uint256 _value) internal returns (bool) {
     IUniStaker.DepositIdentifier _senderDepositId = _depositIdForHolder(_sender);
     IUniStaker.DepositIdentifier _receiverDepositId = _depositIdForHolder(_receiver);
-    IUniStaker.DepositIdentifier _defaultDepositId = depositForDelegatee[defaultDelegatee];
 
     uint256 _balanceOf = balanceOf(_sender);
     uint256 _balanceCheckpoint = balanceCheckpoint[_sender];
@@ -322,7 +329,7 @@ contract UniLst is IERC20, Ownable {
     // deposit? This, and many other potential optimizations should be measured and considered, with input from the
     // broader team.
     STAKER.withdraw(_senderDepositId, uint96(_balanceCheckpoint));
-    STAKER.withdraw(_defaultDepositId, uint96(_checkpointDiff));
+    STAKER.withdraw(DEFAULT_DEPOSIT_ID, uint96(_checkpointDiff));
     STAKER.stakeMore(_receiverDepositId, uint96(_value));
     STAKER.stakeMore(_senderDepositId, uint96(_remainingBalance));
 
