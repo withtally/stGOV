@@ -1365,10 +1365,10 @@ contract Transfer is UniLstTest {
     // The sender should have the full balance of his stake and the reward, minus what was sent.
     uint256 _expectedSenderBalance = _stakeAmount + _rewardAmount - _sendAmount;
 
-    // TODO: It's a bit concerning that you can transfer N tokens to the receiver but they end up receiving N-1 because
-    // of the rounding with shares. Do STETH or ATokens handle this in some way, or accept it as a tradeoff?
-    assertWithinOneUnit(lst.balanceOf(_sender), _expectedSenderBalance);
-    assertWithinOneUnit(lst.balanceOf(_receiver), _sendAmount);
+    // Truncation is expected to favor the sender, so the expected amount should be less than or equal to
+    // the sender's balance, while the receiver's balance should be less than or equal to the send amount.
+    assertLteWithinOneUnit(_expectedSenderBalance, lst.balanceOf(_sender));
+    assertLteWithinOneUnit(lst.balanceOf(_receiver), _sendAmount);
   }
 
   function testFuzz_MovesVotingWeightToTheReceiversDelegatee(
@@ -1444,8 +1444,9 @@ contract Transfer is UniLstTest {
 
     uint256 _expectedSenderBalance = _stakeAmount + _rewardAmount - _sendAmount;
 
-    assertWithinOneUnit(lst.balanceOf(_sender), _expectedSenderBalance);
-    assertWithinOneUnit(lst.balanceOf(_receiver), _sendAmount);
+    // Truncation should favor the sender.
+    assertLteWithinOneUnit(_expectedSenderBalance, lst.balanceOf(_sender));
+    assertLteWithinOneUnit(lst.balanceOf(_receiver), _sendAmount);
 
     // It's important the balances are less than the votes, since the votes represent the "real" underlying tokens,
     // and balances being below the real tokens available means the rounding favors the protocol, which is desired.
@@ -1508,7 +1509,7 @@ contract Transfer is UniLstTest {
     lst.transfer(_receiver, _sendAmount);
 
     // The sender's full remaining balance is consolidated to their designated delegatee
-    assertEq(lst.balanceOf(_sender), stakeToken.getCurrentVotes(_senderDelegatee), "SENDER DELEGATEE IS WRONG");
+    assertLteWithinOneBip(lst.balanceOf(_sender), stakeToken.getCurrentVotes(_senderDelegatee));
     // The rewards earned by the receiver are still assigned to the default delegatee
     assertWithinOneBip(stakeToken.getCurrentVotes(defaultDelegatee), _percentOf(_rewardAmount, 60));
     // The receiver's original stake and the tokens sent to him are staked to his designated delegatee
@@ -1598,20 +1599,21 @@ contract Transfer is UniLstTest {
     vm.prank(_sender2);
     lst.transfer(_receiver, _sendAmount2);
 
-    // Balances have been updated correctly after the transfers
-    assertWithinOneUnit(lst.balanceOf(_sender1), _balance1AfterReward - _sendAmount1);
+    // The following assertions ensure balances have been updated correctly after the transfers
+
+    // The amount actually sent should be truncated down, so the sender's balance should be greater than the expected
+    assertLteWithinOneUnit(_balance1AfterReward - _sendAmount1, lst.balanceOf(_sender1));
+    // This holder may have been short changed up to 1 wei as a receiver, but kept up to 1 extra wei as a sender, so
+    // their balance and the expected should be within 1 unit in either direction.
     assertWithinOneUnit(lst.balanceOf(_sender2), _balance2AfterReward + _sendAmount1 - _sendAmount2);
-    assertWithinOneUnit(lst.balanceOf(_receiver), _sendAmount2);
+    // The amount sent could be truncated down by up to 1 wei, so the receiver's balance may be less than the expected
+    assertLteWithinOneUnit(lst.balanceOf(_receiver), _sendAmount2);
 
     // The sender balances should match their delegatee's voting weights because their voting weight has been
     // consolidated by doing the send.
-    // TODO: These assertions show the balance of can be more than the current votes, which means the balance is more
-    // than the "real" underlying. We have to understand this better and it is probably needed to make sure the
-    // rounding favors the protocol.
-    assertWithinOneUnit(lst.balanceOf(_sender1), stakeToken.getCurrentVotes(_sender1Delegatee));
-    assertWithinOneUnit(lst.balanceOf(_sender2), stakeToken.getCurrentVotes(_sender2Delegatee));
-    // Because the two transfer errors could have stacked, the error can be more than 1 unit
-    assertWithinOneBip(lst.balanceOf(_receiver), stakeToken.getCurrentVotes(defaultDelegatee));
+    assertLteWithinOneUnit(lst.balanceOf(_sender1), stakeToken.getCurrentVotes(_sender1Delegatee));
+    assertLteWithinOneUnit(lst.balanceOf(_sender2), stakeToken.getCurrentVotes(_sender2Delegatee));
+    assertLteWithinOneBip(lst.balanceOf(_receiver), stakeToken.getCurrentVotes(defaultDelegatee));
   }
 
   function testFuzz_EmitsATransferEvent(
@@ -1658,7 +1660,7 @@ contract Transfer is UniLstTest {
     _distributeReward(_rewardAmount);
 
     vm.prank(_sender);
-    vm.expectRevert(); // TODO: can we specifically expect an overflow?
+    vm.expectRevert(UniLst.UniLst__InsufficientBalance.selector);
     lst.transfer(_receiver, _sendAmount);
   }
 }

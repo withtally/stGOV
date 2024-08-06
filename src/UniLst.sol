@@ -126,29 +126,34 @@ contract UniLst is IERC20, Ownable {
       revert UniLst__StakeTokenOperationFailed();
     }
 
+    uint256 _initialBalance = balanceOf(msg.sender);
     uint256 _newShares = sharesForStake(_amount);
 
     totalSupply += _amount;
     totalShares += _newShares;
     sharesOf[msg.sender] += _newShares;
-    balanceCheckpoint[msg.sender] += stakeForShares(_newShares);
+    balanceCheckpoint[msg.sender] += (balanceOf(msg.sender) - _initialBalance);
     IUniStaker.DepositIdentifier _depositId = _depositIdForHolder(msg.sender);
 
     STAKER.stakeMore(_depositId, uint96(_amount));
   }
 
   function unstake(uint256 _amount) external {
-    uint256 _balanceOf = balanceOf(msg.sender);
+    uint256 _initialBalanceOf = balanceOf(msg.sender);
 
-    if (_amount > _balanceOf) {
+    if (_amount > _initialBalanceOf) {
       revert UniLst__InsufficientBalance();
     }
 
     // Decreases the holder's balance by the amount being withdrawn
     sharesOf[msg.sender] -= sharesForStake(_amount);
+    // By re-calculating amount as the difference between the initial and current balance, we ensure the
+    // amount unstaked is reflective of the actual change in balance. This means the amount unstaked might end up being
+    // less than the user requested by a small amount.
+    _amount = _initialBalanceOf - balanceOf(msg.sender);
 
     uint256 _delegatedBalance = balanceCheckpoint[msg.sender];
-    uint256 _undelegatedBalance = _balanceOf - _delegatedBalance;
+    uint256 _undelegatedBalance = _initialBalanceOf - _delegatedBalance;
     uint256 _undelegatedBalanceToWithdraw;
 
     // OPTIMIZE: This can be smarter if the user is delegated to the default delegatee. It should only need to do one
@@ -307,15 +312,37 @@ contract UniLst is IERC20, Ownable {
   }
 
   function _transfer(address _sender, address _receiver, uint256 _value) internal returns (bool) {
+    // Record initial balances.
+    uint256 _senderInitBalance = balanceOf(_sender);
+    uint256 _receiverInitBalance = balanceOf(_receiver);
+    uint256 _balanceCheckpoint = balanceCheckpoint[_sender];
+    uint256 _senderUndelegatedBalance = _senderInitBalance - balanceCheckpoint[_sender];
+
+    // Without this check, the user might pass in a `_value` that is slightly greater than their
+    // actual balance, and the transaction would succeed. That's because the truncation issue can cause
+    // the actual amount sent to be less than the `_value` they request, such that it falls below their balance.
+    // So while such a transaction does not break any internal invariants of the system, it's a lso quite
+    // counterintuitive. At the same time, this check imposes some additional gas cost that is not strictly needed.
+    // TODO/OPTIMIZATION: consider whether it can/should be removed.
+    if (_value > _senderInitBalance) {
+      revert UniLst__InsufficientBalance();
+    }
+
+    // Move underlying shares.
+    uint256 _shares = sharesForStake(_value);
+    sharesOf[_sender] -= _shares;
+    sharesOf[_receiver] += _shares;
+
+    // Calculate new balances/balance differences
+    uint256 _senderNewBalance = balanceOf(_sender);
+    uint256 _receiverBalanceIncrease = balanceOf(_receiver) - _receiverInitBalance;
+    uint256 _senderRemainingTokens = _balanceCheckpoint + _senderUndelegatedBalance - _receiverBalanceIncrease;
+
+    balanceCheckpoint[_sender] = _senderNewBalance;
+    balanceCheckpoint[_receiver] += _receiverBalanceIncrease;
+
     IUniStaker.DepositIdentifier _senderDepositId = _depositIdForHolder(_sender);
     IUniStaker.DepositIdentifier _receiverDepositId = _depositIdForHolder(_receiver);
-
-    uint256 _balanceOf = balanceOf(_sender);
-    uint256 _balanceCheckpoint = balanceCheckpoint[_sender];
-    // This is the number of tokens in the default pool that the sender has claim to.
-    uint256 _checkpointDiff = _balanceOf - balanceCheckpoint[_sender];
-    // This is the number of tokens the sender will have after the transfer is complete.
-    uint256 _remainingBalance = _balanceOf - _value;
 
     // OPTIMIZE: This is the most naive implementation of a transfer:
     // 1. withdraw all tokens belonging to the sender from his designated deposit
@@ -332,16 +359,9 @@ contract UniLst is IERC20, Ownable {
     // deposit? This, and many other potential optimizations should be measured and considered, with input from the
     // broader team.
     STAKER.withdraw(_senderDepositId, uint96(_balanceCheckpoint));
-    STAKER.withdraw(DEFAULT_DEPOSIT_ID, uint96(_checkpointDiff));
-    STAKER.stakeMore(_receiverDepositId, uint96(_value));
-    STAKER.stakeMore(_senderDepositId, uint96(_remainingBalance));
-
-    uint256 _shares = sharesForStake(_value);
-    sharesOf[_sender] -= _shares;
-    sharesOf[_receiver] += _shares;
-
-    balanceCheckpoint[_sender] = balanceOf(_sender);
-    balanceCheckpoint[_receiver] += stakeForShares(_shares);
+    STAKER.withdraw(DEFAULT_DEPOSIT_ID, uint96(_senderUndelegatedBalance));
+    STAKER.stakeMore(_receiverDepositId, uint96(_receiverBalanceIncrease));
+    STAKER.stakeMore(_senderDepositId, uint96(_senderRemainingTokens));
 
     emit Transfer(_sender, _receiver, _value);
 
