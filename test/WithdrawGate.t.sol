@@ -8,6 +8,7 @@ import {UniLst} from "src/UniLst.sol";
 import {TestHelpers} from "test/helpers/TestHelpers.sol";
 import {MockERC20Token} from "test/mocks/MockERC20Token.sol";
 import {FakeERC1271Wallet} from "test/fakes/FakeERC1271Wallet.sol";
+import {Eip712Helper} from "test/helpers/Eip712Helper.sol";
 import {Ownable} from "openzeppelin/access/Ownable.sol";
 import {IERC20} from "openzeppelin/token/ERC20/IERC20.sol";
 import {ECDSA} from "openzeppelin/utils/cryptography/ECDSA.sol";
@@ -330,23 +331,17 @@ contract GetNextWithdrawalId is WithdrawGateTest {
   }
 }
 
-contract CompleteWithdrawalOnBehalf is WithdrawGateTest {
+contract CompleteWithdrawalOnBehalf is WithdrawGateTest, Eip712Helper {
   using ECDSA for bytes32;
 
   // EIP-712 constants
-  bytes32 private constant EIP712_DOMAIN_TYPEHASH =
-    keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
   bytes32 private DOMAIN_SEPARATOR;
 
   function setUp() public override {
     super.setUp();
 
     // Compute the domain separator
-    DOMAIN_SEPARATOR = keccak256(
-      abi.encode(
-        EIP712_DOMAIN_TYPEHASH, keccak256("WithdrawGate"), keccak256("1"), block.chainid, address(withdrawGate)
-      )
-    );
+    DOMAIN_SEPARATOR = _domainSeperator("WithdrawGate", "1", address(withdrawGate));
   }
 
   function _hashTypedDataV4(bytes32 structHash) internal view returns (bytes32) {

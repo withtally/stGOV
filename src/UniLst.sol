@@ -7,12 +7,18 @@ import {IUni} from "src/interfaces/IUni.sol";
 import {IWETH9} from "src/interfaces/IWETH9.sol";
 import {IWithdrawalGate} from "src/interfaces/IWithdrawalGate.sol";
 import {Ownable} from "openzeppelin/access/Ownable.sol";
+import {EIP712} from "openzeppelin/utils/cryptography/EIP712.sol";
+import {SignatureChecker} from "openzeppelin/utils/cryptography/SignatureChecker.sol";
+import {Nonces} from "openzeppelin/utils/Nonces.sol";
 
-contract UniLst is IERC20, Ownable {
+contract UniLst is IERC20, Ownable, EIP712, Nonces {
   error UniLst__StakeTokenOperationFailed();
   error UniLst__InsufficientBalance();
   error UniLst__InsufficientRewards();
   error UniLst__InvalidFeeParameters();
+  error UniLst__InvalidSignature();
+  error UniLst__SignatureExpired();
+  error UniLst__InvalidNonce();
 
   IUniStaker public immutable STAKER;
   IUni public immutable STAKE_TOKEN;
@@ -39,8 +45,14 @@ contract UniLst is IERC20, Ownable {
   mapping(address holder => uint256 balance) public balanceCheckpoint;
   mapping(address holder => mapping(address spender => uint256 amount)) public allowance;
 
+  bytes32 public constant STAKE_TYPEHASH =
+    keccak256("Stake(address account,uint256 amount,uint256 nonce,uint256 deadline)");
+  bytes32 public constant UNSTAKE_TYPEHASH =
+    keccak256("Unstake(address account,uint256 amount,uint256 nonce,uint256 deadline)");
+
   constructor(IUniStaker _staker, address _initialDefaultDelegatee, address _initialOwner, uint256 _initialPayoutAmount)
     Ownable(_initialOwner)
+    EIP712("UniLst", "1")
   {
     STAKER = _staker;
     STAKE_TOKEN = IUni(_staker.STAKE_TOKEN());
@@ -122,37 +134,52 @@ contract UniLst is IERC20, Ownable {
   }
 
   function stake(uint256 _amount) public {
-    if (!STAKE_TOKEN.transferFrom(msg.sender, address(this), _amount)) {
+    _stake(msg.sender, _amount);
+  }
+
+  function _stake(address _account, uint256 _amount) internal {
+    if (!STAKE_TOKEN.transferFrom(_account, address(this), _amount)) {
       revert UniLst__StakeTokenOperationFailed();
     }
 
-    uint256 _initialBalance = balanceOf(msg.sender);
+    uint256 _initialBalance = balanceOf(_account);
     uint256 _newShares = sharesForStake(_amount);
 
     totalSupply += _amount;
     totalShares += _newShares;
-    sharesOf[msg.sender] += _newShares;
-    balanceCheckpoint[msg.sender] += (balanceOf(msg.sender) - _initialBalance);
-    IUniStaker.DepositIdentifier _depositId = _depositIdForHolder(msg.sender);
+    sharesOf[_account] += _newShares;
+    balanceCheckpoint[_account] += (balanceOf(_account) - _initialBalance);
+    IUniStaker.DepositIdentifier _depositId = _depositIdForHolder(_account);
 
     STAKER.stakeMore(_depositId, uint96(_amount));
   }
 
+  function stakeOnBehalf(address _account, uint256 _amount, uint256 _nonce, uint256 _deadline, bytes memory _signature)
+    external
+  {
+    _validateSignature(_account, _amount, _nonce, _deadline, _signature, STAKE_TYPEHASH);
+    _stake(_account, _amount);
+  }
+
   function unstake(uint256 _amount) external {
-    uint256 _initialBalanceOf = balanceOf(msg.sender);
+    _unstake(msg.sender, _amount);
+  }
+
+  function _unstake(address _account, uint256 _amount) internal {
+    uint256 _initialBalanceOf = balanceOf(_account);
 
     if (_amount > _initialBalanceOf) {
       revert UniLst__InsufficientBalance();
     }
 
     // Decreases the holder's balance by the amount being withdrawn
-    sharesOf[msg.sender] -= sharesForStake(_amount);
+    sharesOf[_account] -= sharesForStake(_amount);
     // By re-calculating amount as the difference between the initial and current balance, we ensure the
     // amount unstaked is reflective of the actual change in balance. This means the amount unstaked might end up being
     // less than the user requested by a small amount.
-    _amount = _initialBalanceOf - balanceOf(msg.sender);
+    _amount = _initialBalanceOf - balanceOf(_account);
 
-    uint256 _delegatedBalance = balanceCheckpoint[msg.sender];
+    uint256 _delegatedBalance = balanceCheckpoint[_account];
     uint256 _undelegatedBalance = _initialBalanceOf - _delegatedBalance;
     uint256 _undelegatedBalanceToWithdraw;
 
@@ -164,8 +191,8 @@ contract UniLst is IERC20, Ownable {
       // the delegated balance.
       _undelegatedBalanceToWithdraw = _undelegatedBalance;
       uint256 _delegatedBalanceToWithdraw = _amount - _undelegatedBalanceToWithdraw;
-      STAKER.withdraw(_depositIdForHolder(msg.sender), uint96(_delegatedBalanceToWithdraw));
-      balanceCheckpoint[msg.sender] = _delegatedBalance - _delegatedBalanceToWithdraw;
+      STAKER.withdraw(_depositIdForHolder(_account), uint96(_delegatedBalanceToWithdraw));
+      balanceCheckpoint[_account] = _delegatedBalance - _delegatedBalanceToWithdraw;
     } else {
       // Since the amount is less than or equal to the undelegated balance, we'll source all of it from said balance.
       _undelegatedBalanceToWithdraw = _amount;
@@ -192,16 +219,46 @@ contract UniLst is IERC20, Ownable {
     if (_withdrawalTarget.code.length == 0) {
       // If the withdrawal target is set to an address that is not a smart contract, unstaking should transfer directly
       // to the holder.
-      _withdrawalTarget = msg.sender;
+      _withdrawalTarget = _account;
     } else {
       // Similarly, if the call to the withdrawal gate fails, tokens should be transferred directly to the holder.
-      try withdrawalGate.initiateWithdrawal(_amount, msg.sender) {}
+      try withdrawalGate.initiateWithdrawal(_amount, _account) {}
       catch {
-        _withdrawalTarget = msg.sender;
+        _withdrawalTarget = _account;
       }
     }
 
     STAKE_TOKEN.transfer(_withdrawalTarget, _amount);
+  }
+
+  function unstakeOnBehalf(
+    address _account,
+    uint256 _amount,
+    uint256 _nonce,
+    uint256 _deadline,
+    bytes memory _signature
+  ) external {
+    _validateSignature(_account, _amount, _nonce, _deadline, _signature, UNSTAKE_TYPEHASH);
+    _unstake(_account, _amount);
+  }
+
+  function _validateSignature(
+    address _account,
+    uint256 _amount,
+    uint256 _nonce,
+    uint256 _deadline,
+    bytes memory _signature,
+    bytes32 _typeHash
+  ) internal {
+    _useCheckedNonce(_account, _nonce);
+    if (block.timestamp > _deadline) {
+      revert UniLst__SignatureExpired();
+    }
+    bytes32 _structHash = keccak256(abi.encode(_typeHash, _account, _amount, _nonce, _deadline));
+    bytes32 _hash = _hashTypedDataV4(_structHash);
+    if (!SignatureChecker.isValidSignatureNow(_account, _hash, _signature)) {
+      revert UniLst__InvalidSignature();
+    }
   }
 
   function transfer(address _receiver, uint256 _value) external returns (bool) {
