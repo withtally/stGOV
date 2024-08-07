@@ -4,11 +4,13 @@ pragma solidity 0.8.26;
 import {Ownable} from "openzeppelin/access/Ownable.sol";
 import {UniLst} from "src/UniLst.sol";
 import {IERC20} from "openzeppelin/token/ERC20/IERC20.sol";
+import {EIP712} from "openzeppelin/utils/cryptography/EIP712.sol";
+import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 
 /// @title WithdrawGate
 /// @author ScopeLift
 /// @notice A contract to enforce a withdrawal delay for users exiting the LST.
-contract WithdrawGate is Ownable {
+contract WithdrawGate is Ownable, EIP712 {
   /// @notice Thrown when an invalid LST address is provided.
   error WithdrawGate__InvalidLSTAddress();
 
@@ -24,11 +26,17 @@ contract WithdrawGate is Ownable {
   /// @notice Thrown when the withdrawal is not yet eligible.
   error WithdrawGate__WithdrawalNotEligible();
 
+  /// @notice Thrown when the withdrawal has already been completed.
+  error WithdrawGate__WithdrawalAlreadyCompleted();
+
   /// @notice Thrown when the caller is not the designated receiver.
   error WithdrawGate__CallerNotReceiver();
 
-  /// @notice Thrown when the receiver address is not valid.
-  error WithdrawGate__InvalidReceiver();
+  /// @notice Thrown when the signature is invalid.
+  error WithdrawGate__InvalidSignature();
+
+  /// @notice Thrown when the deadline has expired.
+  error WithdrawGate__ExpiredDeadline();
 
   /// @notice The address of the LST contract.
   address public immutable LST;
@@ -41,6 +49,10 @@ contract WithdrawGate is Ownable {
 
   /// @notice The current delay period for withdrawals.
   uint256 public delay;
+
+  /// @notice The EIP-712 typehash for the CompleteWithdrawal struct.
+  bytes32 public constant COMPLETE_WITHDRAWAL_TYPEHASH =
+    keccak256("CompleteWithdrawal(uint256 identifier,uint256 deadline)");
 
   /// @notice A struct to store withdrawal information.
   struct Withdrawal {
@@ -69,7 +81,7 @@ contract WithdrawGate is Ownable {
   /// @param _owner The address that will own this contract.
   /// @param _lst The address of the LST contract.
   /// @param _initialDelay The initial withdrawal delay period.
-  constructor(address _owner, address _lst, uint256 _initialDelay) Ownable(_owner) {
+  constructor(address _owner, address _lst, uint256 _initialDelay) Ownable(_owner) EIP712("WithdrawGate", "1") {
     if (_lst == address(0)) {
       revert WithdrawGate__InvalidLSTAddress();
     }
@@ -110,7 +122,7 @@ contract WithdrawGate is Ownable {
       revert WithdrawGate__CallerNotLST();
     }
     if (_receiver == address(0)) {
-      revert WithdrawGate__InvalidReceiver();
+      revert WithdrawGate__CallerNotReceiver();
     }
 
     _identifier = nextWithdrawalId++;
@@ -125,27 +137,57 @@ contract WithdrawGate is Ownable {
   /// @notice Completes a previously initiated withdrawal.
   /// @param _identifier The unique identifier of the withdrawal to complete.
   function completeWithdrawal(uint256 _identifier) external {
-    Withdrawal storage withdrawal = withdrawals[_identifier];
+    Withdrawal storage _withdrawal = withdrawals[_identifier];
 
-    if (nextWithdrawalId < _identifier) {
-      revert WithdrawGate__WithdrawalNotFound();
-    }
-    if (msg.sender != withdrawal.receiver) {
+    if (msg.sender != _withdrawal.receiver) {
       revert WithdrawGate__CallerNotReceiver();
     }
-    if (block.timestamp < withdrawal.eligibleTimestamp) {
-      revert WithdrawGate__WithdrawalNotEligible();
-    }
-    if (withdrawal.completed) {
+
+    _completeWithdrawal(_identifier, _withdrawal);
+  }
+
+  /// @notice Completes a previously initiated withdrawal on behalf of the receiver.
+  /// @param _deadline The deadline by which the withdrawal must be completed.
+  /// @param _identifier The unique identifier of the withdrawal to complete.
+  /// @param _signature The EIP-712 or EIP-1271 signature authorizing the withdrawal.
+  function completeWithdrawalOnBehalf(uint256 _identifier, uint256 _deadline, bytes memory _signature) external {
+    if (nextWithdrawalId <= _identifier) {
       revert WithdrawGate__WithdrawalNotFound();
     }
 
-    withdrawal.completed = true;
+    Withdrawal storage _withdrawal = withdrawals[_identifier];
+    if (block.timestamp > _deadline) {
+      revert WithdrawGate__ExpiredDeadline();
+    }
+
+    bytes32 _structHash = keccak256(abi.encode(COMPLETE_WITHDRAWAL_TYPEHASH, _identifier, _deadline));
+    bool _isValid =
+      SignatureChecker.isValidSignatureNow(_withdrawal.receiver, _hashTypedDataV4(_structHash), _signature);
+    if (!_isValid) {
+      revert WithdrawGate__InvalidSignature();
+    }
+
+    _completeWithdrawal(_identifier, _withdrawal);
+  }
+
+  /// @notice Internal function to complete a withdrawal.
+  /// @param _identifier The unique identifier of the withdrawal to complete.
+  /// @param _withdrawal The storage reference to the Withdrawal struct.
+  function _completeWithdrawal(uint256 _identifier, Withdrawal storage _withdrawal) internal {
+    if (block.timestamp < _withdrawal.eligibleTimestamp) {
+      revert WithdrawGate__WithdrawalNotEligible();
+    }
+    if (_withdrawal.completed) {
+      revert WithdrawGate__WithdrawalAlreadyCompleted();
+    }
+
+    _withdrawal.completed = true;
+    uint256 _amount = _withdrawal.amount;
 
     // This transfer assumes WITHDRAWAL_TOKEN will revert if the transfer fails.
-    IERC20(WITHDRAWAL_TOKEN).transfer(withdrawal.receiver, withdrawal.amount);
+    IERC20(WITHDRAWAL_TOKEN).transfer(_withdrawal.receiver, _amount);
 
-    emit WithdrawalCompleted(_identifier, withdrawal.receiver, withdrawal.amount);
+    emit WithdrawalCompleted(_identifier, _withdrawal.receiver, _amount);
   }
 
   /// @notice Gets the next withdrawal identifier.
