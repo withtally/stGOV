@@ -622,9 +622,6 @@ contract Stake is UniLstTest {
 
     _mintUpdateDelegateeAndStake(_holder, _amount, _delegatee);
 
-    __dumpGlobalState();
-    __dumpHolderState(_holder);
-
     assertEq(stakeToken.getCurrentVotes(_delegatee), _amount);
   }
 
@@ -1325,7 +1322,7 @@ contract Transfer is UniLstTest {
     assertEq(lst.balanceOf(_receiver), _sendAmount);
   }
 
-  function testFuzz_MovesFullBalanceToAReceiverWhenBalanceIncludesEarnedRewards(
+  function testFuzz_MovesFullBalanceToAReceiverWhenBalanceOfSenderIncludesEarnedRewards(
     uint256 _stakeAmount,
     uint256 _rewardAmount,
     address _sender,
@@ -1345,7 +1342,7 @@ contract Transfer is UniLstTest {
     assertEq(lst.balanceOf(_receiver), _stakeAmount + _rewardAmount);
   }
 
-  function testFuzz_MovesPartialBalanceToAReceiverWhenBalanceIncludesEarnedRewards(
+  function testFuzz_MovesPartialBalanceToAReceiverWhenBalanceOfSenderIncludesEarnedRewards(
     uint256 _stakeAmount,
     uint256 _rewardAmount,
     uint256 _sendAmount,
@@ -1396,7 +1393,7 @@ contract Transfer is UniLstTest {
     assertEq(stakeToken.getCurrentVotes(_receiverDelegatee), _sendAmount);
   }
 
-  function testFuzz_MovesFullVotingWeightToTheReceiversDelegateeWhenBalanceIncludesEarnedRewards(
+  function testFuzz_MovesFullVotingWeightToTheReceiversDelegateeWhenBalanceOfSenderIncludesEarnedRewards(
     uint256 _stakeAmount,
     uint256 _rewardAmount,
     address _sender,
@@ -1421,7 +1418,7 @@ contract Transfer is UniLstTest {
     assertEq(stakeToken.getCurrentVotes(_receiverDelegatee), _stakeAmount + _rewardAmount);
   }
 
-  function testFuzz_MovesPartialVotingWeightToTheReceiversDelegateeAndConsolidatesSendersVotingWeightWhenBalanceIncludesRewards(
+  function testFuzz_MovesPartialVotingWeightToTheReceiversDelegateeWhenBalanceOfSenderIncludesRewards(
     uint256 _stakeAmount,
     uint256 _rewardAmount,
     uint256 _sendAmount,
@@ -1450,11 +1447,14 @@ contract Transfer is UniLstTest {
 
     // It's important the balances are less than the votes, since the votes represent the "real" underlying tokens,
     // and balances being below the real tokens available means the rounding favors the protocol, which is desired.
-    assertLteWithinOneUnit(lst.balanceOf(_sender), stakeToken.getCurrentVotes(_senderDelegatee));
+    assertLteWithinOneUnit(
+      lst.balanceOf(_sender),
+      stakeToken.getCurrentVotes(_senderDelegatee) + stakeToken.getCurrentVotes(defaultDelegatee)
+    );
     assertLteWithinOneUnit(lst.balanceOf(_receiver), stakeToken.getCurrentVotes(_receiverDelegatee));
   }
 
-  function testFuzz_UpdatesTheBalanceCheckpointOfTheSenderToReflectConsolidatedVotingWeight(
+  function testFuzz_LeavesTheSendersDelegatedBalanceUntouchedIfTheSendAmountIsLessThanTheSendersUndelegatedBalance(
     uint256 _stakeAmount,
     uint256 _rewardAmount,
     uint256 _sendAmount,
@@ -1467,7 +1467,8 @@ contract Transfer is UniLstTest {
     _assumeSafeDelegatees(_senderDelegatee, _receiverDelegatee);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
     _rewardAmount = _boundToReasonableStakeTokenAmount(_rewardAmount);
-    _sendAmount = bound(_sendAmount, 0, _stakeAmount + _rewardAmount);
+    // The amount sent will be less than or equal to the rewards the sender has earned
+    _sendAmount = bound(_sendAmount, 0, _rewardAmount);
 
     _mintUpdateDelegateeAndStake(_sender, _stakeAmount, _senderDelegatee);
     _updateDelegatee(_receiver, _receiverDelegatee);
@@ -1475,11 +1476,42 @@ contract Transfer is UniLstTest {
     vm.prank(_sender);
     lst.transfer(_receiver, _sendAmount);
 
-    // The sender's voting weight has been consolidated, so his checkpoint should equal his current balance.
-    assertEq(lst.balanceCheckpoint(_sender), lst.balanceOf(_sender));
+    // The senders delegated balance checkpoint has not changed from the original staked amount.
+    assertEq(lst.balanceCheckpoint(_sender), _stakeAmount);
+    // It's important the delegated checkpoint is less than the votes, since the votes represent the "real" tokens.
+    assertLteWithinOneBip(lst.balanceCheckpoint(_sender), stakeToken.getCurrentVotes(_senderDelegatee));
   }
 
-  function testFuzz_AddsToTheBalanceCheckpointOfTheReceiverToAdditionalVotingWeight(
+  function testFuzz_PullsFromTheSendersDelegatedBalanceAfterTheUndelegatedBalanceHasBeenExhausted(
+    uint256 _stakeAmount,
+    uint256 _rewardAmount,
+    uint256 _sendAmount,
+    address _sender,
+    address _senderDelegatee,
+    address _receiver,
+    address _receiverDelegatee
+  ) public {
+    _assumeSafeHolders(_sender, _receiver);
+    _assumeSafeDelegatees(_senderDelegatee, _receiverDelegatee);
+    _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
+    _rewardAmount = _boundToReasonableStakeTokenAmount(_rewardAmount);
+    // The amount sent will be more than the original stake amount
+    _sendAmount = bound(_sendAmount, _rewardAmount, _rewardAmount + _stakeAmount);
+
+    _mintUpdateDelegateeAndStake(_sender, _stakeAmount, _senderDelegatee);
+    _updateDelegatee(_receiver, _receiverDelegatee);
+    _distributeReward(_rewardAmount);
+    vm.prank(_sender);
+    lst.transfer(_receiver, _sendAmount);
+
+    // The sender's delegated balance is now equal to his balance, because his full undelegated balance (and then some)
+    // has been used to complete the transfer.
+    assertEq(lst.balanceCheckpoint(_sender), lst.balanceOf(_sender));
+    // It's important the delegated checkpoint is less than the votes, since the votes represent the "real" tokens.
+    assertLteWithinOneBip(lst.balanceCheckpoint(_sender), stakeToken.getCurrentVotes(_senderDelegatee));
+  }
+
+  function testFuzz_AddsToTheBalanceCheckpointOfTheReceiverAndVotingWeightOfReceiversDelegatee(
     uint256 _stakeAmount1,
     uint256 _rewardAmount,
     uint256 _sendAmount,
@@ -1508,12 +1540,11 @@ contract Transfer is UniLstTest {
     vm.prank(_sender);
     lst.transfer(_receiver, _sendAmount);
 
-    // The sender's full remaining balance is consolidated to their designated delegatee
-    assertLteWithinOneBip(lst.balanceOf(_sender), stakeToken.getCurrentVotes(_senderDelegatee));
-    // The rewards earned by the receiver are still assigned to the default delegatee
-    assertWithinOneBip(stakeToken.getCurrentVotes(defaultDelegatee), _percentOf(_rewardAmount, 60));
     // The receiver's original stake and the tokens sent to him are staked to his designated delegatee
-    assertWithinOneBip(stakeToken.getCurrentVotes(_receiverDelegatee), _stakeAmount2 + _sendAmount);
+    assertLteWithinOneBip(lst.balanceCheckpoint(_receiver), _stakeAmount2 + _sendAmount);
+    assertLteWithinOneBip(stakeToken.getCurrentVotes(_receiverDelegatee), _stakeAmount2 + _sendAmount);
+    // It's important the delegated checkpoint is less than the votes, since the votes represent the "real" tokens.
+    assertLteWithinOneBip(lst.balanceCheckpoint(_receiver), stakeToken.getCurrentVotes(_receiverDelegatee));
 
     // Invariant: Sum of balanceOf should always be less than or equal to total stake + rewards
     assertLteWithinOneBip(
@@ -1528,7 +1559,7 @@ contract Transfer is UniLstTest {
     );
   }
 
-  function testFuzz_MovesPartialVotingWeightToTheReceiversDelegateeAndConsolidatesSendersVotingWeightWhenBothBalancesIncludeRewards(
+  function testFuzz_MovesPartialVotingWeightToTheReceiversDelegateeWhenBothBalancesIncludeRewards(
     uint256 _stakeAmount1,
     uint256 _rewardAmount,
     uint256 _sendAmount,
@@ -1557,8 +1588,9 @@ contract Transfer is UniLstTest {
     vm.prank(_sender);
     lst.transfer(_receiver, _sendAmount);
 
-    // The sender's checkpoint should be incremented by the send amount to reflect
+    // The receiver's checkpoint should be incremented by the amount sent.
     assertLteWithinOneUnit(lst.balanceCheckpoint(_receiver), _stakeAmount2 + _sendAmount);
+    assertLteWithinOneUnit(lst.balanceCheckpoint(_receiver), stakeToken.getCurrentVotes(_receiverDelegatee));
   }
 
   function testFuzz_TransfersTheBalanceAndMovesTheVotingWeightBetweenMultipleHoldersWhoHaveStakedAndReceivedRewards(
@@ -1609,11 +1641,12 @@ contract Transfer is UniLstTest {
     // The amount sent could be truncated down by up to 1 wei, so the receiver's balance may be less than the expected
     assertLteWithinOneUnit(lst.balanceOf(_receiver), _sendAmount2);
 
-    // The sender balances should match their delegatee's voting weights because their voting weight has been
-    // consolidated by doing the send.
-    assertLteWithinOneUnit(lst.balanceOf(_sender1), stakeToken.getCurrentVotes(_sender1Delegatee));
-    assertLteWithinOneUnit(lst.balanceOf(_sender2), stakeToken.getCurrentVotes(_sender2Delegatee));
-    assertLteWithinOneBip(lst.balanceOf(_receiver), stakeToken.getCurrentVotes(defaultDelegatee));
+    uint256 _expectedDefaultDelegateeWeight = (lst.balanceOf(_sender1) - lst.balanceCheckpoint(_sender1))
+      + (lst.balanceOf(_sender2) - lst.balanceCheckpoint(_sender2)) + lst.balanceOf(_receiver);
+
+    assertLteWithinOneUnit(lst.balanceCheckpoint(_sender1), stakeToken.getCurrentVotes(_sender1Delegatee));
+    assertLteWithinOneUnit(lst.balanceCheckpoint(_sender2), stakeToken.getCurrentVotes(_sender2Delegatee));
+    assertLteWithinOneBip(_expectedDefaultDelegateeWeight, stakeToken.getCurrentVotes(defaultDelegatee));
   }
 
   function testFuzz_EmitsATransferEvent(

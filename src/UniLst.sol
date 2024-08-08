@@ -315,8 +315,8 @@ contract UniLst is IERC20, Ownable {
     // Record initial balances.
     uint256 _senderInitBalance = balanceOf(_sender);
     uint256 _receiverInitBalance = balanceOf(_receiver);
-    uint256 _balanceCheckpoint = balanceCheckpoint[_sender];
-    uint256 _senderUndelegatedBalance = _senderInitBalance - balanceCheckpoint[_sender];
+    uint256 _senderDelegatedBalance = balanceCheckpoint[_sender];
+    uint256 _senderUndelegatedBalance = _senderInitBalance - _senderDelegatedBalance;
 
     // Without this check, the user might pass in a `_value` that is slightly greater than their
     // actual balance, and the transaction would succeed. That's because the truncation issue can cause
@@ -333,35 +333,42 @@ contract UniLst is IERC20, Ownable {
     sharesOf[_sender] -= _shares;
     sharesOf[_receiver] += _shares;
 
-    // Calculate new balances/balance differences
-    uint256 _senderNewBalance = balanceOf(_sender);
+    // The sender's balance may actually decrease by more than the receiver's balance increases. Therefore, we base the
+    // calculation of how much to move between deposits on the greater number, i.e. the sender's decrease, however when
+    // we update the receiver's balance checkpoint, we use the number representing the actual balance change. As a
+    // result, extra wei may be lost, in that it is no longer controlled by either the sender or the receiver, but is
+    // instead stuck permanently in the receiver's deposit.
     uint256 _receiverBalanceIncrease = balanceOf(_receiver) - _receiverInitBalance;
-    uint256 _senderRemainingTokens = _balanceCheckpoint + _senderUndelegatedBalance - _receiverBalanceIncrease;
+    uint256 _senderBalanceDecrease = _senderInitBalance - balanceOf(_sender);
 
-    balanceCheckpoint[_sender] = _senderNewBalance;
+    // TODO: This is a critical assumption. If it is not correct, we want to catch it. So we can leave this statement
+    // during the development cycle, so that a fuzz test or gas scenario might catch it earlier, and remove it later
+    // once we have proper invariant testing in place.
+    if (_receiverBalanceIncrease > _senderBalanceDecrease) {
+      revert("BALANCE INCREASE GREATER THAN SENDER DECREASE");
+    }
+
     balanceCheckpoint[_receiver] += _receiverBalanceIncrease;
 
-    IUniStaker.DepositIdentifier _senderDepositId = _depositIdForHolder(_sender);
-    IUniStaker.DepositIdentifier _receiverDepositId = _depositIdForHolder(_receiver);
+    uint256 _undelegatedBalanceToWithdraw;
+    if (_senderBalanceDecrease > _senderUndelegatedBalance) {
+      // Since the amount needed is more than the full undelegated balance, we'll withdraw all of it, plus some from
+      // the delegated balance.
+      _undelegatedBalanceToWithdraw = _senderUndelegatedBalance;
+      uint256 _delegatedBalanceToWithdraw = _senderBalanceDecrease - _undelegatedBalanceToWithdraw;
+      STAKER.withdraw(_depositIdForHolder(_sender), uint96(_delegatedBalanceToWithdraw));
+      balanceCheckpoint[_sender] = _senderDelegatedBalance - _delegatedBalanceToWithdraw;
+    } else {
+      // Since the amount is less than or equal to the undelegated balance, we'll source all of it from said balance.
+      _undelegatedBalanceToWithdraw = _senderBalanceDecrease;
+    }
 
-    // OPTIMIZE: This is the most naive implementation of a transfer:
-    // 1. withdraw all tokens belonging to the sender from his designated deposit
-    // 2. withdraw all tokens belonging to the sender from the default deposit (tokens earned from rewards)
-    // 3. stakeMore the tokens being sent to the receiver's designated deposit
-    // 4. stakeMore the remaining tokens back to the sender's designated deposit
-    // There are many ways in which this can be optimized. For example, in certain conditions we could avoid having
-    // to stakeMore back to the sender's deposit if their balance in the default deposit + some subset of their
-    // designated deposit is sufficient to complete the transfer. Obviously, we can also avoid doing withdraws and
-    // stakeMores in conditions where the sender and receiver delegatees match. There are also considerations for
-    // optimizations that change the functionality to a certain degree. For example, if the senders checkpointDiff
-    // is more than is being transferred, do we _need_ to move what's left of the checkpointDiff to the sender's
-    // designated deposit? Or would it be acceptable to leave the remainder of their checkpointDiff in the default
-    // deposit? This, and many other potential optimizations should be measured and considered, with input from the
-    // broader team.
-    STAKER.withdraw(_senderDepositId, uint96(_balanceCheckpoint));
-    STAKER.withdraw(DEFAULT_DEPOSIT_ID, uint96(_senderUndelegatedBalance));
-    STAKER.stakeMore(_receiverDepositId, uint96(_receiverBalanceIncrease));
-    STAKER.stakeMore(_senderDepositId, uint96(_senderRemainingTokens));
+    // If the staker had zero undelegated balance, we won't waste gas executing the withdraw call.
+    if (_undelegatedBalanceToWithdraw > 0) {
+      STAKER.withdraw(DEFAULT_DEPOSIT_ID, uint96(_undelegatedBalanceToWithdraw));
+    }
+
+    STAKER.stakeMore(_depositIdForHolder(_receiver), uint96(_senderBalanceDecrease));
 
     emit Transfer(_sender, _receiver, _value);
 

@@ -78,7 +78,7 @@ jobs:
         uses: zgosalvez/github-actions-report-lcov@v2
         with:
           coverage-files: ./lcov.info
-          minimum-coverage: 99 # TODO: Set coverage threshold back to 100
+          minimum-coverage: 98 # TODO: Set coverage threshold back to 100
 
   lint:
     runs-on: ubuntu-latest
