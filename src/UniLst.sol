@@ -35,10 +35,15 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, EIP712, Nonces
   event FeeParametersSet(uint256 oldFeeAmount, uint256 newFeeAmount, address oldFeeCollector, address newFeeCollector);
   event DepositInitialized(address indexed delegatee, IUniStaker.DepositIdentifier depositId);
 
+  struct Totals {
+    uint96 supply;
+    uint160 shares;
+  }
+
+  Totals internal totals;
+
   address public defaultDelegatee;
   IWithdrawalGate public withdrawalGate;
-  uint256 public totalSupply;
-  uint256 public totalShares;
   uint256 public payoutAmount;
   uint256 public feeAmount;
   address public feeCollector;
@@ -85,6 +90,14 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, EIP712, Nonces
     allowance[msg.sender][_spender] = _amount;
     emit Approval(msg.sender, _spender, _amount);
     return true;
+  }
+
+  function totalSupply() external view returns (uint256) {
+    return uint256(totals.supply);
+  }
+
+  function totalShares() external view returns (uint256) {
+    return uint256(totals.shares);
   }
 
   function balanceOf(address _holder) public view returns (uint256 _balance) {
@@ -169,8 +182,12 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, EIP712, Nonces
     uint256 _initialBalance = balanceOf(_account);
     uint256 _newShares = sharesForStake(_amount);
 
-    totalSupply += _amount;
-    totalShares += _newShares;
+    Totals memory _totals = totals;
+    totals = Totals({
+      supply: _totals.supply + uint96(_amount), // cast is safe because we have transferred token amount
+      shares: _totals.shares + uint160(_newShares) // sharesForStake would fail if overflowed
+    });
+
     sharesOf[_account] += _newShares;
     balanceCheckpoint[_account] += (balanceOf(_account) - _initialBalance);
     IUniStaker.DepositIdentifier _depositId = _depositIdForHolder(_account);
@@ -211,8 +228,11 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, EIP712, Nonces
     _amount = _initialBalanceOf - balanceOf(_account);
 
     // Make global state changes
-    totalShares -= _sharesDestroyed;
-    totalSupply -= _amount;
+    Totals memory _totals = totals;
+    totals = Totals({
+      supply: _totals.supply - uint96(_amount), // cast is safe because we've validated user has sufficient balance
+      shares: _totals.shares - uint160(_sharesDestroyed) // cast is safe because we've subtracted the shares from user
+    });
 
     uint256 _delegatedBalance = balanceCheckpoint[_account];
     if (_delegatedBalance > _initialBalanceOf) {
@@ -353,28 +373,27 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, EIP712, Nonces
 
   function claimAndDistributeReward(address _recipient, uint256 _minExpectedReward) external {
     uint256 _feeAmount = feeAmount;
+    Totals memory _totals = totals;
 
     // By increasing the total supply by the amount of tokens that are distributed as part of the reward, the balance
     // of every holder increases proportional to the underlying shares which they hold.
-    uint256 _newTotalSupply = totalSupply + payoutAmount;
+    uint96 _newTotalSupply = _totals.supply + uint96(payoutAmount); // payoutAmount is assumed safe
 
+    uint160 _feeShares;
     if (_feeAmount > 0) {
-      uint256 _existingShares = totalShares;
-
       // Our goal is to issue shares to the fee collector such that the new shares the fee collector receives are
       // worth `feeAmount` of `stakeToken` after the reward is distributed. This can be expressed mathematically
       // as feeAmount = (feeShares * newTotalSupply) / newTotalShares, where the newTotalShares is equal to the sum of
       // the fee shares and the total existing shares. In this equation, all the terms are known except the fee shares.
       // Solving for the fee shares yields the following calculation.
-      uint256 _feeShares = (_feeAmount * _existingShares) / (_newTotalSupply - _feeAmount);
+      _feeShares = uint160((uint256(_feeAmount) * uint256(_totals.shares)) / (_newTotalSupply - _feeAmount));
 
       // By issuing these new shares to the `feeCollector` we effectively give the it `feeAmount` of the reward by
       // slightly diluting all other LST holders.
       sharesOf[feeCollector] += _feeShares;
-      totalShares = _existingShares + _feeShares;
     }
 
-    totalSupply = _newTotalSupply;
+    totals = Totals({supply: _newTotalSupply, shares: _totals.shares + _feeShares});
 
     // Transfer stake token to the LST
     STAKE_TOKEN.transferFrom(msg.sender, address(this), payoutAmount);
@@ -419,21 +438,25 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, EIP712, Nonces
   }
 
   function sharesForStake(uint256 _amount) public view returns (uint256) {
+    Totals memory _totals = totals;
+
     // OPTIMIZE: If we force the constructor to stake some initial amount sourced from a contract that can never call
     // `unstake` we should be able to remove these 0 checks altogether.
-    if (totalSupply == 0) {
+    if (_totals.supply == 0) {
       return SHARE_SCALE_FACTOR * _amount;
     }
 
-    return (_amount * totalShares) / totalSupply;
+    return (_amount * _totals.shares) / _totals.supply;
   }
 
   function stakeForShares(uint256 _amount) public view returns (uint256) {
-    if (totalShares == 0) {
+    Totals memory _totals = totals;
+
+    if (_totals.supply == 0) {
       return 0;
     }
 
-    return (_amount * totalSupply) / totalShares;
+    return (_amount * _totals.supply) / _totals.shares;
   }
 
   function symbol() external view override returns (string memory) {
