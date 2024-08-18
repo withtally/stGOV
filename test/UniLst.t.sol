@@ -7,7 +7,6 @@ import {IERC20} from "openzeppelin/token/ERC20/IERC20.sol";
 import {IWETH9} from "src/interfaces/IWETH9.sol";
 import {IUni} from "src/interfaces/IUni.sol";
 import {IUniStaker} from "src/interfaces/IUniStaker.sol";
-import {IWithdrawalGate} from "src/interfaces/IWithdrawalGate.sol";
 import {MockWithdrawalGate} from "test/mocks/MockWithdrawalGate.sol";
 import {UnitTestBase} from "test/UnitTestBase.sol";
 import {TestHelpers} from "test/helpers/TestHelpers.sol";
@@ -3209,5 +3208,60 @@ contract DOMAIN_SEPARATOR is UniLstTest {
 contract Nonce is UniLstTest {
   function testFuzz_InitialReturnsZeroForAllAccounts(address _account) public view {
     assertEq(lst.nonces(_account), 0);
+  }
+}
+
+contract Multicall is UniLstTest {
+  function testFuzz_CallsMultipleFunctionsInOneTransaction(
+    address _actor,
+    uint256 _stakeAmount,
+    address _delegatee,
+    address _receiver,
+    uint256 _transferAmount
+  ) public {
+    _assumeSafeHolders(_actor, _receiver);
+    _assumeSafeDelegatee(_delegatee);
+    _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
+    _mintStakeToken(_actor, _stakeAmount);
+    _transferAmount = bound(_transferAmount, 0, _stakeAmount);
+
+    vm.prank(_actor);
+    stakeToken.approve(address(lst), _stakeAmount);
+
+    // TODO: if API around fetchOrInitializeDepositForDelegatee changes, remove depositId workaround
+    uint256 _depositId = 2;
+    bytes[] memory _calls = new bytes[](4);
+    _calls[0] = abi.encodeWithSelector(lst.stake.selector, _stakeAmount);
+    _calls[1] = abi.encodeWithSelector(lst.fetchOrInitializeDepositForDelegatee.selector, _delegatee);
+    _calls[2] = abi.encodeWithSelector(lst.updateDeposit.selector, _depositId);
+    _calls[3] = abi.encodeWithSelector(lst.transfer.selector, _receiver, _transferAmount);
+
+    vm.prank(_actor);
+    lst.multicall(_calls);
+
+    assertApproxEqAbs(_stakeAmount - _transferAmount, lst.balanceOf(_actor), ACCEPTABLE_DELTA);
+    assertLe(_stakeAmount - _transferAmount, lst.balanceOf(_actor));
+    assertApproxEqAbs(lst.balanceOf(_receiver), _transferAmount, ACCEPTABLE_DELTA);
+    assertLe(lst.balanceOf(_receiver), _transferAmount);
+    assertApproxEqAbs(lst.balanceOf(_actor), stakeToken.getCurrentVotes(_delegatee), ACCEPTABLE_DELTA);
+    assertLe(lst.balanceOf(_actor), stakeToken.getCurrentVotes(_delegatee));
+  }
+
+  function testFuzz_RevertIf_AFunctionCallFails(address _actor) public {
+    vm.assume(_actor != lstOwner);
+    _assumeSafeHolder(_actor);
+    uint256 _stakeAmount = 1000e18;
+    _mintStakeToken(_actor, _stakeAmount);
+
+    vm.prank(_actor);
+    stakeToken.approve(address(lst), _stakeAmount);
+
+    bytes[] memory _calls = new bytes[](4);
+    _calls[0] = abi.encodeWithSelector(lst.stake.selector, _stakeAmount);
+    _calls[1] = abi.encodeWithSelector(lst.setPayoutAmount.selector, 100e18);
+
+    vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, _actor));
+    vm.prank(_actor);
+    lst.multicall(_calls);
   }
 }

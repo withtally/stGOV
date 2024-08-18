@@ -12,8 +12,9 @@ import {Ownable} from "openzeppelin/access/Ownable.sol";
 import {EIP712} from "openzeppelin/utils/cryptography/EIP712.sol";
 import {SignatureChecker} from "openzeppelin/utils/cryptography/SignatureChecker.sol";
 import {Nonces} from "openzeppelin/utils/Nonces.sol";
+import {Multicall} from "openzeppelin/utils/Multicall.sol";
 
-contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, EIP712, Nonces {
+contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP712, Nonces {
   error UniLst__StakeTokenOperationFailed();
   error UniLst__InsufficientBalance();
   error UniLst__InsufficientRewards();

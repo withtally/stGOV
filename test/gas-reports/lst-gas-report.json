@@ -1,98 +1,98 @@
 {
-  "generatedAt": 1725459445,
+  "generatedAt": 1725461796,
   "reportName:": "lstGasReport",
   "results": [
     {
       "scenarioName": "Initialize a brand new delegate",
-      "gasUsed": 289493
+      "gasUsed": 289471
     },
     {
       "scenarioName": "Initialize a delegate that exists on UniStaker",
-      "gasUsed": 173667
+      "gasUsed": 173645
     },
     {
       "scenarioName": "First Stake to Default Delegate",
-      "gasUsed": 169174
+      "gasUsed": 169152
     },
     {
       "scenarioName": "Second Stake To Default Delegatee",
-      "gasUsed": 135416
+      "gasUsed": 135394
     },
     {
       "scenarioName": "First Stake After Updating To A New Delegatee",
-      "gasUsed": 223153
+      "gasUsed": 223131
     },
     {
       "scenarioName": "First Stake After Updating To An Existing LST Delegatee",
-      "gasUsed": 169170
+      "gasUsed": 169148
     },
     {
       "scenarioName": "Second Stake To A Custom Delegatee",
-      "gasUsed": 135412
+      "gasUsed": 135390
     },
     {
       "scenarioName": "Sender With Default Delegatee Transfers Balance To New Receiver With Default Delegatee",
-      "gasUsed": 169645
+      "gasUsed": 169681
     },
     {
       "scenarioName": "Sender With Default Delegatee Transfers Partial Balance To New Receiver With Default Delegatee",
-      "gasUsed": 175798
+      "gasUsed": 175843
     },
     {
       "scenarioName": "Sender With Default Delegatee Transfers Balance To Existing Receiver With Default Delegatee",
-      "gasUsed": 142639
+      "gasUsed": 142675
     },
     {
       "scenarioName": "Sender With Default Delegatee Transfers Partial Balance To Existing Receiver With Default Delegatee",
-      "gasUsed": 142992
+      "gasUsed": 143028
     },
     {
       "scenarioName": "Sender With Custom Delegatee Transfers Balance To New Receiver With Default Delegatee",
-      "gasUsed": 193752
+      "gasUsed": 193797
     },
     {
       "scenarioName": "Sender With Custom Delegatee Transfers Partial Balance To New Receiver With Default Delegatee",
-      "gasUsed": 208594
+      "gasUsed": 208639
     },
     {
       "scenarioName": "Sender With Custom Delegatee Transfers Balance To Existing Receiver With Default Delegatee",
-      "gasUsed": 162156
+      "gasUsed": 162192
     },
     {
       "scenarioName": "Sender With Custom Delegatee Transfers Partial Balance To Existing Receiver With Default Delegatee",
-      "gasUsed": 174836
+      "gasUsed": 174881
     },
     {
       "scenarioName": "Sender With Custom Delegatee Transfers Balance To New Receiver With Same Delegatee",
-      "gasUsed": 169639
+      "gasUsed": 169675
     },
     {
       "scenarioName": "Sender With Custom Delegatee Transfers Partial Balance To New Receiver With Same Delegatee",
-      "gasUsed": 175790
+      "gasUsed": 175835
     },
     {
       "scenarioName": "Sender With Custom Delegatee Transfers Balance To Existing Receiver With Same Delegatee",
-      "gasUsed": 142632
+      "gasUsed": 142668
     },
     {
       "scenarioName": "Sender With Custom Delegatee Transfers Partial Balance To Existing Receiver With Same Delegatee",
-      "gasUsed": 142986
+      "gasUsed": 143022
     },
     {
       "scenarioName": "Sender With Custom Delegatee Transfers Balance To New Receiver With Custom Delegatee",
-      "gasUsed": 247731
+      "gasUsed": 247776
     },
     {
       "scenarioName": "Sender With Custom Delegatee Transfers Partial Balance To New Receiver With Custom Delegatee",
-      "gasUsed": 262573
+      "gasUsed": 262618
     },
     {
       "scenarioName": "Sender With Custom Delegatee Transfers Balance To Existing Receiver With Custom Delegatee",
-      "gasUsed": 162152
+      "gasUsed": 162188
     },
     {
       "scenarioName": "Sender With Custom Delegatee Transfers Partial Balance To Existing Receiver With Custom Delegatee",
-      "gasUsed": 174832
+      "gasUsed": 174877
     },
     {
       "scenarioName": "Sender With Default Delegatee Approves Caller To Transfer Balance To a New Receiver With Default Delegatee",
