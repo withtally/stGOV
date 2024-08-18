@@ -91,7 +91,7 @@ contract WithdrawGate is Ownable, EIP712 {
 
     LST = _lst;
     WITHDRAWAL_TOKEN = address(UniLst(_lst).STAKE_TOKEN());
-    delay = _initialDelay;
+    _setDelay(_initialDelay);
     nextWithdrawalId = 1;
   }
 
@@ -101,6 +101,13 @@ contract WithdrawGate is Ownable, EIP712 {
   /// @dev Reverts if the new delay exceeds DELAY_MAX.
   function setDelay(uint256 _newDelay) external {
     _checkOwner();
+    _setDelay(_newDelay);
+  }
+
+  /// @notice Internal function to set the delay period.
+  /// @param _newDelay The new delay period to set.
+  /// @dev Reverts if the new delay exceeds DELAY_MAX.
+  function _setDelay(uint256 _newDelay) internal {
     if (_newDelay > DELAY_MAX) {
       revert WithdrawGate__InvalidDelay();
     }
