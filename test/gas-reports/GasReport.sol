@@ -20,6 +20,11 @@ abstract contract GasReport is Test {
   // The name of the scenario being run at a given time.
   string currentScenarioName;
 
+  struct Result {
+    string scenarioName;
+    uint256 gasUsed;
+  }
+
   // Array of strings of the scenario name concatenated with the gas executing it.
   string[] results;
 
@@ -56,11 +61,17 @@ abstract contract GasReport is Test {
     return makeAddr(string.concat(_name, " in '", currentScenarioName, "'"));
   }
 
-  // Call this during an active scenario to record the
+  // Call this during an active scenario to record the result.
   function recordScenarioGasResult() public activeScenario incompleteScenario {
     VmSafe.Gas memory _gas = vm.lastCallGas();
-    results.push(string.concat(currentScenarioName, ": ", uint256(_gas.gasTotalUsed).toString()));
+    results.push(_serialize(Result(currentScenarioName, uint256(_gas.gasTotalUsed))));
     isCompletedScenario[currentScenarioName] = true;
+  }
+
+  function _serialize(Result memory _result) internal pure returns (string memory) {
+    return string.concat(
+      "{ \"scenarioName\": \"", _result.scenarioName, "\", \"gasUsed\": ", _result.gasUsed.toString(), " }"
+    );
   }
 
   // Writes the scenarios record to a report json file based on the report name.
