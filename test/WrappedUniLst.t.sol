@@ -71,6 +71,14 @@ contract Constructor is WrappedUniLstTest {
     );
     vm.mockCall(_lst, abi.encodeWithSelector(UniLst.updateDeposit.selector, _depositId), "");
 
+    // need wrappedLstAddress in order to mock the following call
+    address _expectedWrappedLstAddress = vm.computeCreateAddress(address(this), vm.getNonce(address(this)));
+    vm.mockCall(
+      _lst,
+      abi.encodeWithSelector(UniLst.delegateeForHolder.selector, _expectedWrappedLstAddress),
+      abi.encode(address(0)) // in actuality this would return the defaultDelegatee, but we don't need to mock that
+    );
+
     WrappedUniLst _wrappedLst = new WrappedUniLst(_name, _symbol, UniLst(_lst), _delegatee, _owner);
 
     assertEq(_wrappedLst.name(), _name);

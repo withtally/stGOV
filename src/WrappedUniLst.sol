@@ -22,8 +22,7 @@ contract WrappedUniLst is ERC20Permit, Ownable {
     Ownable(_initialOwner)
   {
     LST = _lst;
-    depositId = _lst.fetchOrInitializeDepositForDelegatee(_delegatee);
-    _lst.updateDeposit(depositId);
+    _setDelegatee(_delegatee);
   }
 
   function delegatee() public view returns (address) {
@@ -55,6 +54,10 @@ contract WrappedUniLst is ERC20Permit, Ownable {
 
   function setDelegatee(address _newDelegatee) public {
     _checkOwner();
+    _setDelegatee(_newDelegatee);
+  }
+
+  function _setDelegatee(address _newDelegatee) internal {
     emit DelegateeSet(delegatee(), _newDelegatee);
     depositId = LST.fetchOrInitializeDepositForDelegatee(_newDelegatee);
     LST.updateDeposit(depositId);
