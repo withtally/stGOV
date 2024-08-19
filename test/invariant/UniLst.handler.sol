@@ -61,6 +61,7 @@ contract UniLstHandler is CommonBase, StdCheats, StdUtils {
 
   function stake(address _depositor, uint96 _amount) public countCall("stake") {
     vm.assume(_depositor != address(0));
+    vm.assume(_depositor != address(lst.withdrawalGate()));
     holders.add(_depositor);
 
     _amount = uint96(bound(_amount, 0, 100_000_000e18));
