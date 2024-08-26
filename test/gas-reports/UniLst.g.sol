@@ -3,6 +3,7 @@ pragma solidity 0.8.26;
 
 import {GasReport} from "test/gas-reports/GasReport.sol";
 import {UniLst} from "src/UniLst.sol";
+import {WithdrawGate} from "src/WithdrawGate.sol";
 import {IWETH9} from "src/interfaces/IWETH9.sol";
 import {IUni} from "src/interfaces/IUni.sol";
 import {IUniStaker} from "src/interfaces/IUniStaker.sol";
@@ -10,11 +11,14 @@ import {UnitTestBase} from "test/UnitTestBase.sol";
 import {UniLstTest} from "test/UniLst.t.sol";
 
 contract UniLstGasReport is UniLstTest, GasReport {
+  WithdrawGate withdrawGate;
+
   function setUp() public override {
     super.setUp();
 
-    // TODO: When the real withdrawal gate is completed, deploy it and update it on the lst here instead of using the
-    // mock version, which is appropriate for unit tests, but will not produce accurate gas estimates.
+    withdrawGate = new WithdrawGate(lstOwner, address(lst), 24 hours);
+    vm.prank(lstOwner);
+    lst.setWithdrawalGate(address(withdrawGate));
   }
 
   function REPORT_NAME() public pure override returns (string memory) {
@@ -25,8 +29,9 @@ contract UniLstGasReport is UniLstTest, GasReport {
     // Touch LST global variable slots by doing an initial deposit to the default delegatee.
     // This ensures all reported numbers, including the first one, are representative of what
     // a "real" use is likely to experience when interacting with the LST.
-    // TODO: Investigate; why does moving this to setup change the results of the first scenario?
     _mintAndStake(makeAddr("Slot Warmer"), 100e18);
+    // Give the Withdraw Gate some tokens so it's balance slot is not empty for the first withdrawal.
+    _mintStakeToken(address(withdrawGate), 100e18);
   }
 
   function runScenarios() public override {

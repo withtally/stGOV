@@ -85,9 +85,9 @@ contract UniLstHandler is CommonBase, StdCheats, StdUtils {
     _amount = bound(_amount, 0, _holderBalance);
 
     vm.startPrank(_holder);
-    uint256 _balanceBefore = stakeToken.balanceOf(_holder);
+    uint256 _balanceBefore = stakeToken.balanceOf(address(lst.withdrawalGate()));
     lst.unstake(_amount);
-    uint256 _unstakedActual = stakeToken.balanceOf(_holder) - _balanceBefore;
+    uint256 _unstakedActual = stakeToken.balanceOf(address(lst.withdrawalGate())) - _balanceBefore;
     vm.stopPrank();
     ghost_stakeUnstaked += _unstakedActual;
   }

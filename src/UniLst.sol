@@ -117,20 +117,24 @@ contract UniLst is IERC20, Ownable, EIP712, Nonces {
     // OPTIMIZE: We could skip all STAKER operations if balance is 0, but we still need to make sure the deposit
     // chosen belongs to the LST.
     uint256 _balanceOf = balanceOf(msg.sender);
-    uint256 _balanceCheckpoint = balanceCheckpoint[msg.sender];
+    uint256 _delegatedBalance = balanceCheckpoint[msg.sender];
+    if (_delegatedBalance > _balanceOf) {
+      _delegatedBalance = _balanceOf;
+    }
     // This is the number of tokens in the default pool that the msg.sender has claim to
-    uint256 _checkpointDiff = _balanceOf - balanceCheckpoint[msg.sender];
+    uint256 _checkpointDiff = _balanceOf - _delegatedBalance;
+
+    // Make internal state updates.
+    balanceCheckpoint[msg.sender] = _balanceOf;
+    storedDepositIdForHolder[msg.sender] = _newDepositId;
 
     // OPTIMIZE: if the new or the old delegatee is the default, we can avoid one unneeded withdraw
     if (_checkpointDiff > 0) {
-      balanceCheckpoint[msg.sender] = _balanceOf;
       STAKER.withdraw(DEFAULT_DEPOSIT_ID, uint96(_checkpointDiff));
     }
 
-    STAKER.withdraw(_oldDepositId, uint96(_balanceCheckpoint));
+    STAKER.withdraw(_oldDepositId, uint96(_delegatedBalance));
     STAKER.stakeMore(_newDepositId, uint96(_balanceOf));
-
-    storedDepositIdForHolder[msg.sender] = _newDepositId;
   }
 
   function stake(uint256 _amount) public {
@@ -173,13 +177,22 @@ contract UniLst is IERC20, Ownable, EIP712, Nonces {
     }
 
     // Decreases the holder's balance by the amount being withdrawn
-    sharesOf[_account] -= sharesForStake(_amount);
+    uint256 _sharesDestroyed = sharesForStake(_amount);
+    sharesOf[_account] -= _sharesDestroyed;
+
     // By re-calculating amount as the difference between the initial and current balance, we ensure the
     // amount unstaked is reflective of the actual change in balance. This means the amount unstaked might end up being
     // less than the user requested by a small amount.
     _amount = _initialBalanceOf - balanceOf(_account);
 
+    // Make global state changes
+    totalShares -= _sharesDestroyed;
+    totalSupply -= _amount;
+
     uint256 _delegatedBalance = balanceCheckpoint[_account];
+    if (_delegatedBalance > _initialBalanceOf) {
+      _delegatedBalance = _initialBalanceOf;
+    }
     uint256 _undelegatedBalance = _initialBalanceOf - _delegatedBalance;
     uint256 _undelegatedBalanceToWithdraw;
 
@@ -373,6 +386,9 @@ contract UniLst is IERC20, Ownable, EIP712, Nonces {
     uint256 _senderInitBalance = balanceOf(_sender);
     uint256 _receiverInitBalance = balanceOf(_receiver);
     uint256 _senderDelegatedBalance = balanceCheckpoint[_sender];
+    if (_senderDelegatedBalance > _senderInitBalance) {
+      _senderDelegatedBalance = _senderInitBalance;
+    }
     uint256 _senderUndelegatedBalance = _senderInitBalance - _senderDelegatedBalance;
 
     // Without this check, the user might pass in a `_value` that is slightly greater than their

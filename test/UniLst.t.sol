@@ -587,6 +587,56 @@ contract UpdateDeposit is UniLstTest {
     );
     _updateDeposit(_holder, IUniStaker.DepositIdentifier.wrap(0));
   }
+
+  function testFuzz_UsesTheLiveBalanceForAUserIfTheirBalanceBecomesLowerThanTheirBalanceCheckpointDueToTruncation(
+    address _holder1,
+    address _holder2,
+    address _delegatee1,
+    address _delegatee2,
+    address _delegatee3
+  ) public {
+    _assumeSafeHolders(_holder1, _holder2);
+    _assumeSafeDelegatees(_delegatee1, _delegatee2);
+    _assumeSafeDelegatee(_delegatee3);
+    vm.assume(_delegatee1 != _delegatee3 && _delegatee2 != _delegatee3);
+    // These specific values were discovered via fuzzing, and are tuned to represent a specific case that can occur
+    // where one user's live balance drops below their last delegated balance checkpoint due to the actions of
+    // another user.
+    uint256 _firstStakeAmount = 100_000_001;
+    uint256 _rewardAmount = 100_000_003;
+    uint256 _secondStakeAmount = 100_000_002;
+    uint256 _firstUnstakeAmount = 138_542_415;
+
+    // A holder stakes some tokens.
+    _mintUpdateDelegateeAndStake(_holder1, _firstStakeAmount, _delegatee1);
+    // A reward is distributed.
+    _distributeReward(_rewardAmount);
+    // Another user stakes some tokens, creating a delegated balance checkpoint.
+    _mintUpdateDelegateeAndStake(_holder2, _secondStakeAmount, _delegatee2);
+    // The first user unstakes, causing the second user's balance to drop slightly due to truncation.
+    _unstake(_holder1, _firstUnstakeAmount);
+    // The second user's live balance is now below the balance checkpoint that was created when they staked. We
+    // validate this with a require statement rather than an assert, because it's an assumption of the specific test
+    // values we've chosen, not a property of the system we are asserting.
+    require(
+      lst.balanceOf(_holder2) < lst.balanceCheckpoint(_holder2),
+      "The assumption of this test is that the numbers chosen produce a case where the user's"
+      "balance decreases below their checkpoint and this has been violated."
+    );
+    // Now the second user, whose balance is below their delegated balance checkpoint, updates their deposit.
+    IUniStaker.DepositIdentifier _newDepositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee3);
+    _updateDeposit(_holder2, _newDepositId);
+
+    // The second user's first delegatee should still have one stray wei. This indicates the extra
+    // wei has been left in their balance, as we intend.
+    assertEq(stakeToken.getCurrentVotes(_delegatee2), 1);
+    // Meanwhile, the second user's new delegatee is equal to their current balance, which dropped due to truncation.
+    assertEq(stakeToken.getCurrentVotes(_delegatee3), lst.balanceOf(_holder2));
+    assertEq(lst.balanceOf(_holder2), _secondStakeAmount - 1);
+    // Finally, we ensure the second user's new balance checkpoint, created when they unstaked, matches their updated
+    // live balance.
+    assertEq(lst.balanceOf(_holder2), lst.balanceCheckpoint(_holder2));
+  }
 }
 
 contract Stake is UniLstTest {
@@ -951,6 +1001,62 @@ contract Unstake is UniLstTest {
     assertEq(lst.balanceCheckpoint(_holder), lst.balanceOf(_holder));
   }
 
+  function testFuzz_SubtractsTheRealAmountUnstakedFromTheTotalSupply(
+    uint256 _stakeAmount,
+    address _holder,
+    address _delegatee,
+    uint256 _unstakeAmount,
+    uint256 _rewardAmount
+  ) public {
+    _assumeSafeHolder(_holder);
+    _assumeSafeDelegatee(_delegatee);
+    _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
+    _rewardAmount = _boundToReasonableStakeTokenAmount(_rewardAmount);
+    _unstakeAmount = bound(_unstakeAmount, 0, _stakeAmount + _rewardAmount);
+
+    _mintUpdateDelegateeAndStake(_holder, _stakeAmount, _delegatee);
+    _distributeReward(_rewardAmount);
+
+    // Record the holder's balance and the total supply before unstaking
+    uint256 _initialBalance = lst.balanceOf(_holder);
+    uint256 _initialTotalSupply = lst.totalSupply();
+    // Perform the unstaking
+    _unstake(_holder, _unstakeAmount);
+
+    uint256 _balanceDiff = _initialBalance - lst.balanceOf(_holder);
+    uint256 _totalSupplyDiff = _initialTotalSupply - lst.totalSupply();
+
+    assertEq(_totalSupplyDiff, _balanceDiff);
+  }
+
+  function testFuzz_SubtractsTheEquivalentSharesForTheAmountFromTheTotalShares(
+    uint256 _stakeAmount,
+    address _holder,
+    address _delegatee,
+    uint256 _unstakeAmount,
+    uint256 _rewardAmount
+  ) public {
+    _assumeSafeHolder(_holder);
+    _assumeSafeDelegatee(_delegatee);
+    _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
+    _rewardAmount = _boundToReasonableStakeTokenAmount(_rewardAmount);
+    _unstakeAmount = bound(_unstakeAmount, 0, _stakeAmount + _rewardAmount);
+
+    _mintUpdateDelegateeAndStake(_holder, _stakeAmount, _delegatee);
+    _distributeReward(_rewardAmount);
+
+    // Record the holders shares and the total shares before unstaking
+    uint256 _initialShares = lst.sharesOf(_holder);
+    uint256 _initialTotalShares = lst.totalShares();
+    // Perform the unstaking
+    _unstake(_holder, _unstakeAmount);
+
+    uint256 _sharesDiff = _initialShares - lst.sharesOf(_holder);
+    uint256 _totalSharesDiff = _initialTotalShares - lst.totalShares();
+
+    assertEq(_totalSharesDiff, _sharesDiff);
+  }
+
   function testFuzz_RevertIf_UnstakeAmountExceedsBalance(
     uint256 _stakeAmount,
     address _holder1,
@@ -969,6 +1075,59 @@ contract Unstake is UniLstTest {
     vm.prank(_holder1);
     vm.expectRevert(UniLst.UniLst__InsufficientBalance.selector);
     lst.unstake(_stakeAmount + 1);
+  }
+
+  function testFuzz_UsesTheLiveBalanceForAUserIfTheirBalanceBecomesLowerThanTheirBalanceCheckpointDueToTruncation(
+    address _holder1,
+    address _holder2,
+    address _delegatee1,
+    address _delegatee2,
+    uint256 _secondUnstakeAmount
+  ) public {
+    _assumeSafeHolders(_holder1, _holder2);
+    _assumeSafeDelegatees(_delegatee1, _delegatee2);
+    // These specific values were discovered via fuzzing, and are tuned to represent a specific case that can occur
+    // where one user's live balance drops below their last delegated balance checkpoint due to the actions of
+    // another user.
+    uint256 _firstStakeAmount = 100_000_001;
+    uint256 _rewardAmount = 100_000_003;
+    uint256 _secondStakeAmount = 100_000_002;
+    uint256 _firstUnstakeAmount = 138_542_415;
+    _secondUnstakeAmount = bound(_secondUnstakeAmount, 2, _secondStakeAmount - 1);
+
+    // A holder stakes some tokens.
+    _mintUpdateDelegateeAndStake(_holder1, _firstStakeAmount, _delegatee1);
+    // A reward is distributed.
+    _distributeReward(_rewardAmount);
+    // Another user stakes some tokens, creating a delegated balance checkpoint.
+    _mintUpdateDelegateeAndStake(_holder2, _secondStakeAmount, _delegatee2);
+    // The first user unstakes, causing the second user's balance to drop slightly due to truncation.
+    _unstake(_holder1, _firstUnstakeAmount);
+    uint256 _interimGateBalance = stakeToken.balanceOf(address(mockWithdrawalGate));
+    // The second user's live balance is now below the balance checkpoint that was created when they staked. We
+    // validate this with a require statement rather than an assert, because it's an assumption of the specific test
+    // values we've chosen, not a property of the system we are asserting.
+    require(
+      lst.balanceOf(_holder2) < lst.balanceCheckpoint(_holder2),
+      "The assumption of this test is that the numbers chosen produce a case where the user's"
+      "balance decreases below their checkpoint and this has been violated."
+    );
+    // Now the second user, whose balance is below their delegated balance checkpoint, unstakes.
+    _unstake(_holder2, _secondUnstakeAmount);
+    uint256 _finalGateBalance = stakeToken.balanceOf(address(mockWithdrawalGate));
+    // Tha actual amount unstaked by the second user (as opposed to the amount they requested) is calculated as the
+    // change in the withdrawal gate's balance.
+    uint256 _amountUnstaked = _finalGateBalance - _interimGateBalance;
+
+    // The second user's delegatee should still have all that user's remaining vote weight. This indicates the extra
+    // wei has been left in their balance, as we intend.
+    assertEq(stakeToken.getCurrentVotes(_delegatee2), _secondStakeAmount - _amountUnstaked);
+    // Meanwhile, the second user's balance has dropped one wei lower than the actual tokens in the balance in their
+    // actual deposit.
+    assertEq(lst.balanceOf(_holder2), _secondStakeAmount - _amountUnstaked - 1);
+    // Finally, we ensure the second user's new balance checkpoint, created when they unstaked, matches their updated
+    // live balance.
+    assertEq(lst.balanceOf(_holder2), lst.balanceCheckpoint(_holder2));
   }
 }
 
@@ -2044,6 +2203,67 @@ contract Transfer is UniLstTest {
     vm.prank(_sender);
     vm.expectRevert(UniLst.UniLst__InsufficientBalance.selector);
     lst.transfer(_receiver, _sendAmount);
+  }
+
+  function testFuzz_UsesTheLiveBalanceForAUserIfTheirBalanceBecomesLowerThanTheirBalanceCheckpointDueToTruncation(
+    address _holder1,
+    address _holder2,
+    address _receiver,
+    address _delegatee1,
+    address _delegatee2,
+    address _receiverDelegatee,
+    uint256 _transferAmount
+  ) public {
+    _assumeSafeHolders(_holder1, _holder2);
+    _assumeSafeHolder(_receiver);
+    vm.assume(_holder1 != _receiver && _holder2 != _receiver);
+    _assumeSafeDelegatees(_delegatee1, _delegatee2);
+    _assumeSafeDelegatee(_receiverDelegatee);
+    vm.assume(_delegatee1 != _receiverDelegatee && _delegatee2 != _receiverDelegatee);
+    // These specific values were discovered via fuzzing, and are tuned to represent a specific case that can occur
+    // where one user's live balance drops below their last delegated balance checkpoint due to the actions of
+    // another user.
+    uint256 _firstStakeAmount = 100_000_001;
+    uint256 _rewardAmount = 100_000_003;
+    uint256 _secondStakeAmount = 100_000_002;
+    uint256 _firstUnstakeAmount = 138_542_415;
+    _transferAmount = bound(_transferAmount, 2, _secondStakeAmount - 1);
+    _updateDelegatee(_receiver, _receiverDelegatee);
+
+    // A holder stakes some tokens.
+    _mintUpdateDelegateeAndStake(_holder1, _firstStakeAmount, _delegatee1);
+    // A reward is distributed.
+    _distributeReward(_rewardAmount);
+    // Another user stakes some tokens, creating a delegated balance checkpoint.
+    _mintUpdateDelegateeAndStake(_holder2, _secondStakeAmount, _delegatee2);
+    // The first user unstakes, causing the second user's balance to drop slightly due to truncation.
+    _unstake(_holder1, _firstUnstakeAmount);
+    // The second user's live balance is now below the balance checkpoint that was created when they staked. We
+    // validate this with a require statement rather than an assert, because it's an assumption of the specific test
+    // values we've chosen, not a property of the system we are asserting.
+    require(
+      lst.balanceOf(_holder2) < lst.balanceCheckpoint(_holder2),
+      "The assumption of this test is that the numbers chosen produce a case where the user's"
+      "balance decreases below their checkpoint and this has been violated."
+    );
+    uint256 _senderPreTransferBalance = lst.balanceOf(_holder2);
+    // Now the second user, whose balance is below their delegated balance checkpoint, transfers some tokens.
+    vm.prank(_holder2);
+    lst.transfer(_receiver, _transferAmount);
+    // The actual amount of tokens moved is equal to the decrease in the sender's balance, which may not be the exact
+    // amount they requested to send.
+    uint256 _senderBalanceDecrease = _senderPreTransferBalance - lst.balanceOf(_holder2);
+
+    // The sender's delegatee should still have whatever is left of the initial amount staked by the sender.
+    // This indicates the extra wei has been left in their balance, as we intend.
+    assertEq(stakeToken.getCurrentVotes(_delegatee2), _secondStakeAmount - _senderBalanceDecrease);
+    // Meanwhile, the sender's balance is one less than this value due to the truncation
+    assertEq(lst.balanceOf(_holder2), _secondStakeAmount - _senderBalanceDecrease - 1);
+    // The receiver's delegatee has the voting weight of the tokens that have been transferred to him.
+    assertEq(stakeToken.getCurrentVotes(_receiverDelegatee), _senderBalanceDecrease);
+    // Finally, we ensure the second user's new balance checkpoint, created when they transferred, matches their
+    // updated live balance.
+    assertEq(lst.balanceOf(_holder2), lst.balanceCheckpoint(_holder2));
   }
 }
 

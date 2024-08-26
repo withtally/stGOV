@@ -82,7 +82,12 @@ contract UniStakerInvariants is Test, UnitTestBase {
     assertEq(_totalSupply, _totalStaked + _totalRewardsDistributed - _totalUnstaked);
   }
 
-  /// @notice A holder's delegated `balanceCheckpoint` is always less than or equal to their balance.
+  /// @notice A holder's delegated `balanceCheckpoint` is always less than or equal to their balance + 1 wei.
+  /// @dev It seems theoretically possible that the errors could accrue such that the difference is greater than 1 wei,
+  /// however we have never observed it in practice. Either we're missing a reason why it's impossible, or it's
+  /// unlikely to hit, or our invariants are constructed in such a way to accidentally never hit such a case. We leave
+  /// this test in place to see if we will ever stumble upon such a case. The system is designed to be robust to such
+  /// case regardless.
   function invariant_holderBalanceCheckpointLessThanOrEqualToBalance() public {
     handler.forEachHolder(this.assertHolderBalanceCheckpoint);
   }
@@ -99,6 +104,6 @@ contract UniStakerInvariants is Test, UnitTestBase {
   }
 
   function assertHolderBalanceCheckpoint(address holder) external view {
-    assertLe(lst.balanceCheckpoint(holder), lst.balanceOf(holder));
+    assertLe(lst.balanceCheckpoint(holder), lst.balanceOf(holder) + 1);
   }
 }
