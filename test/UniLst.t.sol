@@ -2265,6 +2265,74 @@ contract Transfer is UniLstTest {
     // updated live balance.
     assertEq(lst.balanceOf(_holder2), lst.balanceCheckpoint(_holder2));
   }
+
+  function test_ShavesTheSendersSharesIfTruncationWouldFavorTheSender() public {
+    uint256[2] memory _stakeAmounts;
+    uint256[2] memory _rewardAmounts;
+    uint256[2] memory _firstTransferAmounts;
+    uint256[2] memory _secondTransferAmounts;
+
+    _stakeAmounts[0] = 1_000_000_000_000_000_001;
+    _rewardAmounts[0] = 999_999_999_999_999_999;
+    _firstTransferAmounts[0] = 1_999_900_000_000_001_441;
+    _secondTransferAmounts[0] = 21_155;
+
+    _stakeAmounts[1] = 100_000_000_000_000;
+    _rewardAmounts[1] = 100_000_000_000_002;
+    _firstTransferAmounts[1] = 100_000_000_000_003;
+    _secondTransferAmounts[1] = 2;
+
+    // Remember chain state before executing any tests.
+    uint256 _snapshotId = vm.snapshot();
+
+    for (uint256 _index; _index < _stakeAmounts.length; _index++) {
+      _executeSenderShaveTest(
+        _stakeAmounts[_index], _rewardAmounts[_index], _firstTransferAmounts[_index], _secondTransferAmounts[_index]
+      );
+      // Reset the chain state after executing last test.
+      vm.revertTo(_snapshotId);
+    }
+  }
+
+  function _executeSenderShaveTest(
+    uint256 _stakeAmount,
+    uint256 _rewardAmount,
+    uint256 _firstTransferAmount,
+    uint256 _secondTransferAmount
+  ) public {
+    address _holder1 = makeAddr("Holder 1");
+    address _delegatee1 = makeAddr("Delegatee 1");
+    address _holder2 = makeAddr("Holder 2");
+    address _delegatee2 = makeAddr("Delegatee 2");
+
+    // First holder stakes.
+    _mintUpdateDelegateeAndStake(_holder1, _stakeAmount, _delegatee1);
+    // A reward is distributed.
+    _distributeReward(_rewardAmount);
+    // Second holder sets a custom delegatee.
+    _updateDelegatee(_holder2, _delegatee2);
+    // First holder transfers to the second holder.
+    vm.prank(_holder1);
+    lst.transfer(_holder2, _firstTransferAmount);
+
+    // We record balances at this point
+    uint256 _holder1InitBalance = lst.balanceOf(_holder1);
+    uint256 _holder2InitBalance = lst.balanceOf(_holder2);
+
+    // Second holder transfer some back to the first holder. Because of the specific values we've set up, the transfer
+    // method must shave the shares of the sender to prevent the receiver's balance from increasing by less than the
+    // the sender's balance decreases.
+    vm.prank(_holder2);
+    lst.transfer(_holder1, _secondTransferAmount);
+
+    assertEq(lst.balanceOf(_holder1), _holder1InitBalance + _secondTransferAmount);
+    assertEq(lst.balanceOf(_holder2), _holder2InitBalance - _secondTransferAmount);
+    assertEq(lst.balanceOf(_holder1), stakeToken.getCurrentVotes(_delegatee1));
+    // Because this holder's shares were shaved as part of the transfer, they may have lost control of 1 wei of
+    // of their stake token, which is now "stuck" in the Staker deposit assigned to their delegatee. This is ok, and
+    // means the system is performing truncations in a way that ensures each deposit will remain solvent.
+    assertLteWithinOneUnit(lst.balanceOf(_holder2), stakeToken.getCurrentVotes(_delegatee2));
+  }
 }
 
 contract ClaimAndDistributeReward is UniLstTest {

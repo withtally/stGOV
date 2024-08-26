@@ -406,21 +406,25 @@ contract UniLst is IERC20, Ownable, EIP712, Nonces {
     sharesOf[_sender] -= _shares;
     sharesOf[_receiver] += _shares;
 
-    // The sender's balance may actually decrease by more than the receiver's balance increases. Therefore, we base the
-    // calculation of how much to move between deposits on the greater number, i.e. the sender's decrease, however when
-    // we update the receiver's balance checkpoint, we use the number representing the actual balance change. As a
-    // result, extra wei may be lost, in that it is no longer controlled by either the sender or the receiver, but is
-    // instead stuck permanently in the receiver's deposit.
+    // Due to truncation, it is possible for the amount which the sender's balance decreases to be different from the
+    // amount by which the receiver's balance increases.
     uint256 _receiverBalanceIncrease = balanceOf(_receiver) - _receiverInitBalance;
     uint256 _senderBalanceDecrease = _senderInitBalance - balanceOf(_sender);
 
-    // TODO: This is a critical assumption. If it is not correct, we want to catch it. So we can leave this statement
-    // during the development cycle, so that a fuzz test or gas scenario might catch it earlier, and remove it later
-    // once we have proper invariant testing in place.
-    if (_receiverBalanceIncrease > _senderBalanceDecrease) {
-      revert("BALANCE INCREASE GREATER THAN SENDER DECREASE");
+    // To protect the solvency of each underlying Staker deposit, we want to ensure that the sender's balance decreases
+    // by at least as much as the receiver's increases. Therefore, if this is not the case, we shave shares from the
+    // sender until such point as it is.
+    while (_receiverBalanceIncrease > _senderBalanceDecrease) {
+      sharesOf[_sender] -= 1;
+      _senderBalanceDecrease = _senderInitBalance - balanceOf(_sender);
     }
 
+    // Knowing the sender's balance has decreased by at least as much as the receiver's has increased, we now base the
+    // calculation of how much to move between deposits on the greater number, i.e. the sender's decrease. However,
+    // when we update the receiver's balance checkpoint, we use the smaller number—the receiver's balance change.
+    // As a result, extra wei may be lost, i.e. no longer controlled by either the sender or the receiver,
+    // but are instead stuck permanently in the receiver's deposit. This is ok, as the amount lost is miniscule, but
+    // we've ensured the solvency of each underlying Staker deposit.
     balanceCheckpoint[_receiver] += _receiverBalanceIncrease;
 
     uint256 _undelegatedBalanceToWithdraw;
