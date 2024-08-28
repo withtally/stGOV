@@ -14,6 +14,7 @@ import {TestHelpers} from "test/helpers/TestHelpers.sol";
 import {Eip712Helper} from "test/helpers/Eip712Helper.sol";
 import {PercentAssertions} from "test/helpers/PercentAssertions.sol";
 import {Nonces} from "openzeppelin/utils/Nonces.sol";
+import {Vm} from "forge-std/Vm.sol";
 
 contract UniLstTest is UnitTestBase, PercentAssertions, TestHelpers, Eip712Helper {
   using stdStorage for StdStorage;
@@ -433,6 +434,16 @@ contract UpdateDeposit is UniLstTest {
     assertEq(lst.delegateeForHolder(_holder), _delegatee2);
   }
 
+  function testFuzz_EmitsDepositUpdatedEvent(address _holder, address _delegatee) public {
+    _assumeSafeHolder(_holder);
+    _assumeSafeDelegatee(_delegatee);
+    IUniStaker.DepositIdentifier _depositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+
+    vm.expectEmit();
+    emit UniLst.DepositUpdated(_holder, IUniStaker.DepositIdentifier.wrap(1), _depositId);
+    _updateDeposit(_holder, _depositId);
+  }
+
   function testFuzz_MovesVotingWeightForAHolderWhoHasNotAccruedAnyRewards(
     uint256 _amount,
     address _holder,
@@ -792,6 +803,22 @@ contract Stake is UniLstTest {
     stakeToken.approve(address(lst), _amount);
     vm.mockCall(address(stakeToken), abi.encodeWithSelector(IUni.transferFrom.selector), abi.encode(false));
     vm.expectRevert(UniLst.UniLst__StakeTokenOperationFailed.selector);
+    lst.stake(_amount);
+    vm.stopPrank();
+  }
+
+  function testFuzz_EmitsStakedEvent(uint256 _amount, address _holder) public {
+    _assumeSafeHolder(_holder);
+    _amount = _boundToReasonableStakeTokenAmount(_amount);
+
+    _mintStakeToken(_holder, _amount);
+
+    vm.startPrank(_holder);
+    stakeToken.approve(address(lst), _amount);
+
+    vm.expectEmit();
+    emit UniLst.Staked(_holder, _amount);
+
     lst.stake(_amount);
     vm.stopPrank();
   }
@@ -1170,6 +1197,21 @@ contract Unstake is UniLstTest {
     // Finally, we ensure the second user's new balance checkpoint, created when they unstaked, matches their updated
     // live balance.
     assertEq(lst.balanceOf(_holder2), lst.balanceCheckpoint(_holder2));
+  }
+
+  function testFuzz_EmitsUnstakedEvent(uint256 _stakeAmount, uint256 _unstakeAmount, address _holder) public {
+    _assumeSafeHolder(_holder);
+    _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
+    _unstakeAmount = bound(_unstakeAmount, 0, _stakeAmount);
+
+    _mintAndStake(_holder, _stakeAmount);
+
+    // Expect the event to be emitted
+    vm.expectEmit();
+    emit UniLst.Unstaked(_holder, _unstakeAmount);
+
+    vm.prank(_holder);
+    lst.unstake(_unstakeAmount);
   }
 }
 
@@ -2507,6 +2549,15 @@ contract Transfer is UniLstTest {
 }
 
 contract ClaimAndDistributeReward is UniLstTest {
+  struct RewardDistributedEventData {
+    address claimer;
+    address recipient;
+    uint256 rewardAmount;
+    uint256 payoutAmount;
+    uint256 feeAmount;
+    address feeCollector;
+  }
+
   function testFuzz_TransfersStakeTokenPayoutFromTheClaimer(
     address _claimer,
     address _recipient,
@@ -2653,6 +2704,83 @@ contract ClaimAndDistributeReward is UniLstTest {
     vm.expectRevert(UniLst.UniLst__InsufficientRewards.selector);
     lst.claimAndDistributeReward(_recipient, _minExpectedReward);
     vm.stopPrank();
+  }
+
+  function testFuzz_EmitsRewardDistributedEvent(
+    address _claimer,
+    address _recipient,
+    uint256 _rewardAmount,
+    uint256 _payoutAmount,
+    uint256 _extraBalance,
+    address _holder,
+    uint256 _stakeAmount,
+    address _feeCollector,
+    uint256 _feeAmount
+  ) public {
+    _assumeSafeHolders(_holder, _claimer);
+    _assumeSafeHolder(_feeCollector);
+    vm.assume(_feeCollector != address(0) && _feeCollector != _holder && _feeCollector != _claimer);
+    _rewardAmount = _boundToReasonableRewardTokenAmount(_rewardAmount);
+    _payoutAmount = _boundToReasonableStakeTokenAmount(_payoutAmount);
+    _extraBalance = _boundToReasonableStakeTokenAmount(_extraBalance);
+    _feeAmount = bound(_feeAmount, 1, _payoutAmount);
+    _setPayoutAmount(_payoutAmount);
+    _setFeeParameters(_feeAmount, _feeCollector);
+    _mintStakeToken(_claimer, _payoutAmount + _extraBalance);
+    _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
+    _mintAndStake(_holder, _stakeAmount);
+
+    // Puts reward token in the staker.
+    _distributeStakerReward(_rewardAmount);
+    // Approve the LST and claim the reward.
+    vm.startPrank(_claimer);
+    stakeToken.approve(address(lst), lst.payoutAmount());
+
+    // Min expected rewards parameter is one less than reward amount due to truncation.
+    vm.recordLogs();
+    lst.claimAndDistributeReward(_recipient, _rewardAmount - 1);
+    vm.stopPrank();
+
+    Vm.Log[] memory entries = vm.getRecordedLogs();
+
+    _assertRewardDistributedEvent(
+      entries,
+      RewardDistributedEventData({
+        claimer: _claimer,
+        recipient: _recipient,
+        rewardAmount: _rewardAmount,
+        payoutAmount: _payoutAmount,
+        feeAmount: _feeAmount,
+        feeCollector: _feeCollector
+      })
+    );
+  }
+
+  function _assertRewardDistributedEvent(Vm.Log[] memory entries, RewardDistributedEventData memory expectedData)
+    internal
+  {
+    bool foundEvent = false;
+    uint256 lastIndex = entries.length - 1;
+    bytes32 eventSignature = keccak256("RewardDistributed(address,address,uint256,uint256,uint256,address)");
+
+    if (entries[lastIndex].topics[0] == eventSignature) {
+      RewardDistributedEventData memory actualData;
+      actualData.claimer = address(uint160(uint256(entries[lastIndex].topics[1])));
+      actualData.recipient = address(uint160(uint256(entries[lastIndex].topics[2])));
+      (actualData.rewardAmount, actualData.payoutAmount, actualData.feeAmount, actualData.feeCollector) =
+        abi.decode(entries[lastIndex].data, (uint256, uint256, uint256, address));
+
+      assertEq(actualData.claimer, expectedData.claimer);
+      assertEq(actualData.recipient, expectedData.recipient);
+      assertLteWithinOneUnit(actualData.rewardAmount, expectedData.rewardAmount);
+      assertEq(actualData.payoutAmount, expectedData.payoutAmount);
+      assertEq(actualData.feeAmount, expectedData.feeAmount);
+      assertEq(actualData.feeCollector, expectedData.feeCollector);
+
+      foundEvent = true;
+    }
+
+    assertTrue(foundEvent, "RewardDistributed event not found");
   }
 }
 

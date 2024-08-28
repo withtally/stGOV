@@ -1,5 +1,5 @@
 {
-  "generatedAt": 1725075723,
+  "generatedAt": 1725456846,
   "reportName:": "lstGasReport",
   "results": [
     {
@@ -12,23 +12,23 @@
     },
     {
       "scenarioName": "First Stake to Default Delegate",
-      "gasUsed": 167724
+      "gasUsed": 169174
     },
     {
       "scenarioName": "Second Stake To Default Delegatee",
-      "gasUsed": 133966
+      "gasUsed": 135416
     },
     {
       "scenarioName": "First Stake After Updating To A New Delegatee",
-      "gasUsed": 221703
+      "gasUsed": 223153
     },
     {
       "scenarioName": "First Stake After Updating To An Existing LST Delegatee",
-      "gasUsed": 167720
+      "gasUsed": 169170
     },
     {
       "scenarioName": "Second Stake To A Custom Delegatee",
-      "gasUsed": 133962
+      "gasUsed": 135412
     },
     {
       "scenarioName": "Sender With Default Delegatee Transfers Balance To New Receiver With Default Delegatee",
@@ -164,91 +164,91 @@
     },
     {
       "scenarioName": "Unstake Full Balance From The Default Delegatee",
-      "gasUsed": 209306
+      "gasUsed": 210756
     },
     {
       "scenarioName": "Unstake Partial Balance From The Default Delegatee",
-      "gasUsed": 219372
+      "gasUsed": 220822
     },
     {
       "scenarioName": "Unstake Full Balance From Unique Custom Delegatee",
-      "gasUsed": 204502
+      "gasUsed": 205952
     },
     {
       "scenarioName": "Unstake Partial Balance From Unique Custom Delegatee",
-      "gasUsed": 219368
+      "gasUsed": 220818
     },
     {
       "scenarioName": "Unstake Full Balance From a Non-Unique Custom Delegatee",
-      "gasUsed": 209302
+      "gasUsed": 210752
     },
     {
       "scenarioName": "Unstake Partial Balance From a Non-Unique Custom Delegatee",
-      "gasUsed": 219368
+      "gasUsed": 220818
     },
     {
       "scenarioName": "Unstake Full Balance From The Default Delegatee After Rewards",
-      "gasUsed": 234404
+      "gasUsed": 235854
     },
     {
       "scenarioName": "Unstake Partial Balance From The Default Delegatee After Rewards",
-      "gasUsed": 239204
+      "gasUsed": 240654
     },
     {
       "scenarioName": "Unstake Full Balance From Unique Custom Delegatee After Rewards",
-      "gasUsed": 260800
+      "gasUsed": 262250
     },
     {
       "scenarioName": "Unstake Partial Balance From Unique Custom Delegatee After Rewards",
-      "gasUsed": 265600
+      "gasUsed": 267050
     },
     {
       "scenarioName": "Unstake Full Balance From a Non-Unique Custom Delegatee After Rewards",
-      "gasUsed": 260800
+      "gasUsed": 262250
     },
     {
       "scenarioName": "Unstake Partial Balance From a Non-Unique Custom Delegatee After Rewards",
-      "gasUsed": 265600
+      "gasUsed": 267050
     },
     {
       "scenarioName": "Unstake Earned Rewards Only From The Default Delegatee After Rewards",
-      "gasUsed": 213865
+      "gasUsed": 215315
     },
     {
       "scenarioName": "Unstake Earned Rewards Only From Unique Custom Delegatee After Rewards",
-      "gasUsed": 213865
+      "gasUsed": 215315
     },
     {
       "scenarioName": "Claim and distribute a reward",
-      "gasUsed": 171420
+      "gasUsed": 175306
     },
     {
       "scenarioName": "Claim and distribute a reward that includes a fee",
-      "gasUsed": 170736
+      "gasUsed": 173022
     },
     {
       "scenarioName": "Updating from default deposit with nothing staked",
-      "gasUsed": 136377
+      "gasUsed": 138082
     },
     {
       "scenarioName": "Updating from custom deposit with nothing staked",
-      "gasUsed": 119273
+      "gasUsed": 120978
     },
     {
       "scenarioName": "Updating from default deposit after staking",
-      "gasUsed": 224847
+      "gasUsed": 226552
     },
     {
       "scenarioName": "Updating from custom deposit after staking",
-      "gasUsed": 207743
+      "gasUsed": 209448
     },
     {
       "scenarioName": "Updating from default deposit after staking and earning rewards",
-      "gasUsed": 247479
+      "gasUsed": 249184
     },
     {
       "scenarioName": "Updating from custom deposit after staking and earning rewards",
-      "gasUsed": 256775
+      "gasUsed": 258480
     }
   ]
 }

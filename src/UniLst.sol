@@ -34,6 +34,19 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, EIP712, Nonces
   event PayoutAmountSet(uint256 oldPayoutAmount, uint256 newPayoutAmount);
   event FeeParametersSet(uint256 oldFeeAmount, uint256 newFeeAmount, address oldFeeCollector, address newFeeCollector);
   event DepositInitialized(address indexed delegatee, IUniStaker.DepositIdentifier depositId);
+  event DepositUpdated(
+    address indexed holder, IUniStaker.DepositIdentifier oldDepositId, IUniStaker.DepositIdentifier newDepositId
+  );
+  event Staked(address indexed account, uint256 amount);
+  event Unstaked(address indexed account, uint256 amount);
+  event RewardDistributed(
+    address indexed claimer,
+    address indexed recipient,
+    uint256 rewardsClaimed,
+    uint256 payoutAmount,
+    uint256 feeAmount,
+    address feeCollector
+  );
 
   struct Totals {
     uint96 supply;
@@ -168,6 +181,8 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, EIP712, Nonces
 
     STAKER.withdraw(_oldDepositId, uint96(_delegatedBalance));
     STAKER.stakeMore(_newDepositId, uint96(_balanceOf));
+
+    emit DepositUpdated(msg.sender, _oldDepositId, _newDepositId);
   }
 
   function stake(uint256 _amount) public {
@@ -193,6 +208,8 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, EIP712, Nonces
     IUniStaker.DepositIdentifier _depositId = _depositIdForHolder(_account);
 
     STAKER.stakeMore(_depositId, uint96(_amount));
+
+    emit Staked(_account, _amount);
   }
 
   function stakeOnBehalf(address _account, uint256 _amount, uint256 _nonce, uint256 _deadline, bytes memory _signature)
@@ -287,6 +304,8 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, EIP712, Nonces
     }
 
     STAKE_TOKEN.transfer(_withdrawalTarget, _amount);
+
+    emit Unstaked(_account, _amount);
   }
 
   function unstakeOnBehalf(
@@ -408,6 +427,8 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, EIP712, Nonces
     }
     // Transfer the reward tokens to the recipient
     REWARD_TOKEN.transfer(_recipient, _rewards);
+
+    emit RewardDistributed(msg.sender, _recipient, _rewards, payoutAmount, _feeAmount, feeCollector);
   }
 
   function setWithdrawalGate(address _newWithdrawalGate) external {
