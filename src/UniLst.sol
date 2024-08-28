@@ -2,6 +2,7 @@
 pragma solidity 0.8.26;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20Metadata} from "@openzeppelin/contracts/interfaces/IERC20Metadata.sol";
 import {IUniStaker} from "src/interfaces/IUniStaker.sol";
 import {IUni} from "src/interfaces/IUni.sol";
 import {IWETH9} from "src/interfaces/IWETH9.sol";
@@ -11,7 +12,7 @@ import {EIP712} from "openzeppelin/utils/cryptography/EIP712.sol";
 import {SignatureChecker} from "openzeppelin/utils/cryptography/SignatureChecker.sol";
 import {Nonces} from "openzeppelin/utils/Nonces.sol";
 
-contract UniLst is IERC20, Ownable, EIP712, Nonces {
+contract UniLst is IERC20, IERC20Metadata, Ownable, EIP712, Nonces {
   error UniLst__StakeTokenOperationFailed();
   error UniLst__InsufficientBalance();
   error UniLst__InsufficientRewards();
@@ -25,6 +26,8 @@ contract UniLst is IERC20, Ownable, EIP712, Nonces {
   IWETH9 public immutable REWARD_TOKEN;
   IUniStaker.DepositIdentifier public immutable DEFAULT_DEPOSIT_ID;
   uint256 public constant SHARE_SCALE_FACTOR = 1e18;
+  string private NAME;
+  string private SYMBOL;
 
   event WithdrawalGateSet(address indexed oldWithdrawalGate, address indexed newWithdrawalGate);
   event PayoutAmountSet(uint256 oldPayoutAmount, uint256 newPayoutAmount);
@@ -50,15 +53,21 @@ contract UniLst is IERC20, Ownable, EIP712, Nonces {
   bytes32 public constant UNSTAKE_TYPEHASH =
     keccak256("Unstake(address account,uint256 amount,uint256 nonce,uint256 deadline)");
 
-  constructor(IUniStaker _staker, address _initialDefaultDelegatee, address _initialOwner, uint256 _initialPayoutAmount)
-    Ownable(_initialOwner)
-    EIP712("UniLst", "1")
-  {
+  constructor(
+    string memory _name,
+    string memory _symbol,
+    IUniStaker _staker,
+    address _initialDefaultDelegatee,
+    address _initialOwner,
+    uint256 _initialPayoutAmount
+  ) Ownable(_initialOwner) EIP712("UniLst", "1") {
     STAKER = _staker;
     STAKE_TOKEN = IUni(_staker.STAKE_TOKEN());
     REWARD_TOKEN = IWETH9(payable(_staker.REWARD_TOKEN()));
     defaultDelegatee = _initialDefaultDelegatee;
     payoutAmount = _initialPayoutAmount;
+    NAME = _name;
+    SYMBOL = _symbol;
 
     // OPTIMIZE: We can actually remove these return value checks because UNI reverts (confirm)
     if (!STAKE_TOKEN.approve(address(_staker), type(uint256).max)) {
@@ -85,6 +94,10 @@ contract UniLst is IERC20, Ownable, EIP712, Nonces {
     _balance = stakeForShares(_sharesOf);
   }
 
+  function decimals() external view override returns (uint8) {
+    return 18;
+  }
+
   function delegateeForHolder(address _holder) external view returns (address _delegatee) {
     (,, _delegatee,) = STAKER.deposits(_depositIdForHolder(_holder));
   }
@@ -109,6 +122,10 @@ contract UniLst is IERC20, Ownable, EIP712, Nonces {
     storedDepositIdForDelegatee[_delegatee] = _depositId;
     emit DepositInitialized(_delegatee, _depositId);
     return _depositId;
+  }
+
+  function name() external view override returns (string memory) {
+    return NAME;
   }
 
   function updateDeposit(IUniStaker.DepositIdentifier _newDepositId) external {
@@ -369,6 +386,10 @@ contract UniLst is IERC20, Ownable, EIP712, Nonces {
     }
 
     return (_amount * totalSupply) / totalShares;
+  }
+
+  function symbol() external view override returns (string memory) {
+    return SYMBOL;
   }
 
   function _depositIdForHolder(address _holder) internal view returns (IUniStaker.DepositIdentifier) {

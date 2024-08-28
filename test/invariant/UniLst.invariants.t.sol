@@ -39,7 +39,7 @@ contract UniStakerInvariants is Test, UnitTestBase {
     staker.setRewardNotifier(stakerAdmin, true);
 
     // Finally, deploy the lst for tests.
-    lst = new UniLst(staker, defaultDelegatee, lstOwner, initialPayoutAmount);
+    lst = new UniLst("Uni Lst", "stUni", staker, defaultDelegatee, lstOwner, initialPayoutAmount);
 
     // Deploy and set the mock withdrawal gate.
     mockWithdrawalGate = new MockWithdrawalGate();

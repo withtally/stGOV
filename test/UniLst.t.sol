@@ -25,6 +25,8 @@ contract UniLstTest is UnitTestBase, PercentAssertions, TestHelpers, Eip712Helpe
   uint256 initialPayoutAmount = 2500e18;
 
   address defaultDelegatee = makeAddr("Default Delegatee");
+  string tokenName = "Staked Uni";
+  string tokenSymbol = "stUni";
 
   function setUp() public virtual override {
     super.setUp();
@@ -44,7 +46,7 @@ contract UniLstTest is UnitTestBase, PercentAssertions, TestHelpers, Eip712Helpe
     staker.setRewardNotifier(stakerAdmin, true);
 
     // Finally, deploy the lst for tests.
-    lst = new UniLst(staker, defaultDelegatee, lstOwner, initialPayoutAmount);
+    lst = new UniLst(tokenName, tokenSymbol, staker, defaultDelegatee, lstOwner, initialPayoutAmount);
 
     // Deploy and set the mock withdrawal gate.
     mockWithdrawalGate = new MockWithdrawalGate();
@@ -254,6 +256,9 @@ contract Constructor is UniLstTest {
     assertEq(lst.defaultDelegatee(), defaultDelegatee);
     assertEq(lst.payoutAmount(), initialPayoutAmount);
     assertEq(lst.owner(), lstOwner);
+    assertEq(lst.name(), tokenName);
+    assertEq(lst.symbol(), tokenSymbol);
+    assertEq(lst.decimals(), 18);
   }
 
   function test_MaxApprovesTheStakerContractToTransferStakeToken() public view {
@@ -270,7 +275,9 @@ contract Constructor is UniLstTest {
     address _rewardToken,
     address _defaultDelegatee,
     uint256 _payoutAmount,
-    address _lstOwner
+    address _lstOwner,
+    string memory _tokenName,
+    string memory _tokenSymbol
   ) public {
     _assumeSafeMockAddress(_staker);
     _assumeSafeMockAddress(_stakeToken);
@@ -283,7 +290,7 @@ contract Constructor is UniLstTest {
     bytes4 _stakeWithArrity2Selector = hex"98f2b576";
     vm.mockCall(_staker, abi.encodeWithSelector(_stakeWithArrity2Selector), abi.encode(1));
 
-    UniLst _lst = new UniLst(IUniStaker(_staker), _defaultDelegatee, _lstOwner, _payoutAmount);
+    UniLst _lst = new UniLst(_tokenName, _tokenSymbol, IUniStaker(_staker), _defaultDelegatee, _lstOwner, _payoutAmount);
     assertEq(address(_lst.STAKER()), _staker);
     assertEq(address(_lst.STAKE_TOKEN()), _stakeToken);
     assertEq(address(_lst.REWARD_TOKEN()), _rewardToken);
@@ -299,7 +306,9 @@ contract Constructor is UniLstTest {
     address _rewardToken,
     address _defaultDelegatee,
     uint256 _payoutAmount,
-    address _lstOwner
+    address _lstOwner,
+    string memory _tokenName,
+    string memory _tokenSymbol
   ) public {
     _assumeSafeMockAddress(_staker);
     _assumeSafeMockAddress(_stakeToken);
@@ -309,7 +318,7 @@ contract Constructor is UniLstTest {
     vm.mockCall(_stakeToken, abi.encodeWithSelector(IUni.approve.selector), abi.encode(false));
 
     vm.expectRevert(UniLst.UniLst__StakeTokenOperationFailed.selector);
-    new UniLst(IUniStaker(_staker), _defaultDelegatee, _lstOwner, _payoutAmount);
+    new UniLst(_tokenName, _tokenSymbol, IUniStaker(_staker), _defaultDelegatee, _lstOwner, _payoutAmount);
   }
 }
 
