@@ -6,12 +6,14 @@ import {StdCheats} from "forge-std/StdCheats.sol";
 import {StdUtils} from "forge-std/StdUtils.sol";
 import {console} from "forge-std/console.sol";
 import {AddressSet, LibAddressSet} from "./AddressSet.sol";
+import {DepositIdSet, LibDepositIdSet} from "./DepositIdSet.sol";
 import {UniLst} from "src/UniLst.sol";
 import {IUniStaker} from "src/interfaces/IUniStaker.sol";
 import {IERC20} from "openzeppelin/token/ERC20/IERC20.sol";
 
 contract UniLstHandler is CommonBase, StdCheats, StdUtils {
   using LibAddressSet for AddressSet;
+  using LibDepositIdSet for DepositIdSet;
 
   // system setup
   UniLst public lst;
@@ -23,6 +25,7 @@ contract UniLstHandler is CommonBase, StdCheats, StdUtils {
 
   // actors, deposit state
   AddressSet holders;
+  DepositIdSet depositIds;
 
   // ghost vars
   uint256 public ghost_stakeStaked;
@@ -41,6 +44,7 @@ contract UniLstHandler is CommonBase, StdCheats, StdUtils {
     stakeToken = IERC20(address(staker.STAKE_TOKEN()));
     rewardToken = IERC20(address(staker.REWARD_TOKEN()));
     admin = staker.admin();
+    depositIds.add(lst.DEFAULT_DEPOSIT_ID());
   }
 
   function _useActor(AddressSet storage _set, uint256 _randomActorSeed) internal view returns (address) {
@@ -92,6 +96,29 @@ contract UniLstHandler is CommonBase, StdCheats, StdUtils {
     ghost_stakeUnstaked += _unstakedActual;
   }
 
+  function fetchOrInitializeDepositForDelegatee(address _actor, address _delegatee)
+    public
+    countCall("fetchOrInitializeDepositForDeleg")
+  {
+    vm.assume(_actor != address(0));
+    vm.assume(_delegatee != address(0));
+
+    vm.startPrank(_actor);
+    IUniStaker.DepositIdentifier _id = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+    vm.stopPrank();
+
+    depositIds.add(_id);
+  }
+
+  function updateDeposit(uint256 _actorSeed, uint256 _depositSeed) public countCall("updateDeposit") {
+    address _holder = _useActor(holders, _actorSeed);
+    IUniStaker.DepositIdentifier _id = depositIds.rand(_depositSeed);
+
+    vm.startPrank(_holder);
+    lst.updateDeposit(_id);
+    vm.stopPrank();
+  }
+
   function notifyRewardAmount(uint256 _amount) public countCall("notifyRewardAmount") {
     _amount = bound(_amount, 0, 100_000_000e18);
     _mintRewardToken(admin, _amount);
@@ -138,11 +165,24 @@ contract UniLstHandler is CommonBase, StdCheats, StdUtils {
     holders.forEach(func);
   }
 
+  function reduceDepositIds(uint256 acc, function(uint256,IUniStaker.DepositIdentifier) external returns (uint256) func)
+    public
+    returns (uint256)
+  {
+    return depositIds.reduce(acc, func);
+  }
+
+  function forEachDepositId(function(IUniStaker.DepositIdentifier) external func) external {
+    depositIds.forEach(func);
+  }
+
   function callSummary() external view {
     console.log("\nCall summary:");
     console.log("-------------------");
     console.log("stake", calls["stake"]);
     console.log("unstake", calls["unstake"]);
+    console.log("fetchOrInitializeDepositForDelegatee", calls["fetchOrInitializeDepositForDeleg"]);
+    console.log("updateDeposit", calls["updateDeposit"]);
     console.log("claimAndDistributeReward", calls["claimAndDistributeReward"]);
     console.log("notifyRewardAmount", calls["notifyRewardAmount"]);
     console.log("warpAhead", calls["warpAhead"]);
