@@ -54,18 +54,20 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     uint160 shares;
   }
 
-  Totals internal totals;
+  struct HolderState {
+    uint32 depositId;
+    uint96 balanceCheckpoint;
+    uint128 shares;
+  }
 
+  Totals internal totals;
   address public defaultDelegatee;
   IWithdrawalGate public withdrawalGate;
   uint256 public payoutAmount;
   uint256 public feeAmount;
   address public feeCollector;
   mapping(address delegatee => IUniStaker.DepositIdentifier depositId) internal storedDepositIdForDelegatee;
-  mapping(address holder => IUniStaker.DepositIdentifier depositId) internal storedDepositIdForHolder;
-  mapping(address holder => uint256 shares) public sharesOf;
-  // CONSIDER: Maybe rename this to "delegatedBalance" or something similar
-  mapping(address holder => uint256 balance) public balanceCheckpoint;
+  mapping(address holder => HolderState state) private holderStates;
   mapping(address holder => mapping(address spender => uint256 amount)) public allowance;
 
   bytes32 public constant STAKE_TYPEHASH =
@@ -117,13 +119,21 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   }
 
   function balanceOf(address _holder) public view returns (uint256 _balance) {
-    uint256 _sharesOf = sharesOf[_holder];
+    uint256 _sharesOf = holderStates[_holder].shares;
 
     if (_sharesOf == 0) {
       return 0;
     }
 
     _balance = stakeForShares(_sharesOf);
+  }
+
+  function sharesOf(address _holder) external view returns (uint256 _sharesOf) {
+    _sharesOf = holderStates[_holder].shares;
+  }
+
+  function balanceCheckpoint(address _holder) external view returns (uint256 _balanceCheckpoint) {
+    _balanceCheckpoint = holderStates[_holder].balanceCheckpoint;
   }
 
   function decimals() external view override returns (uint8) {
@@ -188,7 +198,7 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     // OPTIMIZE: We could skip all STAKER operations if balance is 0, but we still need to make sure the deposit
     // chosen belongs to the LST.
     uint256 _balanceOf = balanceOf(_account);
-    uint256 _delegatedBalance = balanceCheckpoint[_account];
+    uint256 _delegatedBalance = holderStates[_account].balanceCheckpoint;
     if (_delegatedBalance > _balanceOf) {
       _delegatedBalance = _balanceOf;
     }
@@ -196,8 +206,8 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     uint256 _checkpointDiff = _balanceOf - _delegatedBalance;
 
     // Make internal state updates.
-    balanceCheckpoint[_account] = _balanceOf;
-    storedDepositIdForHolder[_account] = _newDepositId;
+    holderStates[_account].balanceCheckpoint = uint96(_balanceOf);
+    holderStates[_account].depositId = uint32(IUniStaker.DepositIdentifier.unwrap(_newDepositId));
 
     // OPTIMIZE: if the new or the old delegatee is the default, we can avoid one unneeded withdraw
     if (_checkpointDiff > 0) {
@@ -228,8 +238,8 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
       shares: _totals.shares + uint160(_newShares) // sharesForStake would fail if overflowed
     });
 
-    sharesOf[_account] += _newShares;
-    balanceCheckpoint[_account] += (balanceOf(_account) - _initialBalance);
+    holderStates[_account].shares += uint128(_newShares);
+    holderStates[_account].balanceCheckpoint += uint96(balanceOf(_account) - _initialBalance);
     IUniStaker.DepositIdentifier _depositId = _depositIdForHolder(_account);
 
     STAKER.stakeMore(_depositId, uint96(_amount));
@@ -262,7 +272,7 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
 
     // Decreases the holder's balance by the amount being withdrawn
     uint256 _sharesDestroyed = sharesForStake(_amount);
-    sharesOf[_account] -= _sharesDestroyed;
+    holderStates[_account].shares -= uint128(_sharesDestroyed);
 
     // By re-calculating amount as the difference between the initial and current balance, we ensure the
     // amount unstaked is reflective of the actual change in balance. This means the amount unstaked might end up being
@@ -276,7 +286,7 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
       shares: _totals.shares - uint160(_sharesDestroyed) // cast is safe because we've subtracted the shares from user
     });
 
-    uint256 _delegatedBalance = balanceCheckpoint[_account];
+    uint256 _delegatedBalance = holderStates[_account].balanceCheckpoint;
     if (_delegatedBalance > _initialBalanceOf) {
       _delegatedBalance = _initialBalanceOf;
     }
@@ -292,7 +302,7 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
       _undelegatedBalanceToWithdraw = _undelegatedBalance;
       uint256 _delegatedBalanceToWithdraw = _amount - _undelegatedBalanceToWithdraw;
       STAKER.withdraw(_depositIdForHolder(_account), uint96(_delegatedBalanceToWithdraw));
-      balanceCheckpoint[_account] = _delegatedBalance - _delegatedBalanceToWithdraw;
+      holderStates[_account].balanceCheckpoint = uint96(_delegatedBalance - _delegatedBalanceToWithdraw);
     } else {
       // Since the amount is less than or equal to the undelegated balance, we'll source all of it from said balance.
       _undelegatedBalanceToWithdraw = _amount;
@@ -434,7 +444,7 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
 
       // By issuing these new shares to the `feeCollector` we effectively give the it `feeAmount` of the reward by
       // slightly diluting all other LST holders.
-      sharesOf[feeCollector] += _feeShares;
+      holderStates[feeCollector].shares += uint128(_feeShares);
     }
 
     totals = Totals({supply: _newTotalSupply, shares: _totals.shares + _feeShares});
@@ -510,12 +520,12 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   }
 
   function _depositIdForHolder(address _holder) internal view returns (IUniStaker.DepositIdentifier) {
-    IUniStaker.DepositIdentifier _storedId = storedDepositIdForHolder[_holder];
+    uint32 _storedId = holderStates[_holder].depositId;
 
-    if (IUniStaker.DepositIdentifier.unwrap(_storedId) == 0) {
+    if (_storedId == 0) {
       return DEFAULT_DEPOSIT_ID;
     } else {
-      return _storedId;
+      return IUniStaker.DepositIdentifier.wrap(_storedId);
     }
   }
 
@@ -523,7 +533,7 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     // Record initial balances.
     uint256 _senderInitBalance = balanceOf(_sender);
     uint256 _receiverInitBalance = balanceOf(_receiver);
-    uint256 _senderDelegatedBalance = balanceCheckpoint[_sender];
+    uint256 _senderDelegatedBalance = holderStates[_sender].balanceCheckpoint;
     if (_senderDelegatedBalance > _senderInitBalance) {
       _senderDelegatedBalance = _senderInitBalance;
     }
@@ -541,8 +551,8 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
 
     // Move underlying shares.
     uint256 _shares = sharesForStake(_value);
-    sharesOf[_sender] -= _shares;
-    sharesOf[_receiver] += _shares;
+    holderStates[_sender].shares -= uint128(_shares);
+    holderStates[_receiver].shares += uint128(_shares);
 
     // Due to truncation, it is possible for the amount which the sender's balance decreases to be different from the
     // amount by which the receiver's balance increases.
@@ -553,7 +563,7 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     // by at least as much as the receiver's increases. Therefore, if this is not the case, we shave shares from the
     // sender until such point as it is.
     while (_receiverBalanceIncrease > _senderBalanceDecrease) {
-      sharesOf[_sender] -= 1;
+      holderStates[_sender].shares -= 1;
       _senderBalanceDecrease = _senderInitBalance - balanceOf(_sender);
     }
 
@@ -563,7 +573,7 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     // As a result, extra wei may be lost, i.e. no longer controlled by either the sender or the receiver,
     // but are instead stuck permanently in the receiver's deposit. This is ok, as the amount lost is miniscule, but
     // we've ensured the solvency of each underlying Staker deposit.
-    balanceCheckpoint[_receiver] += _receiverBalanceIncrease;
+    holderStates[_receiver].balanceCheckpoint += uint96(_receiverBalanceIncrease);
 
     uint256 _undelegatedBalanceToWithdraw;
     if (_senderBalanceDecrease > _senderUndelegatedBalance) {
@@ -572,7 +582,7 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
       _undelegatedBalanceToWithdraw = _senderUndelegatedBalance;
       uint256 _delegatedBalanceToWithdraw = _senderBalanceDecrease - _undelegatedBalanceToWithdraw;
       STAKER.withdraw(_depositIdForHolder(_sender), uint96(_delegatedBalanceToWithdraw));
-      balanceCheckpoint[_sender] = _senderDelegatedBalance - _delegatedBalanceToWithdraw;
+      holderStates[_sender].balanceCheckpoint = uint96(_senderDelegatedBalance - _delegatedBalanceToWithdraw);
     } else {
       // Since the amount is less than or equal to the undelegated balance, we'll source all of it from said balance.
       _undelegatedBalanceToWithdraw = _senderBalanceDecrease;
