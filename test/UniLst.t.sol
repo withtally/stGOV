@@ -155,6 +155,13 @@ contract UniLstTest is UnitTestBase, PercentAssertions, TestHelpers, Eip712Helpe
     vm.stopPrank();
   }
 
+  function _stakeWithAttribution(address _holder, uint256 _amount, address _referrer) internal {
+    vm.startPrank(_holder);
+    stakeToken.approve(address(lst), _amount);
+    lst.stakeWithAttribution(_amount, _referrer);
+    vm.stopPrank();
+  }
+
   function _mintAndStake(address _holder, uint256 _amount) internal {
     _mintStakeToken(_holder, _amount);
     _stake(_holder, _amount);
@@ -165,9 +172,29 @@ contract UniLstTest is UnitTestBase, PercentAssertions, TestHelpers, Eip712Helpe
     _stake(_holder, _amount);
   }
 
+  function _updateDelegateeAndStakeWithAttribution(
+    address _holder,
+    uint256 _amount,
+    address _delegatee,
+    address _referrer
+  ) internal {
+    _updateDelegatee(_holder, _delegatee);
+    _stakeWithAttribution(_holder, _amount, _referrer);
+  }
+
   function _mintUpdateDelegateeAndStake(address _holder, uint256 _amount, address _delegatee) internal {
     _mintStakeToken(_holder, _amount);
     _updateDelegateeAndStake(_holder, _amount, _delegatee);
+  }
+
+  function _mintUpdateDelegateeAndStakeWithAttribution(
+    address _holder,
+    uint256 _amount,
+    address _delegatee,
+    address _referrer
+  ) internal {
+    _mintStakeToken(_holder, _amount);
+    _updateDelegateeAndStakeWithAttribution(_holder, _amount, _delegatee, _referrer);
   }
 
   function _unstake(address _holder, uint256 _amount) internal {
@@ -979,6 +1006,39 @@ contract Stake is UniLstTest {
 
     lst.stake(_amount);
     vm.stopPrank();
+  }
+}
+
+contract StakeWithAttribution is UniLstTest {
+  function testFuzz_IncreasesANewHoldersBalanceByTheAmountStaked(
+    uint256 _amount,
+    address _holder,
+    address _delegatee,
+    address _referrer
+  ) public {
+    _assumeSafeHolder(_holder);
+    _assumeSafeDelegatee(_delegatee);
+    _amount = _boundToReasonableStakeTokenAmount(_amount);
+
+    _mintUpdateDelegateeAndStakeWithAttribution(_holder, _amount, _delegatee, _referrer);
+
+    assertEq(lst.balanceOf(_holder), _amount);
+  }
+
+  function testFuzz_EmitsStakedWithAttributionEvent(uint256 _amount, address _holder, address _referrer) public {
+    _assumeSafeHolder(_holder);
+    _amount = _boundToReasonableStakeTokenAmount(_amount);
+
+    _mintStakeToken(_holder, _amount);
+
+    vm.startPrank(_holder);
+    stakeToken.approve(address(lst), _amount);
+    vm.expectEmit();
+    emit UniLst.StakedWithAttribution(lst.DEFAULT_DEPOSIT_ID(), _amount, _referrer);
+    lst.stakeWithAttribution(_amount, _referrer);
+    vm.stopPrank();
+
+    assertEq(stakeToken.getCurrentVotes(defaultDelegatee), _amount);
   }
 }
 

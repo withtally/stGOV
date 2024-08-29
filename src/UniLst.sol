@@ -48,6 +48,7 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     uint256 feeAmount,
     address feeCollector
   );
+  event StakedWithAttribution(IUniStaker.DepositIdentifier _depositId, uint256 _amount, address indexed _referrer);
 
   struct Totals {
     uint96 supply;
@@ -227,6 +228,12 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
 
   function stake(uint256 _amount) public {
     _stake(msg.sender, _amount);
+  }
+
+  function stakeWithAttribution(uint256 _amount, address _referrer) public {
+    _stake(msg.sender, _amount);
+    IUniStaker.DepositIdentifier _depositId = _depositIdForHolder(msg.sender);
+    emit StakedWithAttribution(_depositId, _amount, _referrer);
   }
 
   function _stake(address _account, uint256 _amount) internal {
