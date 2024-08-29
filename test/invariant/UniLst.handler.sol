@@ -33,6 +33,10 @@ contract UniLstHandler is CommonBase, StdCheats, StdUtils {
   uint256 public ghost_rewardsClaimedAndDistributed;
   uint256 public ghost_rewardsNotified;
 
+  // invariant markers
+  bool public balanceInvariantBroken;
+  bool public transferInvariantBroken;
+
   modifier countCall(bytes32 key) {
     calls[key]++;
     _;
@@ -73,10 +77,17 @@ contract UniLstHandler is CommonBase, StdCheats, StdUtils {
     // assume user has stake amount
     _mintStakeToken(_depositor, _amount);
 
+    uint256 _depositorBalanceBefore = lst.balanceOf(_depositor);
+
     vm.startPrank(_depositor);
     stakeToken.approve(address(lst), _amount);
     lst.stake(_amount);
     vm.stopPrank();
+
+    uint256 _depositorBalanceAfter = lst.balanceOf(_depositor);
+    if (_depositorBalanceAfter - _depositorBalanceBefore > _amount) {
+      balanceInvariantBroken = true;
+    }
 
     ghost_stakeStaked += _amount;
   }
@@ -94,6 +105,29 @@ contract UniLstHandler is CommonBase, StdCheats, StdUtils {
     uint256 _unstakedActual = stakeToken.balanceOf(address(lst.withdrawalGate())) - _balanceBefore;
     vm.stopPrank();
     ghost_stakeUnstaked += _unstakedActual;
+  }
+
+  function validTransfer(uint256 _holderSeed, address _to, uint256 _amount) public countCall("validTransfer") {
+    address _holder = _useActor(holders, _holderSeed);
+    vm.assume(_holder != address(0));
+    vm.assume(_to != address(0));
+
+    uint256 _holderBalance = lst.balanceOf(_holder);
+    uint256 _toBalance = lst.balanceOf(_to);
+    _amount = bound(_amount, 0, _holderBalance);
+
+    vm.startPrank(_holder);
+    lst.transfer(_to, _amount);
+    vm.stopPrank();
+    uint256 _holderBalanceAfter = lst.balanceOf(_holder);
+    uint256 _toBalanceAfter = lst.balanceOf(_to);
+    if (
+      _holderBalance - _holderBalanceAfter // decrease in sender balance...
+        < _toBalanceAfter - _toBalance // is less than increase in receiver balance...
+    ) {
+      transferInvariantBroken = true;
+    }
+    holders.add(_to);
   }
 
   function fetchOrInitializeDepositForDelegatee(address _actor, address _delegatee)
@@ -181,6 +215,7 @@ contract UniLstHandler is CommonBase, StdCheats, StdUtils {
     console.log("-------------------");
     console.log("stake", calls["stake"]);
     console.log("unstake", calls["unstake"]);
+    console.log("validTransfer", calls["validTransfer"]);
     console.log("fetchOrInitializeDepositForDelegatee", calls["fetchOrInitializeDepositForDeleg"]);
     console.log("updateDeposit", calls["updateDeposit"]);
     console.log("claimAndDistributeReward", calls["claimAndDistributeReward"]);

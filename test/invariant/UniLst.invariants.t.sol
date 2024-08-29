@@ -53,14 +53,15 @@ contract UniStakerInvariants is Test, UnitTestBase {
 
     handler = new UniLstHandler(lst);
 
-    bytes4[] memory selectors = new bytes4[](7);
+    bytes4[] memory selectors = new bytes4[](8);
     selectors[0] = UniLstHandler.stake.selector;
     selectors[1] = UniLstHandler.unstake.selector;
-    selectors[2] = UniLstHandler.fetchOrInitializeDepositForDelegatee.selector;
-    selectors[3] = UniLstHandler.updateDeposit.selector;
-    selectors[4] = UniLstHandler.claimAndDistributeReward.selector;
-    selectors[5] = UniLstHandler.notifyRewardAmount.selector;
-    selectors[6] = UniLstHandler.warpAhead.selector;
+    selectors[2] = UniLstHandler.validTransfer.selector;
+    selectors[3] = UniLstHandler.fetchOrInitializeDepositForDelegatee.selector;
+    selectors[4] = UniLstHandler.updateDeposit.selector;
+    selectors[5] = UniLstHandler.claimAndDistributeReward.selector;
+    selectors[6] = UniLstHandler.notifyRewardAmount.selector;
+    selectors[7] = UniLstHandler.warpAhead.selector;
 
     targetSelector(FuzzSelector({addr: address(handler), selectors: selectors}));
 
@@ -143,6 +144,18 @@ contract UniStakerInvariants is Test, UnitTestBase {
   /// when doing `withdraw` and `stakeMore` calls to UniStaker.
   function invariant_lstBalanceNeverHoldsStakeTokenBalance() public view {
     assertEq(stakeToken.balanceOf(address(lst)), 0);
+  }
+
+  /// @notice When staking the user's balance should increase by less than or equal to the amount stake was called with.
+  function invariant_stakeShouldNotIncreaseBalanceMoreThanStakeAmount() public view {
+    assertFalse(handler.balanceInvariantBroken());
+  }
+
+  /// @notice When transferring, the sum of the balance changes across the sender & receiver should be less than or
+  /// equal to 0 (i.e. the sender's balance should decrease by an amount greater than or equal to the receiver's balance
+  /// increase).
+  function invariant_transferShouldNotIncreaseReceiverBalanceMoreThanDecreasesSenderBalance() public view {
+    assertFalse(handler.transferInvariantBroken());
   }
 
   // Used to see distribution of non-reverting calls
