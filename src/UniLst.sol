@@ -182,6 +182,11 @@ contract UniLst is IERC20, IERC20Metadata, Ownable, EIP712, Nonces {
     _stake(_account, _amount);
   }
 
+  function permitAndStake(uint256 _amount, uint256 _deadline, uint8 _v, bytes32 _r, bytes32 _s) external {
+    try STAKE_TOKEN.permit(msg.sender, address(this), _amount, _deadline, _v, _r, _s) {} catch {}
+    _stake(msg.sender, _amount);
+  }
+
   function unstake(uint256 _amount) external {
     _unstake(msg.sender, _amount);
   }

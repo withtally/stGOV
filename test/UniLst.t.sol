@@ -3,7 +3,7 @@ pragma solidity 0.8.26;
 
 import {console2, stdStorage, StdStorage, stdError} from "forge-std/Test.sol";
 import {UniLst, Ownable} from "src/UniLst.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20} from "openzeppelin/token/ERC20/IERC20.sol";
 import {IWETH9} from "src/interfaces/IWETH9.sol";
 import {IUni} from "src/interfaces/IUni.sol";
 import {IUniStaker} from "src/interfaces/IUniStaker.sol";
@@ -224,8 +224,14 @@ contract UniLstTest is UnitTestBase, PercentAssertions, TestHelpers, Eip712Helpe
     vm.stopPrank();
   }
 
-  function _hashTypedDataV4(bytes32 _structHash) internal view returns (bytes32) {
-    bytes32 _seperator = _domainSeperator("UniLst", "1", address(lst));
+  function _hashTypedDataV4(
+    bytes32 _typeHash,
+    bytes32 _structHash,
+    bytes memory _name,
+    bytes memory _version,
+    address _verifyingContract
+  ) internal view returns (bytes32) {
+    bytes32 _seperator = _domainSeperator(_typeHash, _name, _version, _verifyingContract);
     return keccak256(abi.encodePacked("\x19\x01", _seperator, _structHash));
   }
 
@@ -238,13 +244,13 @@ contract UniLstTest is UnitTestBase, PercentAssertions, TestHelpers, Eip712Helpe
     uint256 _signerPrivateKey
   ) internal view returns (bytes memory) {
     bytes32 structHash = keccak256(abi.encode(_typehash, _account, _amount, _nonce, _expiry));
-    bytes32 hash = _hashTypedDataV4(structHash);
+    bytes32 hash = _hashTypedDataV4(EIP712_DOMAIN_TYPEHASH, structHash, "UniLst", "1", address(lst));
     (uint8 v, bytes32 r, bytes32 s) = vm.sign(_signerPrivateKey, hash);
     return abi.encodePacked(r, s, v);
   }
 
-  function _setNonce(address _account, uint256 _currentNonce) internal {
-    stdstore.target(address(lst)).sig("nonces(address)").with_key(_account).checked_write(_currentNonce);
+  function _setNonce(address _target, address _account, uint256 _currentNonce) internal {
+    stdstore.target(_target).sig("nonces(address)").with_key(_account).checked_write(_currentNonce);
   }
 }
 
@@ -1140,6 +1146,112 @@ contract Unstake is UniLstTest {
   }
 }
 
+contract PermitAndStake is UniLstTest {
+  using stdStorage for StdStorage;
+
+  function testFuzz_PerformsTheApprovalByCallingPermitThenPerformsStake(
+    uint256 _depositorPrivateKey,
+    uint256 _stakeAmount,
+    uint256 _deadline,
+    uint256 _currentNonce
+  ) public {
+    _deadline = bound(_deadline, block.timestamp, type(uint256).max);
+    _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
+    _depositorPrivateKey = bound(_depositorPrivateKey, 1, 100e18);
+    address _depositor = vm.addr(_depositorPrivateKey);
+    _mintStakeToken(_depositor, _stakeAmount);
+
+    _setNonce(address(stakeToken), _depositor, _currentNonce);
+    bytes32 _message = keccak256(
+      abi.encode(
+        stakeToken.PERMIT_TYPEHASH(), _depositor, address(lst), _stakeAmount, stakeToken.nonces(_depositor), _deadline
+      )
+    );
+
+    bytes32 _messageHash =
+      _hashTypedDataV4(DOMAIN_TYPEHASH, _message, bytes(stakeToken.name()), "1", address(stakeToken));
+    (uint8 _v, bytes32 _r, bytes32 _s) = vm.sign(_depositorPrivateKey, _messageHash);
+
+    vm.prank(_depositor);
+    lst.permitAndStake(_stakeAmount, _deadline, _v, _r, _s);
+
+    assertEq(lst.balanceOf(_depositor), _stakeAmount);
+  }
+
+  function testFuzz_SuccessfullyStakeWhenApprovalExistsAndPermitSignatureIsInvalid(
+    uint256 _depositorPrivateKey,
+    uint256 _stakeAmount,
+    uint256 _approvalAmount,
+    uint256 _deadline,
+    uint256 _currentNonce
+  ) public {
+    _depositorPrivateKey = _boundToValidPrivateKey(_depositorPrivateKey);
+    address _depositor = vm.addr(_depositorPrivateKey);
+    _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
+    _approvalAmount = bound(_approvalAmount, _stakeAmount, type(uint96).max);
+    _mintStakeToken(_depositor, _stakeAmount);
+    vm.startPrank(_depositor);
+    stakeToken.approve(address(lst), _approvalAmount);
+    vm.stopPrank();
+
+    _setNonce(address(stakeToken), _depositor, _currentNonce);
+    bytes32 _message = keccak256(
+      abi.encode(
+        stakeToken.PERMIT_TYPEHASH(), _depositor, address(lst), _stakeAmount, stakeToken.nonces(_depositor), _deadline
+      )
+    );
+
+    bytes32 _messageHash =
+      _hashTypedDataV4(DOMAIN_TYPEHASH, _message, bytes(stakeToken.name()), "1", address(stakeToken));
+    (uint8 _v, bytes32 _r, bytes32 _s) = vm.sign(_depositorPrivateKey, _messageHash);
+
+    vm.prank(_depositor);
+    lst.permitAndStake(_stakeAmount, _deadline, _v, _r, _s);
+
+    assertEq(lst.balanceOf(_depositor), _stakeAmount);
+  }
+
+  function testFuzz_RevertIf_ThePermitSignatureIsInvalidAndTheApprovalIsInsufficient(
+    address _notDepositor,
+    uint256 _depositorPrivateKey,
+    uint256 _stakeAmount,
+    uint256 _approvalAmount,
+    uint256 _deadline,
+    uint256 _currentNonce
+  ) public {
+    _deadline = bound(_deadline, block.timestamp, type(uint256).max);
+    _depositorPrivateKey = _boundToValidPrivateKey(_depositorPrivateKey);
+    address _depositor = vm.addr(_depositorPrivateKey);
+    vm.assume(_notDepositor != _depositor);
+    _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
+    _approvalAmount = bound(_approvalAmount, 0, _stakeAmount - 1);
+    _mintStakeToken(_depositor, _stakeAmount);
+    vm.startPrank(_depositor);
+    stakeToken.approve(address(lst), _approvalAmount);
+    vm.stopPrank();
+
+    _setNonce(address(stakeToken), _notDepositor, _currentNonce);
+    bytes32 _message = keccak256(
+      abi.encode(
+        stakeToken.PERMIT_TYPEHASH(),
+        _notDepositor,
+        address(lst),
+        _stakeAmount,
+        stakeToken.nonces(_depositor),
+        _deadline
+      )
+    );
+
+    bytes32 _messageHash =
+      _hashTypedDataV4(DOMAIN_TYPEHASH, _message, bytes(stakeToken.name()), "1", address(stakeToken));
+    (uint8 _v, bytes32 _r, bytes32 _s) = vm.sign(_depositorPrivateKey, _messageHash);
+
+    vm.prank(_depositor);
+    vm.expectRevert("Uni::transferFrom: transfer amount exceeds spender allowance");
+    lst.permitAndStake(_stakeAmount, _deadline, _v, _r, _s);
+  }
+}
+
 contract StakeOnBehalf is UniLstTest {
   function testFuzz_StakesTokensOnBehalfOfAnotherUser(
     uint256 _amount,
@@ -1160,7 +1272,7 @@ contract StakeOnBehalf is UniLstTest {
     vm.stopPrank();
 
     // Sign the message
-    _setNonce(_staker, _nonce);
+    _setNonce(address(lst), _staker, _nonce);
     bytes memory signature =
       _signMessage(lst.STAKE_TYPEHASH(), _staker, _amount, lst.nonces(_staker), _expiry, _stakerPrivateKey);
 
@@ -1192,7 +1304,7 @@ contract StakeOnBehalf is UniLstTest {
     vm.stopPrank();
 
     // Sign the message with an invalid key
-    _setNonce(_staker, _nonce);
+    _setNonce(address(lst), _staker, _nonce);
     bytes memory invalidSignature =
       _signMessage(lst.STAKE_TYPEHASH(), _staker, _amount, _nonce, _expiry, _wrongPrivateKey);
 
@@ -1221,7 +1333,7 @@ contract StakeOnBehalf is UniLstTest {
     vm.stopPrank();
 
     // Sign the message with an expired expiry
-    _setNonce(_staker, _nonce);
+    _setNonce(address(lst), _staker, _nonce);
     bytes memory signature =
       _signMessage(lst.STAKE_TYPEHASH(), _staker, _amount, lst.nonces(_staker), _expiry, _stakerPrivateKey);
 
@@ -1252,7 +1364,7 @@ contract StakeOnBehalf is UniLstTest {
     vm.stopPrank();
 
     // Sign the message with an invalid nonce
-    _setNonce(_staker, _currentNonce); // expected nonce
+    _setNonce(address(lst), _staker, _currentNonce); // expected nonce
     bytes memory signature =
       _signMessage(lst.STAKE_TYPEHASH(), _staker, _amount, _suppliedNonce, _expiry, _stakerPrivateKey);
 
@@ -1284,7 +1396,7 @@ contract StakeOnBehalf is UniLstTest {
     vm.stopPrank();
 
     // Sign the message with a valid nonce
-    _setNonce(_staker, _nonce);
+    _setNonce(address(lst), _staker, _nonce);
     bytes memory signature =
       _signMessage(lst.STAKE_TYPEHASH(), _staker, _amount, lst.nonces(_staker), _expiry, _stakerPrivateKey);
 
@@ -1321,7 +1433,7 @@ contract UnstakeOnBehalf is UniLstTest {
     _stake(_staker, _amount);
 
     // Sign the message
-    _setNonce(_staker, _nonce);
+    _setNonce(address(lst), _staker, _nonce);
     bytes memory signature =
       _signMessage(lst.UNSTAKE_TYPEHASH(), _staker, _amount, lst.nonces(_staker), _expiry, _stakerPrivateKey);
 
@@ -1352,7 +1464,7 @@ contract UnstakeOnBehalf is UniLstTest {
     _stake(_holder, _amount);
 
     // Sign the message with an invalid key
-    _setNonce(_holder, _nonce);
+    _setNonce(address(lst), _holder, _nonce);
     bytes memory invalidSignature =
       _signMessage(lst.UNSTAKE_TYPEHASH(), _holder, _amount, _nonce, _expiry, _wrongPrivateKey);
 
@@ -1380,7 +1492,7 @@ contract UnstakeOnBehalf is UniLstTest {
     _stake(_holder, _amount);
 
     // Sign the message with an expired expiry
-    _setNonce(_holder, _nonce);
+    _setNonce(address(lst), _holder, _nonce);
     bytes memory signature = _signMessage(lst.UNSTAKE_TYPEHASH(), _holder, _amount, _nonce, _expiry, _stakerPrivateKey);
 
     // Attempt to perform the unstake on behalf with an expired signature
@@ -1408,7 +1520,7 @@ contract UnstakeOnBehalf is UniLstTest {
     _stake(_holder, _amount);
 
     // Sign the message with an invalid nonce
-    _setNonce(_holder, _currentNonce);
+    _setNonce(address(lst), _holder, _currentNonce);
     bytes memory signature =
       _signMessage(lst.UNSTAKE_TYPEHASH(), _holder, _amount, _suppliedNonce, _expiry, _stakerPrivateKey);
 
@@ -1438,7 +1550,7 @@ contract UnstakeOnBehalf is UniLstTest {
     _stake(_staker, _amount);
 
     // Sign the message with a valid nonce
-    _setNonce(_staker, _nonce);
+    _setNonce(address(lst), _staker, _nonce);
     bytes memory signature = _signMessage(lst.UNSTAKE_TYPEHASH(), _staker, _amount, _nonce, _expiry, _stakerPrivateKey);
 
     // Perform the unstake on behalf with a valid nonce
