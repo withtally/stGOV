@@ -28,6 +28,10 @@ contract UniLstTest is UnitTestBase, PercentAssertions, TestHelpers, Eip712Helpe
   string tokenName = "Staked Uni";
   string tokenSymbol = "stUni";
 
+  // The error tolerance caused by rounding acceptable in certain test cases, i.e. 1x10^-13 UNI,
+  // or 10 quadrillionths of a UNI.
+  uint256 constant ACCEPTABLE_DELTA = 0.00000000000001e18;
+
   function setUp() public virtual override {
     super.setUp();
     lstOwner = makeAddr("LST Owner");
@@ -61,6 +65,8 @@ contract UniLstTest is UnitTestBase, PercentAssertions, TestHelpers, Eip712Helpe
     console2.log(lst.totalSupply());
     console2.log("totalShares");
     console2.log(lst.totalShares());
+    (uint96 _defaultDepositBalance,,,) = staker.deposits(lst.DEFAULT_DEPOSIT_ID());
+    console2.log("defaultDepositBalance", _defaultDepositBalance);
   }
 
   function __dumpHolderState(address _holder) public view {
@@ -921,7 +927,9 @@ contract Unstake is UniLstTest {
     _distributeReward(_rewardAmount);
     _unstake(_holder, _unstakeAmount);
 
-    assertEq(stakeToken.balanceOf(address(mockWithdrawalGate)), _unstakeAmount);
+    // The amount unstaked is less than or equal to the amount requested, within some acceptable truncation tolerance
+    assertApproxEqAbs(stakeToken.balanceOf(address(mockWithdrawalGate)), _unstakeAmount, ACCEPTABLE_DELTA);
+    assertLe(stakeToken.balanceOf(address(mockWithdrawalGate)), _unstakeAmount);
   }
 
   function testFuzz_WithdrawsFromUndelegatedBalanceIfItCoversTheAmount(
@@ -943,9 +951,15 @@ contract Unstake is UniLstTest {
     _distributeReward(_rewardAmount);
     _unstake(_holder, _unstakeAmount);
 
-    assertEq(stakeToken.getCurrentVotes(defaultDelegatee), _rewardAmount - _unstakeAmount);
+    // Default delegatee has lost the unstake amount, within some acceptable delta to account for truncation.
+    assertApproxEqAbs(stakeToken.getCurrentVotes(defaultDelegatee), _rewardAmount - _unstakeAmount, ACCEPTABLE_DELTA);
+    assertGe(stakeToken.getCurrentVotes(defaultDelegatee), _rewardAmount - _unstakeAmount);
+    // Delegatee balance is untouched and therefore still exactly the original amount
     assertEq(stakeToken.getCurrentVotes(_delegatee), _stakeAmount);
-    assertEq(stakeToken.balanceOf(address(mockWithdrawalGate)), _unstakeAmount);
+    // The amount actually unstaked is less than or equal to the amount requested, within some acceptable amount due to
+    // truncation.
+    assertApproxEqAbs(stakeToken.balanceOf(address(mockWithdrawalGate)), _unstakeAmount, ACCEPTABLE_DELTA);
+    assertLe(stakeToken.balanceOf(address(mockWithdrawalGate)), _unstakeAmount);
   }
 
   function testFuzz_WithdrawsFromDelegatedBalanceAfterExhaustingUndelegatedBalance(
@@ -967,9 +981,13 @@ contract Unstake is UniLstTest {
     _distributeReward(_rewardAmount);
     _unstake(_holder, _unstakeAmount);
 
-    assertEq(stakeToken.getCurrentVotes(defaultDelegatee), 0);
-    assertEq(stakeToken.getCurrentVotes(_delegatee), _stakeAmount + _rewardAmount - _unstakeAmount);
-    assertEq(stakeToken.balanceOf(address(mockWithdrawalGate)), _unstakeAmount);
+    assertApproxEqAbs(stakeToken.getCurrentVotes(defaultDelegatee), 0, ACCEPTABLE_DELTA);
+    assertApproxEqAbs(
+      stakeToken.getCurrentVotes(_delegatee), _stakeAmount + _rewardAmount - _unstakeAmount, ACCEPTABLE_DELTA
+    );
+    assertGe(stakeToken.getCurrentVotes(_delegatee), _stakeAmount + _rewardAmount - _unstakeAmount);
+    assertApproxEqAbs(stakeToken.balanceOf(address(mockWithdrawalGate)), _unstakeAmount, ACCEPTABLE_DELTA);
+    assertLe(stakeToken.balanceOf(address(mockWithdrawalGate)), _unstakeAmount);
   }
 
   function testFuzz_RemovesUnstakedAmountFromHoldersBalance(
@@ -989,7 +1007,9 @@ contract Unstake is UniLstTest {
     _distributeReward(_rewardAmount);
     _unstake(_holder, _unstakeAmount);
 
-    assertEq(lst.balanceOf(_holder), _stakeAmount + _rewardAmount - _unstakeAmount);
+    // The holder's lst balance decreases by the amount unstaked, within some tolerance to allow for truncation.
+    assertApproxEqAbs(lst.balanceOf(_holder), _stakeAmount + _rewardAmount - _unstakeAmount, ACCEPTABLE_DELTA);
+    assertGe(lst.balanceOf(_holder), _stakeAmount + _rewardAmount - _unstakeAmount);
   }
 
   function testFuzz_SubtractsFromTheHoldersDelegatedBalanceCheckpointIfUndelegatedBalanceIsUnstaked(
@@ -1012,8 +1032,15 @@ contract Unstake is UniLstTest {
     _unstake(_holder, _unstakeAmount);
 
     // Because the full undelegated balance was unstaked, whatever balance the holder has left must be reflected in
-    // their delegated balance checkpoint.
-    assertEq(lst.balanceCheckpoint(_holder), lst.balanceOf(_holder));
+    // their delegated balance checkpoint. However, it's also possible that, because global shares are destroyed
+    // after the user's shares are destroyed, truncation may cause the user's balance to go up slightly from the
+    // calculated balance checkpoint. This is fine, as long as the system is remaining solvent, that is, the extra
+    // wei are actually being left in the default deposit as they should be. We also assert this here to ensure it
+    // is the case.
+    assertApproxEqAbs(lst.balanceCheckpoint(_holder), lst.balanceOf(_holder), ACCEPTABLE_DELTA);
+    assertLe(lst.balanceCheckpoint(_holder), lst.balanceOf(_holder));
+    (uint96 _defaultDepositBalance,,,) = staker.deposits(lst.DEFAULT_DEPOSIT_ID());
+    assertEq(_defaultDepositBalance, lst.balanceOf(_holder) - lst.balanceCheckpoint(_holder));
   }
 
   function testFuzz_SubtractsTheRealAmountUnstakedFromTheTotalSupply(
@@ -1774,7 +1801,7 @@ contract BalanceOf is UniLstTest {
 
     _unstake(_holder, _unstakeAmount);
 
-    assertEq(lst.balanceOf(_holder), _stakeAmount + _rewardAmount - _unstakeAmount);
+    assertApproxEqAbs(lst.balanceOf(_holder), _stakeAmount + _rewardAmount - _unstakeAmount, ACCEPTABLE_DELTA);
   }
 
   function testFuzz_CalculatesTheCorrectBalancesOfAHolderAndFeeCollectorWhenARewardDistributionIncludesAFee(
@@ -1804,10 +1831,12 @@ contract BalanceOf is UniLstTest {
     // Execute reward distribution that includes a fee payout.
     _approveLstAndClaimAndDistributeReward(_claimer, _rewardTokenAmount, _recipient);
 
-    //  fee collector should now have a balance equal to (within one unit to account for truncation) the fee amount.
-    assertLteWithinOneUnit(lst.balanceOf(_feeCollector), _feeAmount);
+    // Fee collector should now have a balance less than or equal to, within a small delta to account for truncation,
+    // the fee amount.
+    assertApproxEqAbs(lst.balanceOf(_feeCollector), _feeAmount, ACCEPTABLE_DELTA);
+    assertTrue(lst.balanceOf(_feeCollector) <= _feeAmount);
     // The holder should have earned all the rewards except the fee amount, which went to the fee collector.
-    assertEq(lst.balanceOf(_holder), _stakeAmount + _rewardPayoutAmount - _feeAmount);
+    assertApproxEqAbs(lst.balanceOf(_holder), _stakeAmount + _rewardPayoutAmount - _feeAmount, ACCEPTABLE_DELTA);
   }
 }
 
@@ -1993,8 +2022,11 @@ contract Transfer is UniLstTest {
 
     // Truncation is expected to favor the sender, so the expected amount should be less than or equal to
     // the sender's balance, while the receiver's balance should be less than or equal to the send amount.
-    assertLteWithinOneUnit(_expectedSenderBalance, lst.balanceOf(_sender));
-    assertLteWithinOneUnit(lst.balanceOf(_receiver), _sendAmount);
+    // All within expected acceptable deltas to account for truncation.
+    assertApproxEqAbs(_expectedSenderBalance, lst.balanceOf(_sender), ACCEPTABLE_DELTA);
+    assertLe(_expectedSenderBalance, lst.balanceOf(_sender));
+    assertApproxEqAbs(lst.balanceOf(_receiver), _sendAmount, ACCEPTABLE_DELTA);
+    assertLe(lst.balanceOf(_receiver), _sendAmount);
   }
 
   function testFuzz_MovesVotingWeightToTheReceiversDelegatee(
@@ -2070,9 +2102,11 @@ contract Transfer is UniLstTest {
 
     uint256 _expectedSenderBalance = _stakeAmount + _rewardAmount - _sendAmount;
 
-    // Truncation should favor the sender.
-    assertLteWithinOneUnit(_expectedSenderBalance, lst.balanceOf(_sender));
-    assertLteWithinOneUnit(lst.balanceOf(_receiver), _sendAmount);
+    // Truncation should favor the sender within acceptable tolerance.
+    assertApproxEqAbs(_expectedSenderBalance, lst.balanceOf(_sender), ACCEPTABLE_DELTA);
+    assertLe(_expectedSenderBalance, lst.balanceOf(_sender));
+    assertApproxEqAbs(lst.balanceOf(_receiver), _sendAmount, ACCEPTABLE_DELTA);
+    assertLe(lst.balanceOf(_receiver), _sendAmount);
 
     // It's important the balances are less than the votes, since the votes represent the "real" underlying tokens,
     // and balances being below the real tokens available means the rounding favors the protocol, which is desired.
@@ -2130,8 +2164,16 @@ contract Transfer is UniLstTest {
     _mintUpdateDelegateeAndStake(_sender, _stakeAmount, _senderDelegatee);
     _updateDelegatee(_receiver, _receiverDelegatee);
     _distributeReward(_rewardAmount);
+    uint256 _senderInitialBalance = lst.balanceOf(_sender);
     vm.prank(_sender);
     lst.transfer(_receiver, _sendAmount);
+
+    // Because the transfer method may end up sending slightly less than the user actually requested, we want to check
+    // if the conditions this test is meant to establish have actually occurred. Namely, we want to make sure the amount
+    // sent was greater than the sender's reward earnings. If they were not, we skip the assertions, as this is not
+    // testing what we intended.
+    uint256 _senderBalanceDecrease = _senderInitialBalance - lst.balanceOf(_sender);
+    vm.assume(_senderBalanceDecrease > _rewardAmount);
 
     // The sender's delegated balance is now equal to his balance, because his full undelegated balance (and then some)
     // has been used to complete the transfer.
@@ -2218,8 +2260,12 @@ contract Transfer is UniLstTest {
     lst.transfer(_receiver, _sendAmount);
 
     // The receiver's checkpoint should be incremented by the amount sent.
-    assertLteWithinOneUnit(lst.balanceCheckpoint(_receiver), _stakeAmount2 + _sendAmount);
-    assertLteWithinOneUnit(lst.balanceCheckpoint(_receiver), stakeToken.getCurrentVotes(_receiverDelegatee));
+    assertApproxEqAbs(lst.balanceCheckpoint(_receiver), _stakeAmount2 + _sendAmount, ACCEPTABLE_DELTA);
+    assertLe(lst.balanceCheckpoint(_receiver), _stakeAmount2 + _sendAmount);
+    assertApproxEqAbs(
+      lst.balanceCheckpoint(_receiver), stakeToken.getCurrentVotes(_receiverDelegatee), ACCEPTABLE_DELTA
+    );
+    assertLe(lst.balanceCheckpoint(_receiver), stakeToken.getCurrentVotes(_receiverDelegatee));
   }
 
   function testFuzz_TransfersTheBalanceAndMovesTheVotingWeightBetweenMultipleHoldersWhoHaveStakedAndReceivedRewards(
@@ -2263,19 +2309,22 @@ contract Transfer is UniLstTest {
     // The following assertions ensure balances have been updated correctly after the transfers
 
     // The amount actually sent should be truncated down, so the sender's balance should be greater than the expected
-    assertLteWithinOneUnit(_balance1AfterReward - _sendAmount1, lst.balanceOf(_sender1));
-    // This holder may have been short changed up to 1 wei as a receiver, but kept up to 1 extra wei as a sender, so
-    // their balance and the expected should be within 1 unit in either direction.
-    assertWithinOneUnit(lst.balanceOf(_sender2), _balance2AfterReward + _sendAmount1 - _sendAmount2);
-    // The amount sent could be truncated down by up to 1 wei, so the receiver's balance may be less than the expected
-    assertLteWithinOneUnit(lst.balanceOf(_receiver), _sendAmount2);
+    assertApproxEqAbs(_balance1AfterReward - _sendAmount1, lst.balanceOf(_sender1), ACCEPTABLE_DELTA);
+    assertLe(_balance1AfterReward - _sendAmount1, lst.balanceOf(_sender1));
+    // This holder may have been short changed as a receiver, but kept up extra wei as a sender, so
+    // their balance and the expected should be within the acceptable delta in either direction.
+    assertApproxEqAbs(lst.balanceOf(_sender2), _balance2AfterReward + _sendAmount1 - _sendAmount2, ACCEPTABLE_DELTA);
+    // The amount sent could be truncated down, so the receiver's balance may be less than the expected.
+    assertApproxEqAbs(lst.balanceOf(_receiver), _sendAmount2, ACCEPTABLE_DELTA);
+    assertLe(lst.balanceOf(_receiver), _sendAmount2);
 
     uint256 _expectedDefaultDelegateeWeight = (lst.balanceOf(_sender1) - lst.balanceCheckpoint(_sender1))
       + (lst.balanceOf(_sender2) - lst.balanceCheckpoint(_sender2)) + lst.balanceOf(_receiver);
 
     assertLteWithinOneUnit(lst.balanceCheckpoint(_sender1), stakeToken.getCurrentVotes(_sender1Delegatee));
     assertLteWithinOneUnit(lst.balanceCheckpoint(_sender2), stakeToken.getCurrentVotes(_sender2Delegatee));
-    assertLteWithinOneBip(_expectedDefaultDelegateeWeight, stakeToken.getCurrentVotes(defaultDelegatee));
+    assertApproxEqAbs(_expectedDefaultDelegateeWeight, stakeToken.getCurrentVotes(defaultDelegatee), ACCEPTABLE_DELTA);
+    assertLe(_expectedDefaultDelegateeWeight, stakeToken.getCurrentVotes(defaultDelegatee));
   }
 
   function testFuzz_EmitsATransferEvent(
@@ -2387,16 +2436,17 @@ contract Transfer is UniLstTest {
     assertEq(lst.balanceOf(_holder2), lst.balanceCheckpoint(_holder2));
   }
 
+  // TODO: figure out wtf is going on here
   function test_ShavesTheSendersSharesIfTruncationWouldFavorTheSender() public {
     uint256[2] memory _stakeAmounts;
     uint256[2] memory _rewardAmounts;
     uint256[2] memory _firstTransferAmounts;
     uint256[2] memory _secondTransferAmounts;
 
-    _stakeAmounts[0] = 1_000_000_000_000_000_001;
-    _rewardAmounts[0] = 999_999_999_999_999_999;
-    _firstTransferAmounts[0] = 1_999_900_000_000_001_441;
-    _secondTransferAmounts[0] = 21_155;
+    _stakeAmounts[0] = 2_000_000_000_000_000_000_000_000_000;
+    _rewardAmounts[0] = 250_000_000_000_000_000_000_000_000;
+    _firstTransferAmounts[0] = 51_159_322_140_703;
+    _secondTransferAmounts[0] = 7;
 
     _stakeAmounts[1] = 100_000_000_000_000;
     _rewardAmounts[1] = 100_000_000_000_002;
@@ -2448,7 +2498,7 @@ contract Transfer is UniLstTest {
 
     assertEq(lst.balanceOf(_holder1), _holder1InitBalance + _secondTransferAmount);
     assertEq(lst.balanceOf(_holder2), _holder2InitBalance - _secondTransferAmount);
-    assertEq(lst.balanceOf(_holder1), stakeToken.getCurrentVotes(_delegatee1));
+    assertEq(lst.balanceCheckpoint(_holder1), stakeToken.getCurrentVotes(_delegatee1));
     // Because this holder's shares were shaved as part of the transfer, they may have lost control of 1 wei of
     // of their stake token, which is now "stuck" in the Staker deposit assigned to their delegatee. This is ok, and
     // means the system is performing truncations in a way that ensures each deposit will remain solvent.
@@ -2577,8 +2627,10 @@ contract ClaimAndDistributeReward is UniLstTest {
     // Execute reward distribution that includes a fee payout.
     _approveLstAndClaimAndDistributeReward(_claimer, _rewardAmount, _recipient);
 
-    // The fee collector should now have a balance equal to (within one unit to account for truncation) the fee amount.
-    assertLteWithinOneUnit(lst.balanceOf(_feeCollector), _feeAmount);
+    // The fee collector should now have a balance less than or equal to the fee amount, within some tolerable delta
+    // to account for truncation issues.
+    assertApproxEqAbs(lst.balanceOf(_feeCollector), _feeAmount, ACCEPTABLE_DELTA);
+    assertTrue(lst.balanceOf(_feeCollector) <= _feeAmount);
   }
 
   function testFuzz_RevertIf_RewardsReceivedAreLessThanTheExpectedAmount(

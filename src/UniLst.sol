@@ -26,7 +26,7 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, EIP712, Nonces
   IUni public immutable STAKE_TOKEN;
   IWETH9 public immutable REWARD_TOKEN;
   IUniStaker.DepositIdentifier public immutable DEFAULT_DEPOSIT_ID;
-  uint256 public constant SHARE_SCALE_FACTOR = 1e18;
+  uint256 public constant SHARE_SCALE_FACTOR = 1e10;
   string private NAME;
   string private SYMBOL;
 

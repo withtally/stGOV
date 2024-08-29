@@ -109,9 +109,11 @@ contract Wrap is WrappedUniLstTest {
     _wrap(_holder, _wrapAmount);
 
     uint256 _expectedHolderLstBalance = _stakeAmount + _rewardAmount - _wrapAmount;
-    assertEq(lst.balanceOf(_holder), _expectedHolderLstBalance);
-    // TODO: another example of the rounding issues we still need to work through
-    assertLteWithinOneUnit(lst.balanceOf(address(wrappedLst)), _wrapAmount);
+    // TODO: fix these tests when the wrapper TODOs are fixed
+    assertApproxEqAbs(lst.balanceOf(_holder), _expectedHolderLstBalance, ACCEPTABLE_DELTA);
+    assertGe(lst.balanceOf(_holder), _expectedHolderLstBalance);
+    assertApproxEqAbs(lst.balanceOf(address(wrappedLst)), _wrapAmount, ACCEPTABLE_DELTA);
+    assertLe(lst.balanceOf(address(wrappedLst)), _wrapAmount);
   }
 
   function testFuzz_MintsNumberOfWrappedTokensEqualToUnderlyingLstShares(
@@ -212,7 +214,9 @@ contract Unwrap is WrappedUniLstTest {
 
     _unwrap(_holder, _unwrapAmount);
 
-    assertLteWithinOneUnit(lst.balanceOf(_holder), _holderExpectedBalance);
+    // TODO: update these assertions when the wrapper fix is implemented
+    assertLe(lst.balanceOf(_holder), _holderExpectedBalance);
+    assertApproxEqAbs(lst.balanceOf(_holder), _holderExpectedBalance, ACCEPTABLE_DELTA);
   }
 
   function testFuzz_BurnsUnwrappedTokensFromHoldersWrappedLstBalance(
@@ -260,10 +264,9 @@ contract Unwrap is WrappedUniLstTest {
     uint256 _priorLstBalance = lst.balanceOf(_holder);
     uint256 _returnValue = _unwrap(_holder, _unwrapAmount);
 
-    // TODO: more truncation issues to consider. Because the holder's lst.balanceOf calculation is subject to
-    // truncation, the balance after the unwrapped amount is transferred is less than the amount the unwrap
-    // function actually transferred.
-    assertLteWithinOneUnit(lst.balanceOf(_holder), _priorLstBalance + _returnValue);
+    // TODO: Fix these tests in accordance with the TODO's in the Wrapper Contract
+    assertApproxEqAbs(lst.balanceOf(_holder), _priorLstBalance + _returnValue, ACCEPTABLE_DELTA);
+    assertLe(lst.balanceOf(_holder), _priorLstBalance + _returnValue);
   }
 
   function testFuzz_EmitsAnUnwrappedEvent(

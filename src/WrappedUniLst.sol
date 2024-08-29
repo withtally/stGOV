@@ -34,6 +34,9 @@ contract WrappedUniLst is ERC20Permit, Ownable {
       revert WrappedUniLst__InvalidAmount();
     }
 
+    // TODO: What should actually happen here is the LST should derive the shares by its own change in
+    // sharesOf before and after the transferFrom call. Alternatively, use a method that returns these values
+    // to the caller.
     _wrappedAmount = LST.sharesForStake(_lstAmount) / LST.SHARE_SCALE_FACTOR();
     _mint(msg.sender, _wrappedAmount);
     LST.transferFrom(msg.sender, address(this), _lstAmount);
@@ -47,6 +50,7 @@ contract WrappedUniLst is ERC20Permit, Ownable {
       revert WrappedUniLst__InvalidAmount();
     }
 
+    // TODO: as above, look at share transfer to determine actual amount to burn.
     _burn(msg.sender, _wrappedAmount);
     LST.transfer(msg.sender, _unwrappedAmount);
     emit Unwrapped(msg.sender, _unwrappedAmount, _wrappedAmount);

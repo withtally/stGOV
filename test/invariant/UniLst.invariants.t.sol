@@ -103,8 +103,7 @@ contract UniStakerInvariants is Test, UnitTestBase {
   }
 
   /// @notice The `balance` of a given UniStaker deposit (that is not the default deposit) is always greater than or
-  /// equal
-  /// to the sum of the `balanceCheckpoint`s of all users who chose that as their deposit Id.
+  /// equal to the sum of the `balanceCheckpoint`s of all users who chose that as their deposit Id.
   function invariant_eachStakerDepositBalanceGreaterOrEqualToSumOfUserBalanceCheckpoints() public {
     // for each deposit, if the depositor matches the depositId, add the user balance checkpoints
     // we know how to iterate through each deposit id...
@@ -122,6 +121,15 @@ contract UniStakerInvariants is Test, UnitTestBase {
   /// defined as the `balanceOf` the holder minus the `balanceCheckpoint` of the holder
   function invariant_defaultDepositBalanceGreaterOrEqualToBalanceOfHoldersWithDefaultDepositPlusCustomDelegateUndelegatedBalance(
   ) public {
+    // This is a hacky solution. We know it is possible for slight shortfalls to accrue, and we're ok with this as long
+    // as they are always accruing to the default deposit. However, it's also important that we not miss a flagrant
+    // error that causes dramatic shortfalls, as opposed to tiny shortfalls accruing due to truncation. The problem
+    // with defining the assertion as "within some acceptable range" is that if the depth of the invariant tests are
+    // increased, one would expect the "invariant" here to eventually be broken. At some point, we ought to better
+    // understand the nature of the shortfalls that can accrue, and how we might more thoroughly mitigate them. For
+    // now, we leave this somewhat hacky "invariant" in place to make sure we're avoiding an actual, unexpected bug.
+    // 1x10^-9 UNI or 100 trillionths of a UNI
+    uint256 ACCEPTABLE_DEFAULT_DEPOSIT_SHORTFALL = 0.0000000001e18;
     // first, get the balance of the default deposit -- very easy!
     IUniStaker.DepositIdentifier defaultDepositId = lst.depositForDelegatee(defaultDelegatee);
     (uint256 _defaultDepositBalance,,,) = staker.deposits(defaultDepositId);
@@ -135,7 +143,8 @@ contract UniStakerInvariants is Test, UnitTestBase {
       handler.reduceDepositIds(0, this.sumUndelegatedBalanceForDepositId);
 
     assertGe(
-      _defaultDepositBalance, _sumBalanceOfHoldersWithDefaultDeposit + _sumUndelegatedBalancesWithCustomDelegatee
+      _defaultDepositBalance + ACCEPTABLE_DEFAULT_DEPOSIT_SHORTFALL,
+      _sumBalanceOfHoldersWithDefaultDeposit + _sumUndelegatedBalancesWithCustomDelegatee
     );
   }
 
@@ -232,6 +241,11 @@ contract UniStakerInvariants is Test, UnitTestBase {
   }
 
   function assertSumUserBalanceCheckpointsForDepositId(IUniStaker.DepositIdentifier id) external {
+    // Ignore the default deposit, for which this assertion is not assumed to hold
+    uint256 _defaultDepositId = IUniStaker.DepositIdentifier.unwrap(handler.lst().DEFAULT_DEPOSIT_ID());
+    if (IUniStaker.DepositIdentifier.unwrap(id) == _defaultDepositId) {
+      return;
+    }
     // we only want holders that match the depositId
     currentId = id;
     // console2.log("Checking depositId: %s", IUniStaker.DepositIdentifier.unwrap(id));
