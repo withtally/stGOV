@@ -671,6 +671,165 @@ contract UpdateDeposit is UniLstTest {
   }
 }
 
+contract UpdateDepositOnBehalf is UniLstTest {
+  function testFuzz_UpdatesDepositWhenCalledWithValidSignature(
+    uint256 _amount,
+    uint256 _expiry,
+    uint256 _stakerPrivateKey,
+    address _sender,
+    address _delegatee
+  ) public {
+    _amount = _boundToReasonableStakeTokenAmount(_amount);
+    _stakerPrivateKey = _boundToValidPrivateKey(_stakerPrivateKey);
+    address _staker = vm.addr(_stakerPrivateKey);
+    _assumeSafeHolder(_staker);
+    _assumeSafeDelegatee(_delegatee);
+    _assumeFutureExpiry(_expiry);
+
+    IUniStaker.DepositIdentifier _newDepositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+    uint256 _nonce = lst.nonces(_staker);
+
+    bytes memory signature = _signMessage(
+      lst.UPDATE_DEPOSIT_TYPEHASH(),
+      _staker,
+      IUniStaker.DepositIdentifier.unwrap(_newDepositId),
+      _nonce,
+      _expiry,
+      _stakerPrivateKey
+    );
+
+    vm.prank(_sender);
+    lst.updateDepositOnBehalf(_staker, _newDepositId, _nonce, _expiry, signature);
+
+    assertEq(lst.delegateeForHolder(_staker), _delegatee);
+  }
+
+  function testFuzz_EmitsDepositUpdatedEventWhenCalledWithValidSignature(
+    uint256 _amount,
+    uint256 _expiry,
+    uint256 _stakerPrivateKey,
+    address _sender,
+    address _delegatee
+  ) public {
+    _amount = _boundToReasonableStakeTokenAmount(_amount);
+    _stakerPrivateKey = _boundToValidPrivateKey(_stakerPrivateKey);
+    address _staker = vm.addr(_stakerPrivateKey);
+    _assumeSafeHolder(_staker);
+    _assumeSafeDelegatee(_delegatee);
+    _assumeFutureExpiry(_expiry);
+
+    IUniStaker.DepositIdentifier _newDepositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+    uint256 _nonce = lst.nonces(_staker);
+
+    bytes memory signature = _signMessage(
+      lst.UPDATE_DEPOSIT_TYPEHASH(),
+      _staker,
+      IUniStaker.DepositIdentifier.unwrap(_newDepositId),
+      _nonce,
+      _expiry,
+      _stakerPrivateKey
+    );
+
+    vm.expectEmit();
+    emit UniLst.DepositUpdated(_staker, IUniStaker.DepositIdentifier.wrap(1), _newDepositId);
+
+    vm.prank(_sender);
+    lst.updateDepositOnBehalf(_staker, _newDepositId, _nonce, _expiry, signature);
+  }
+
+  function testFuzz_RevertIf_SignatureIsInvalid(
+    uint256 _amount,
+    uint256 _expiry,
+    uint256 _stakerPrivateKey,
+    address _sender,
+    address _delegatee
+  ) public {
+    _amount = _boundToReasonableStakeTokenAmount(_amount);
+    _stakerPrivateKey = _boundToValidPrivateKey(_stakerPrivateKey);
+    address _staker = vm.addr(_stakerPrivateKey);
+    _assumeSafeHolder(_staker);
+    _assumeSafeDelegatee(_delegatee);
+    _assumeFutureExpiry(_expiry);
+
+    IUniStaker.DepositIdentifier _newDepositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+    uint256 _nonce = lst.nonces(_staker);
+
+    bytes memory _invalidSignature = new bytes(65);
+
+    vm.prank(_sender);
+    vm.expectRevert(UniLst.UniLst__InvalidSignature.selector);
+    lst.updateDepositOnBehalf(_staker, _newDepositId, _nonce, _expiry, _invalidSignature);
+  }
+
+  function testFuzz_RevertIf_DeadlineHasExpired(
+    uint256 _amount,
+    uint256 _expiry,
+    uint256 _stakerPrivateKey,
+    address _sender,
+    address _delegatee
+  ) public {
+    _amount = _boundToReasonableStakeTokenAmount(_amount);
+    _stakerPrivateKey = _boundToValidPrivateKey(_stakerPrivateKey);
+    address _staker = vm.addr(_stakerPrivateKey);
+    _assumeSafeHolder(_staker);
+    _assumeSafeDelegatee(_delegatee);
+
+    // Set expiry to a past timestamp
+    _expiry = bound(_expiry, 0, block.timestamp - 1);
+
+    IUniStaker.DepositIdentifier _newDepositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+    uint256 _nonce = lst.nonces(_staker);
+
+    bytes memory signature = _signMessage(
+      lst.UPDATE_DEPOSIT_TYPEHASH(),
+      _staker,
+      IUniStaker.DepositIdentifier.unwrap(_newDepositId),
+      _nonce,
+      _expiry,
+      _stakerPrivateKey
+    );
+
+    vm.prank(_sender);
+    vm.expectRevert(UniLst.UniLst__SignatureExpired.selector);
+    lst.updateDepositOnBehalf(_staker, _newDepositId, _nonce, _expiry, signature);
+  }
+
+  function testFuzz_RevertIf_NonceIsInvalid(
+    uint256 _amount,
+    uint256 _expiry,
+    uint256 _stakerPrivateKey,
+    address _sender,
+    address _delegatee
+  ) public {
+    _amount = _boundToReasonableStakeTokenAmount(_amount);
+    _stakerPrivateKey = _boundToValidPrivateKey(_stakerPrivateKey);
+    address _staker = vm.addr(_stakerPrivateKey);
+    _assumeSafeHolder(_staker);
+    _assumeSafeDelegatee(_delegatee);
+    _assumeFutureExpiry(_expiry);
+
+    IUniStaker.DepositIdentifier _newDepositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+    uint256 _nonce = lst.nonces(_staker);
+
+    bytes memory signature = _signMessage(
+      lst.UPDATE_DEPOSIT_TYPEHASH(),
+      _staker,
+      IUniStaker.DepositIdentifier.unwrap(_newDepositId),
+      _nonce,
+      _expiry,
+      _stakerPrivateKey
+    );
+
+    // Use the signature once to invalidate the nonce
+    vm.prank(_sender);
+    lst.updateDepositOnBehalf(_staker, _newDepositId, _nonce, _expiry, signature);
+
+    // Attempt to use the same nonce again
+    vm.expectRevert(abi.encodeWithSelector(Nonces.InvalidAccountNonce.selector, _staker, _nonce + 1));
+    lst.updateDepositOnBehalf(_staker, _newDepositId, _nonce, _expiry, signature);
+  }
+}
+
 contract Stake is UniLstTest {
   function testFuzz_RecordsTheDepositIdAssociatedWithTheDelegatee(uint256 _amount, address _holder, address _delegatee)
     public

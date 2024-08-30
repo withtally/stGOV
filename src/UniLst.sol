@@ -73,6 +73,8 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, EIP712, Nonces
     keccak256("Unstake(address account,uint256 amount,uint256 nonce,uint256 deadline)");
   bytes32 public constant PERMIT_TYPEHASH =
     keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
+  bytes32 public constant UPDATE_DEPOSIT_TYPEHASH =
+    keccak256("UpdateDeposit(address account,uint256 newDepositId,uint256 nonce,uint256 deadline)");
 
   constructor(
     string memory _name,
@@ -158,12 +160,34 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, EIP712, Nonces
   }
 
   function updateDeposit(IUniStaker.DepositIdentifier _newDepositId) external {
-    IUniStaker.DepositIdentifier _oldDepositId = _depositIdForHolder(msg.sender);
+    _updateDeposit(msg.sender, _newDepositId);
+  }
+
+  function updateDepositOnBehalf(
+    address _account,
+    IUniStaker.DepositIdentifier _newDepositId,
+    uint256 _nonce,
+    uint256 _deadline,
+    bytes memory _signature
+  ) external {
+    _validateSignature(
+      _account,
+      IUniStaker.DepositIdentifier.unwrap(_newDepositId),
+      _nonce,
+      _deadline,
+      _signature,
+      UPDATE_DEPOSIT_TYPEHASH
+    );
+    _updateDeposit(_account, _newDepositId);
+  }
+
+  function _updateDeposit(address _account, IUniStaker.DepositIdentifier _newDepositId) internal {
+    IUniStaker.DepositIdentifier _oldDepositId = _depositIdForHolder(_account);
 
     // OPTIMIZE: We could skip all STAKER operations if balance is 0, but we still need to make sure the deposit
     // chosen belongs to the LST.
-    uint256 _balanceOf = balanceOf(msg.sender);
-    uint256 _delegatedBalance = balanceCheckpoint[msg.sender];
+    uint256 _balanceOf = balanceOf(_account);
+    uint256 _delegatedBalance = balanceCheckpoint[_account];
     if (_delegatedBalance > _balanceOf) {
       _delegatedBalance = _balanceOf;
     }
@@ -171,8 +195,8 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, EIP712, Nonces
     uint256 _checkpointDiff = _balanceOf - _delegatedBalance;
 
     // Make internal state updates.
-    balanceCheckpoint[msg.sender] = _balanceOf;
-    storedDepositIdForHolder[msg.sender] = _newDepositId;
+    balanceCheckpoint[_account] = _balanceOf;
+    storedDepositIdForHolder[_account] = _newDepositId;
 
     // OPTIMIZE: if the new or the old delegatee is the default, we can avoid one unneeded withdraw
     if (_checkpointDiff > 0) {
@@ -182,7 +206,7 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, EIP712, Nonces
     STAKER.withdraw(_oldDepositId, uint96(_delegatedBalance));
     STAKER.stakeMore(_newDepositId, uint96(_balanceOf));
 
-    emit DepositUpdated(msg.sender, _oldDepositId, _newDepositId);
+    emit DepositUpdated(_account, _oldDepositId, _newDepositId);
   }
 
   function stake(uint256 _amount) public {
