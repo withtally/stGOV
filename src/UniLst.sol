@@ -3,6 +3,7 @@ pragma solidity 0.8.26;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/interfaces/IERC20Metadata.sol";
+import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
 import {IUniStaker} from "src/interfaces/IUniStaker.sol";
 import {IUni} from "src/interfaces/IUni.sol";
 import {IWETH9} from "src/interfaces/IWETH9.sol";
@@ -12,7 +13,7 @@ import {EIP712} from "openzeppelin/utils/cryptography/EIP712.sol";
 import {SignatureChecker} from "openzeppelin/utils/cryptography/SignatureChecker.sol";
 import {Nonces} from "openzeppelin/utils/Nonces.sol";
 
-contract UniLst is IERC20, IERC20Metadata, Ownable, EIP712, Nonces {
+contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, EIP712, Nonces {
   error UniLst__StakeTokenOperationFailed();
   error UniLst__InsufficientBalance();
   error UniLst__InsufficientRewards();
@@ -52,6 +53,8 @@ contract UniLst is IERC20, IERC20Metadata, Ownable, EIP712, Nonces {
     keccak256("Stake(address account,uint256 amount,uint256 nonce,uint256 deadline)");
   bytes32 public constant UNSTAKE_TYPEHASH =
     keccak256("Unstake(address account,uint256 amount,uint256 nonce,uint256 deadline)");
+  bytes32 public constant PERMIT_TYPEHASH =
+    keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
 
   constructor(
     string memory _name,
@@ -275,6 +278,46 @@ contract UniLst is IERC20, IERC20Metadata, Ownable, EIP712, Nonces {
   ) external {
     _validateSignature(_account, _amount, _nonce, _deadline, _signature, UNSTAKE_TYPEHASH);
     _unstake(_account, _amount);
+  }
+
+  function permit(address _owner, address _spender, uint256 _value, uint256 _deadline, uint8 _v, bytes32 _r, bytes32 _s)
+    external
+    virtual
+  {
+    if (block.timestamp > _deadline) {
+      revert UniLst__SignatureExpired();
+    }
+
+    bytes32 _structHash;
+    // Unchecked because the only math done is incrementing
+    // the owner's nonce which cannot realistically overflow.
+    unchecked {
+      _structHash = keccak256(abi.encode(PERMIT_TYPEHASH, _owner, _spender, _value, _useNonce(_owner), _deadline));
+    }
+
+    bytes32 _hash = _hashTypedDataV4(_structHash);
+
+    address _recoveredAddress = ecrecover(_hash, _v, _r, _s);
+
+    if (_recoveredAddress == address(0) || _recoveredAddress != _owner) {
+      revert UniLst__InvalidSignature();
+    }
+
+    allowance[_recoveredAddress][_spender] = _value;
+
+    emit Approval(_owner, _spender, _value);
+  }
+
+  /// @notice Get the current nonce for an owner
+  /// @dev This function explicitly overrides both Nonces and IERC20Permit to allow compatibility
+  /// @param _owner The address of the owner
+  /// @return The current nonce for the owner
+  function nonces(address _owner) public view override(Nonces, IERC20Permit) returns (uint256) {
+    return Nonces.nonces(_owner);
+  }
+
+  function DOMAIN_SEPARATOR() external view returns (bytes32) {
+    return _domainSeparatorV4();
   }
 
   function _validateSignature(

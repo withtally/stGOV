@@ -2705,3 +2705,170 @@ contract SetFeeParameters is UniLstTest {
     lst.setFeeParameters(_newFeeAmount, _newFeeCollector);
   }
 }
+
+contract Permit is UniLstTest {
+  function _buildPermitStructHash(address _owner, address _spender, uint256 _value, uint256 _nonce, uint256 _deadline)
+    internal
+    view
+    returns (bytes32)
+  {
+    return keccak256(abi.encode(lst.PERMIT_TYPEHASH(), _owner, _spender, _value, _nonce, _deadline));
+  }
+
+  function testFuzz_AllowsApprovalViaSignature(
+    uint256 _ownerPrivateKey,
+    address _spender,
+    address _sender,
+    uint256 _value,
+    uint256 _deadline
+  ) public {
+    _ownerPrivateKey = _boundToValidPrivateKey(_ownerPrivateKey);
+    address _owner = vm.addr(_ownerPrivateKey);
+    _assumeSafeHolders(_owner, _spender);
+    _assumeFutureExpiry(_deadline);
+    _value = _boundToReasonableStakeTokenAmount(_value);
+
+    uint256 _nonce = lst.nonces(_owner);
+    bytes32 structHash = _buildPermitStructHash(_owner, _spender, _value, _nonce, _deadline);
+    (uint8 v, bytes32 r, bytes32 s) =
+      vm.sign(_ownerPrivateKey, _hashTypedDataV4(EIP712_DOMAIN_TYPEHASH, structHash, "UniLst", "1", address(lst)));
+
+    assertEq(lst.allowance(_owner, _spender), 0);
+
+    vm.prank(_sender);
+    lst.permit(_owner, _spender, _value, _deadline, v, r, s);
+
+    assertEq(lst.allowance(_owner, _spender), _value);
+    assertEq(lst.nonces(_owner), _nonce + 1);
+  }
+
+  function testFuzz_EmitsApprovalEvent(
+    uint256 _ownerPrivateKey,
+    address _spender,
+    address _sender,
+    uint256 _value,
+    uint256 _deadline
+  ) public {
+    _ownerPrivateKey = _boundToValidPrivateKey(_ownerPrivateKey);
+    address _owner = vm.addr(_ownerPrivateKey);
+    _assumeSafeHolders(_owner, _spender);
+    _assumeFutureExpiry(_deadline);
+    _value = _boundToReasonableStakeTokenAmount(_value);
+
+    uint256 _nonce = lst.nonces(_owner);
+    bytes32 structHash = _buildPermitStructHash(_owner, _spender, _value, _nonce, _deadline);
+    (uint8 v, bytes32 r, bytes32 s) =
+      vm.sign(_ownerPrivateKey, _hashTypedDataV4(EIP712_DOMAIN_TYPEHASH, structHash, "UniLst", "1", address(lst)));
+
+    vm.prank(_sender);
+    vm.expectEmit();
+    emit IERC20.Approval(_owner, _spender, _value);
+    lst.permit(_owner, _spender, _value, _deadline, v, r, s);
+  }
+
+  function testFuzz_RevertIf_DeadlineExpired(
+    uint256 _ownerPrivateKey,
+    address _spender,
+    address _sender,
+    uint256 _value,
+    uint256 _deadline,
+    uint256 _futureTimestamp
+  ) public {
+    _ownerPrivateKey = _boundToValidPrivateKey(_ownerPrivateKey);
+    address _owner = vm.addr(_ownerPrivateKey);
+    _assumeSafeHolders(_owner, _spender);
+    _value = _boundToReasonableStakeTokenAmount(_value);
+
+    // Bound _deadline to be in the past relative to _futureTimestamp
+    _futureTimestamp = bound(_futureTimestamp, block.timestamp + 1, type(uint256).max);
+    _deadline = bound(_deadline, 0, _futureTimestamp - 1);
+
+    // Warp to the future timestamp
+    vm.warp(_futureTimestamp);
+
+    uint256 _nonce = lst.nonces(_owner);
+    bytes32 structHash = _buildPermitStructHash(_owner, _spender, _value, _nonce, _deadline);
+    (uint8 v, bytes32 r, bytes32 s) =
+      vm.sign(_ownerPrivateKey, _hashTypedDataV4(EIP712_DOMAIN_TYPEHASH, structHash, "UniLst", "1", address(lst)));
+
+    vm.prank(_sender);
+    vm.expectRevert(UniLst.UniLst__SignatureExpired.selector);
+    lst.permit(_owner, _spender, _value, _deadline, v, r, s);
+  }
+
+  function testFuzz_RevertIf_SignatureInvalid(
+    uint256 _ownerPrivateKey,
+    uint256 _wrongPrivateKey,
+    address _spender,
+    address _sender,
+    uint256 _value,
+    uint256 _deadline
+  ) public {
+    _ownerPrivateKey = _boundToValidPrivateKey(_ownerPrivateKey);
+    _wrongPrivateKey = _boundToValidPrivateKey(_wrongPrivateKey);
+    vm.assume(_ownerPrivateKey != _wrongPrivateKey);
+    address _owner = vm.addr(_ownerPrivateKey);
+    _assumeSafeHolders(_owner, _spender);
+    _assumeFutureExpiry(_deadline);
+    _value = _boundToReasonableStakeTokenAmount(_value);
+
+    uint256 _nonce = lst.nonces(_owner);
+    bytes32 structHash = _buildPermitStructHash(_owner, _spender, _value, _nonce, _deadline);
+    (uint8 v, bytes32 r, bytes32 s) =
+      vm.sign(_wrongPrivateKey, _hashTypedDataV4(EIP712_DOMAIN_TYPEHASH, structHash, "UniLst", "1", address(lst)));
+
+    vm.prank(_sender);
+    vm.expectRevert(UniLst.UniLst__InvalidSignature.selector);
+    lst.permit(_owner, _spender, _value, _deadline, v, r, s);
+  }
+
+  function testFuzz_RevertIf_SignatureReused(
+    uint256 _ownerPrivateKey,
+    address _spender,
+    address _sender,
+    uint256 _value,
+    uint256 _deadline
+  ) public {
+    _ownerPrivateKey = _boundToValidPrivateKey(_ownerPrivateKey);
+    address _owner = vm.addr(_ownerPrivateKey);
+    _assumeSafeHolders(_owner, _spender);
+    _assumeFutureExpiry(_deadline);
+    _value = _boundToReasonableStakeTokenAmount(_value);
+
+    uint256 _nonce = lst.nonces(_owner);
+    bytes32 structHash = _buildPermitStructHash(_owner, _spender, _value, _nonce, _deadline);
+    (uint8 v, bytes32 r, bytes32 s) =
+      vm.sign(_ownerPrivateKey, _hashTypedDataV4(EIP712_DOMAIN_TYPEHASH, structHash, "UniLst", "1", address(lst)));
+
+    vm.prank(_sender);
+    lst.permit(_owner, _spender, _value, _deadline, v, r, s);
+
+    vm.prank(_sender);
+    vm.expectRevert(UniLst.UniLst__InvalidSignature.selector);
+    lst.permit(_owner, _spender, _value, _deadline, v, r, s);
+  }
+}
+
+contract DOMAIN_SEPARATOR is UniLstTest {
+  function test_MatchesTheExpectedValueRequiredByTheEIP712Standard() public view {
+    bytes32 _expectedDomainSeparator = keccak256(
+      abi.encode(
+        keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
+        keccak256("UniLst"),
+        keccak256("1"),
+        block.chainid,
+        address(lst)
+      )
+    );
+
+    bytes32 _actualDomainSeparator = lst.DOMAIN_SEPARATOR();
+
+    assertEq(_actualDomainSeparator, _expectedDomainSeparator, "Domain separator mismatch");
+  }
+}
+
+contract Nonce is UniLstTest {
+  function testFuzz_InitialReturnsZeroForAllAccounts(address _account) public view {
+    assertEq(lst.nonces(_account), 0);
+  }
+}
