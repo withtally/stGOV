@@ -202,16 +202,21 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     if (_delegatedBalance > _balanceOf) {
       _delegatedBalance = _balanceOf;
     }
-    // This is the number of tokens in the default pool that the msg.sender has claim to
-    uint256 _checkpointDiff = _balanceOf - _delegatedBalance;
+    // This is the number of tokens in the default pool that the account has claim to
+    uint256 _undelegatedBalance = _balanceOf - _delegatedBalance;
 
     // Make internal state updates.
-    holderStates[_account].balanceCheckpoint = uint96(_balanceOf);
-    holderStates[_account].depositId = uint32(IUniStaker.DepositIdentifier.unwrap(_newDepositId));
+    if (_isSameDepositId(_newDepositId, DEFAULT_DEPOSIT_ID)) {
+      holderStates[_account].balanceCheckpoint = 0;
+      holderStates[_account].depositId = 0;
+    } else {
+      holderStates[_account].balanceCheckpoint = uint96(_balanceOf);
+      holderStates[_account].depositId = uint32(IUniStaker.DepositIdentifier.unwrap(_newDepositId));
+    }
 
     // OPTIMIZE: if the new or the old delegatee is the default, we can avoid one unneeded withdraw
-    if (_checkpointDiff > 0) {
-      STAKER.withdraw(DEFAULT_DEPOSIT_ID, uint96(_checkpointDiff));
+    if (_undelegatedBalance > 0) {
+      STAKER.withdraw(DEFAULT_DEPOSIT_ID, uint96(_undelegatedBalance));
     }
 
     STAKER.withdraw(_oldDepositId, uint96(_delegatedBalance));
@@ -239,8 +244,10 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     });
 
     holderStates[_account].shares += uint128(_newShares);
-    holderStates[_account].balanceCheckpoint += uint96(balanceOf(_account) - _initialBalance);
     IUniStaker.DepositIdentifier _depositId = _depositIdForHolder(_account);
+    if (!_isSameDepositId(_depositId, DEFAULT_DEPOSIT_ID)) {
+      holderStates[_account].balanceCheckpoint += uint96(balanceOf(_account) - _initialBalance);
+    }
 
     STAKER.stakeMore(_depositId, uint96(_amount));
 
@@ -573,7 +580,9 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     // As a result, extra wei may be lost, i.e. no longer controlled by either the sender or the receiver,
     // but are instead stuck permanently in the receiver's deposit. This is ok, as the amount lost is miniscule, but
     // we've ensured the solvency of each underlying Staker deposit.
-    holderStates[_receiver].balanceCheckpoint += uint96(_receiverBalanceIncrease);
+    if (!_isSameDepositId(_depositIdForHolder(_receiver), DEFAULT_DEPOSIT_ID)) {
+      holderStates[_receiver].balanceCheckpoint += uint96(_receiverBalanceIncrease);
+    }
 
     uint256 _undelegatedBalanceToWithdraw;
     if (_senderBalanceDecrease > _senderUndelegatedBalance) {
@@ -598,5 +607,13 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     emit Transfer(_sender, _receiver, _value);
 
     return true;
+  }
+
+  function _isSameDepositId(IUniStaker.DepositIdentifier _depositIdA, IUniStaker.DepositIdentifier _depositIdB)
+    public
+    pure
+    returns (bool)
+  {
+    return IUniStaker.DepositIdentifier.unwrap(_depositIdA) == IUniStaker.DepositIdentifier.unwrap(_depositIdB);
   }
 }

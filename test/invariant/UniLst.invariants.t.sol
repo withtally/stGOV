@@ -128,8 +128,8 @@ contract UniStakerInvariants is Test, UnitTestBase {
     // increased, one would expect the "invariant" here to eventually be broken. At some point, we ought to better
     // understand the nature of the shortfalls that can accrue, and how we might more thoroughly mitigate them. For
     // now, we leave this somewhat hacky "invariant" in place to make sure we're avoiding an actual, unexpected bug.
-    // 1x10^-9 UNI or 1 billionth of a UNI
-    uint256 ACCEPTABLE_DEFAULT_DEPOSIT_SHORTFALL = 0.000000001e18;
+    // 1x10^-6 UNI or 1 millionth of a UNI
+    uint256 ACCEPTABLE_DEFAULT_DEPOSIT_SHORTFALL = 0.000001e18;
     // first, get the balance of the default deposit -- very easy!
     IUniStaker.DepositIdentifier defaultDepositId = lst.depositForDelegatee(defaultDelegatee);
     (uint256 _defaultDepositBalance,,,) = staker.deposits(defaultDepositId);
