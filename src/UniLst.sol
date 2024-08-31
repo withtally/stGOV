@@ -553,12 +553,6 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     }
     uint256 _senderUndelegatedBalance = _senderInitBalance - _senderDelegatedBalance;
 
-    // Without this check, the user might pass in a `_value` that is slightly greater than their
-    // actual balance, and the transaction would succeed. That's because the truncation issue can cause
-    // the actual amount sent to be less than the `_value` they request, such that it falls below their balance.
-    // So while such a transaction does not break any internal invariants of the system, it's a lso quite
-    // counterintuitive. At the same time, this check imposes some additional gas cost that is not strictly needed.
-    // TODO/OPTIMIZATION: consider whether it can/should be removed.
     if (_value > _senderInitBalance) {
       revert UniLst__InsufficientBalance();
     }
@@ -587,18 +581,39 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     // As a result, extra wei may be lost, i.e. no longer controlled by either the sender or the receiver,
     // but are instead stuck permanently in the receiver's deposit. This is ok, as the amount lost is miniscule, but
     // we've ensured the solvency of each underlying Staker deposit.
+
     if (!_isSameDepositId(_depositIdForHolder(_receiver), DEFAULT_DEPOSIT_ID)) {
       holderStates[_receiver].balanceCheckpoint += uint96(_receiverBalanceIncrease);
     }
 
+    emit Transfer(_sender, _receiver, _value);
+
+    // If both the sender and receiver are using the default deposit, then no tokens whatsoever need to move
+    // between Staker deposits.
+    if (
+      _isSameDepositId(_depositIdForHolder(_receiver), DEFAULT_DEPOSIT_ID)
+        && _isSameDepositId(_depositIdForHolder(_sender), DEFAULT_DEPOSIT_ID)
+    ) {
+      return true;
+    }
+
     uint256 _undelegatedBalanceToWithdraw;
+    uint256 _delegatedBalanceToWithdraw;
+
     if (_senderBalanceDecrease > _senderUndelegatedBalance) {
       // Since the amount needed is more than the full undelegated balance, we'll withdraw all of it, plus some from
       // the delegated balance.
       _undelegatedBalanceToWithdraw = _senderUndelegatedBalance;
-      uint256 _delegatedBalanceToWithdraw = _senderBalanceDecrease - _undelegatedBalanceToWithdraw;
-      STAKER.withdraw(_depositIdForHolder(_sender), uint96(_delegatedBalanceToWithdraw));
+      _delegatedBalanceToWithdraw = _senderBalanceDecrease - _undelegatedBalanceToWithdraw;
       holderStates[_sender].balanceCheckpoint = uint96(_senderDelegatedBalance - _delegatedBalanceToWithdraw);
+
+      if (_isSameDepositId(_depositIdForHolder(_receiver), _depositIdForHolder(_sender))) {
+        // If the sender and receiver are using the same deposit, we don't need to move these tokens, so we skip the
+        // Staker withdraw and zero out this value so we don't try to "stakeMore" with it later.
+        _delegatedBalanceToWithdraw = 0;
+      } else {
+        STAKER.withdraw(_depositIdForHolder(_sender), uint96(_delegatedBalanceToWithdraw));
+      }
     } else {
       // Since the amount is less than or equal to the undelegated balance, we'll source all of it from said balance.
       _undelegatedBalanceToWithdraw = _senderBalanceDecrease;
@@ -609,9 +624,13 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
       STAKER.withdraw(DEFAULT_DEPOSIT_ID, uint96(_undelegatedBalanceToWithdraw));
     }
 
-    STAKER.stakeMore(_depositIdForHolder(_receiver), uint96(_senderBalanceDecrease));
-
-    emit Transfer(_sender, _receiver, _value);
+    // If both the delegated balance to withdraw and the undelegated balance to withdraw were zero, then we didn't
+    // have to move any tokens out of Staker deposits, and none need to be put back into the receiver's deposit now.
+    if ((_delegatedBalanceToWithdraw + _undelegatedBalanceToWithdraw) > 0) {
+      STAKER.stakeMore(
+        _depositIdForHolder(_receiver), uint96(_delegatedBalanceToWithdraw + _undelegatedBalanceToWithdraw)
+      );
+    }
 
     return true;
   }
