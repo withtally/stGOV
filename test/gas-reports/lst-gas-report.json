@@ -1,5 +1,5 @@
 {
-  "generatedAt": 1725479368,
+  "generatedAt": 1725482917,
   "reportName:": "lstGasReport",
   "results": [
     {
@@ -96,71 +96,71 @@
     },
     {
       "scenarioName": "Sender With Default Delegatee Approves Caller To Transfer Balance To a New Receiver With Default Delegatee",
-      "gasUsed": 54033
+      "gasUsed": 54055
     },
     {
       "scenarioName": "Sender With Default Delegatee Max Approves Caller To Transfer Balance To a New Receiver With Default Delegatee",
-      "gasUsed": 55709
+      "gasUsed": 55731
     },
     {
       "scenarioName": "Sender With Default Delegatee Approves Caller To Transfer Partial Balance To New Receiver With Default Delegatee",
-      "gasUsed": 64075
+      "gasUsed": 64097
     },
     {
       "scenarioName": "Sender With Default Delegatee Approves Caller To Transfer Balance To Existing Receiver With Default Delegatee",
-      "gasUsed": 37580
+      "gasUsed": 37598
     },
     {
       "scenarioName": "Sender With Default Delegatee Approves Caller To Transfer Partial Balance To Existing Receiver With Default Delegatee",
-      "gasUsed": 47417
+      "gasUsed": 47439
     },
     {
       "scenarioName": "Sender With Custom Delegatee Approves Caller To Transfer Balance To New Receiver With Default Delegatee",
-      "gasUsed": 175669
+      "gasUsed": 175691
     },
     {
       "scenarioName": "Sender With Custom Delegatee Approves Caller To Transfer Partial Balance To New Receiver With Default Delegatee",
-      "gasUsed": 185711
+      "gasUsed": 185733
     },
     {
       "scenarioName": "Sender With Custom Delegatee Approves Caller To Transfer Balance To Existing Receiver With Default Delegatee",
-      "gasUsed": 159011
+      "gasUsed": 159033
     },
     {
       "scenarioName": "Sender With Custom Delegatee Approves Caller To Transfer Partial Balance To Existing Receiver With Default Delegatee",
-      "gasUsed": 169053
+      "gasUsed": 169075
     },
     {
       "scenarioName": "Sender With Custom Delegatee Approves Caller To Transfer Balance To New Receiver With Same Delegatee",
-      "gasUsed": 43270
+      "gasUsed": 43292
     },
     {
       "scenarioName": "Sender With Custom Delegatee Approves Caller To Transfer Partial Balance To New Receiver With Same Delegatee",
-      "gasUsed": 48512
+      "gasUsed": 48534
     },
     {
       "scenarioName": "Sender With Custom Delegatee Approves Caller To Transfer Balance To Existing Receiver With Same Delegatee",
-      "gasUsed": 43712
+      "gasUsed": 43734
     },
     {
       "scenarioName": "Sender With Custom Delegatee Approves Caller To Transfer Partial Balance To Existing Receiver With Same Delegatee",
-      "gasUsed": 48942
+      "gasUsed": 48964
     },
     {
       "scenarioName": "Sender With Custom Delegatee Approves Caller To Transfer Balance To New Receiver With Custom Delegatee",
-      "gasUsed": 212907
+      "gasUsed": 212929
     },
     {
       "scenarioName": "Sender With Custom Delegatee Approves Caller To Transfer Partial Balance To New Receiver With Custom Delegatee",
-      "gasUsed": 222949
+      "gasUsed": 222971
     },
     {
       "scenarioName": "Sender With Custom Delegatee Approves Caller To Transfer Balance To Existing Receiver With Custom Delegatee",
-      "gasUsed": 159366
+      "gasUsed": 159388
     },
     {
       "scenarioName": "Sender With Custom Delegatee Approves Caller To Transfer Partial Balance To Existing Receiver With Custom Delegatee",
-      "gasUsed": 169408
+      "gasUsed": 169430
     },
     {
       "scenarioName": "Unstake Full Balance From The Default Delegatee",
@@ -228,27 +228,27 @@
     },
     {
       "scenarioName": "Updating from default deposit with nothing staked",
-      "gasUsed": 134219
+      "gasUsed": 56147
     },
     {
       "scenarioName": "Updating from custom deposit with nothing staked",
-      "gasUsed": 117121
+      "gasUsed": 39049
     },
     {
       "scenarioName": "Updating from default deposit after staking",
-      "gasUsed": 221803
+      "gasUsed": 221825
     },
     {
       "scenarioName": "Updating from custom deposit after staking",
-      "gasUsed": 205591
+      "gasUsed": 205613
     },
     {
       "scenarioName": "Updating from default deposit after staking and earning rewards",
-      "gasUsed": 221803
+      "gasUsed": 221825
     },
     {
       "scenarioName": "Updating from custom deposit after staking and earning rewards",
-      "gasUsed": 251823
+      "gasUsed": 251845
     }
   ]
 }

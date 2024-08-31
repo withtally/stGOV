@@ -195,10 +195,20 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
 
   function _updateDeposit(address _account, IUniStaker.DepositIdentifier _newDepositId) internal {
     IUniStaker.DepositIdentifier _oldDepositId = _depositIdForHolder(_account);
-
-    // OPTIMIZE: We could skip all STAKER operations if balance is 0, but we still need to make sure the deposit
-    // chosen belongs to the LST.
     uint256 _balanceOf = balanceOf(_account);
+
+    emit DepositUpdated(_account, _oldDepositId, _newDepositId);
+
+    // If the user's deposit is currently zero, and the deposit identifier specified is indeed owned by the LST as it
+    // must be, we can simply update their deposit identifier and avoid actions on the underlying Staker.
+    if (_balanceOf == 0) {
+      (, address _owner,,) = STAKER.deposits(_newDepositId);
+      if (_owner == address(this)) {
+        holderStates[_account].depositId = uint32(IUniStaker.DepositIdentifier.unwrap(_newDepositId));
+        return;
+      }
+    }
+
     uint256 _delegatedBalance = holderStates[_account].balanceCheckpoint;
     if (_delegatedBalance > _balanceOf) {
       _delegatedBalance = _balanceOf;
@@ -222,8 +232,6 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
 
     STAKER.withdraw(_oldDepositId, uint96(_delegatedBalance));
     STAKER.stakeMore(_newDepositId, uint96(_balanceOf));
-
-    emit DepositUpdated(_account, _oldDepositId, _newDepositId);
   }
 
   function stake(uint256 _amount) public {
