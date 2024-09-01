@@ -7,7 +7,7 @@ import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC2
 import {IUniStaker} from "src/interfaces/IUniStaker.sol";
 import {IUni} from "src/interfaces/IUni.sol";
 import {IWETH9} from "src/interfaces/IWETH9.sol";
-import {IWithdrawalGate} from "src/interfaces/IWithdrawalGate.sol";
+import {WithdrawGate} from "src/WithdrawGate.sol";
 import {Ownable} from "openzeppelin/access/Ownable.sol";
 import {EIP712} from "openzeppelin/utils/cryptography/EIP712.sol";
 import {SignatureChecker} from "openzeppelin/utils/cryptography/SignatureChecker.sol";
@@ -26,6 +26,7 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   IUniStaker public immutable STAKER;
   IUni public immutable STAKE_TOKEN;
   IWETH9 public immutable REWARD_TOKEN;
+  WithdrawGate public immutable WITHDRAW_GATE;
   IUniStaker.DepositIdentifier public immutable DEFAULT_DEPOSIT_ID;
   uint256 public constant SHARE_SCALE_FACTOR = 1e10;
   string private NAME;
@@ -63,7 +64,6 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
 
   Totals internal totals;
   address public defaultDelegatee;
-  IWithdrawalGate public withdrawalGate;
   uint256 public payoutAmount;
   uint256 public feeAmount;
   address public feeCollector;
@@ -103,6 +103,9 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
 
     // Create initial deposit for default so other methods can assume it exists.
     DEFAULT_DEPOSIT_ID = STAKER.stake(0, _initialDefaultDelegatee);
+
+    // Deploy the WithdrawGate
+    WITHDRAW_GATE = new WithdrawGate(_initialOwner, address(this), address(STAKE_TOKEN), 0);
   }
 
   function approve(address _spender, uint256 _amount) public virtual returns (bool) {
@@ -315,9 +318,6 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     uint256 _undelegatedBalance = _initialBalanceOf - _delegatedBalance;
     uint256 _undelegatedBalanceToWithdraw;
 
-    // OPTIMIZE: This can be smarter if the user is delegated to the default delegatee. It should only need to do one
-    // withdrawal in that case.
-
     if (_amount > _undelegatedBalance) {
       // Since the amount needed is more than the full undelegated balance, we'll withdraw all of it, plus some from
       // the delegated balance.
@@ -337,27 +337,13 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
 
     // At this point, the LST holds _amount of stakeToken
 
-    // This logic determines if the unstaked funds go directly to the holder or to the withdrawal gate. The logic is
-    // more complicated than simply checking if the withdrawal gate is set or not in order to protect stakers from
-    // having their funds lost if an invalid address is set by the owner as the withdrawal gate. Ultimately, the
-    // owner could always seize funds by setting a valid but malicious withdrawal gate, thus this logic is primarily
-    // protection against an error.
-    // OPTIMIZE: given the above, we should assess the gas savings to be had from removing this logic and determine if
-    // it's worth the tradeoff. Another option would be to make the withdrawal gate an immutable variable set in the
-    // constructor, if we're confident the parameters the features we need can be achieved without ever needing to
-    // update the address. This would allow us to remove this check entirely. It would require some extra finagling in
-    // the deploy script to use create2.
-    address _withdrawalTarget = address(withdrawalGate);
-    if (_withdrawalTarget.code.length == 0) {
-      // If the withdrawal target is set to an address that is not a smart contract, unstaking should transfer directly
-      // to the holder.
+    address _withdrawalTarget;
+    if (WITHDRAW_GATE.delay() == 0) {
+      // If there's currently a 0-delay on withdraws, just send the tokens straight to the user.
       _withdrawalTarget = _account;
     } else {
-      // Similarly, if the call to the withdrawal gate fails, tokens should be transferred directly to the holder.
-      try withdrawalGate.initiateWithdrawal(_amount, _account) {}
-      catch {
-        _withdrawalTarget = _account;
-      }
+      _withdrawalTarget = address(WITHDRAW_GATE);
+      WITHDRAW_GATE.initiateWithdrawal(_amount, _account);
     }
 
     STAKE_TOKEN.transfer(_withdrawalTarget, _amount);
@@ -486,12 +472,6 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     REWARD_TOKEN.transfer(_recipient, _rewards);
 
     emit RewardDistributed(msg.sender, _recipient, _rewards, payoutAmount, _feeAmount, feeCollector);
-  }
-
-  function setWithdrawalGate(address _newWithdrawalGate) external {
-    _checkOwner();
-    emit WithdrawalGateSet(address(withdrawalGate), _newWithdrawalGate);
-    withdrawalGate = IWithdrawalGate(_newWithdrawalGate);
   }
 
   function setPayoutAmount(uint256 _newPayoutAmount) external {

@@ -69,7 +69,7 @@ contract UniLstHandler is CommonBase, StdCheats, StdUtils {
 
   function stake(address _depositor, uint96 _amount) public countCall("stake") {
     vm.assume(_depositor != address(0));
-    vm.assume(_depositor != address(lst.withdrawalGate()));
+    vm.assume(_depositor != address(lst.WITHDRAW_GATE()));
     holders.add(_depositor);
 
     _amount = uint96(bound(_amount, 0, 100_000_000e18));
@@ -100,9 +100,9 @@ contract UniLstHandler is CommonBase, StdCheats, StdUtils {
     _amount = bound(_amount, 0, _holderBalance);
 
     vm.startPrank(_holder);
-    uint256 _balanceBefore = stakeToken.balanceOf(address(lst.withdrawalGate()));
+    uint256 _balanceBefore = stakeToken.balanceOf(address(lst.WITHDRAW_GATE()));
     lst.unstake(_amount);
-    uint256 _unstakedActual = stakeToken.balanceOf(address(lst.withdrawalGate())) - _balanceBefore;
+    uint256 _unstakedActual = stakeToken.balanceOf(address(lst.WITHDRAW_GATE())) - _balanceBefore;
     vm.stopPrank();
     ghost_stakeUnstaked += _unstakedActual;
   }

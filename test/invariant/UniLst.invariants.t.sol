@@ -2,10 +2,9 @@
 pragma solidity 0.8.26;
 
 import {Test, console2} from "forge-std/Test.sol";
-import {UniLst} from "src/UniLst.sol";
+import {UniLst, WithdrawGate} from "src/UniLst.sol";
 import {UniLstHandler} from "./UniLst.handler.sol";
 import {IUniStaker} from "src/interfaces/IUniStaker.sol";
-import {MockWithdrawalGate} from "test/mocks/MockWithdrawalGate.sol";
 import {UnitTestBase} from "test/UnitTestBase.sol";
 
 contract UniStakerInvariants is Test, UnitTestBase {
@@ -14,7 +13,6 @@ contract UniStakerInvariants is Test, UnitTestBase {
   address rewardsNotifier;
   UniLst lst;
   address lstOwner;
-  MockWithdrawalGate mockWithdrawalGate;
   uint256 initialPayoutAmount = 2500e18;
 
   // vars for reducers
@@ -44,10 +42,10 @@ contract UniStakerInvariants is Test, UnitTestBase {
     // Finally, deploy the lst for tests.
     lst = new UniLst("Uni Lst", "stUni", staker, defaultDelegatee, lstOwner, initialPayoutAmount);
 
-    // Deploy and set the mock withdrawal gate.
-    mockWithdrawalGate = new MockWithdrawalGate();
-    vm.prank(lstOwner);
-    lst.setWithdrawalGate(address(mockWithdrawalGate));
+    // Set the withdrawal delay to a non-zero amount
+    vm.startPrank(lstOwner);
+    lst.WITHDRAW_GATE().setDelay(1 hours);
+    vm.stopPrank();
 
     // end UniLst.t.sol setup
 

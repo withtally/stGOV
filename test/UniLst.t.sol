@@ -7,7 +7,7 @@ import {IERC20} from "openzeppelin/token/ERC20/IERC20.sol";
 import {IWETH9} from "src/interfaces/IWETH9.sol";
 import {IUni} from "src/interfaces/IUni.sol";
 import {IUniStaker} from "src/interfaces/IUniStaker.sol";
-import {MockWithdrawalGate} from "test/mocks/MockWithdrawalGate.sol";
+import {WithdrawGate} from "src/WithdrawGate.sol";
 import {UnitTestBase} from "test/UnitTestBase.sol";
 import {TestHelpers} from "test/helpers/TestHelpers.sol";
 import {Eip712Helper} from "test/helpers/Eip712Helper.sol";
@@ -20,8 +20,8 @@ contract UniLstTest is UnitTestBase, PercentAssertions, TestHelpers, Eip712Helpe
 
   IUniStaker staker;
   UniLst lst;
+  WithdrawGate withdrawGate;
   address lstOwner;
-  MockWithdrawalGate mockWithdrawalGate;
   uint256 initialPayoutAmount = 2500e18;
 
   address defaultDelegatee = makeAddr("Default Delegatee");
@@ -51,11 +51,10 @@ contract UniLstTest is UnitTestBase, PercentAssertions, TestHelpers, Eip712Helpe
 
     // Finally, deploy the lst for tests.
     lst = new UniLst(tokenName, tokenSymbol, staker, defaultDelegatee, lstOwner, initialPayoutAmount);
-
-    // Deploy and set the mock withdrawal gate.
-    mockWithdrawalGate = new MockWithdrawalGate();
+    // Store the withdraw gate for convenience, set a non-zero withdrawal delay
+    withdrawGate = lst.WITHDRAW_GATE();
     vm.prank(lstOwner);
-    lst.setWithdrawalGate(address(mockWithdrawalGate));
+    withdrawGate.setDelay(1 hours);
   }
 
   function __dumpGlobalState() public view {
@@ -200,11 +199,6 @@ contract UniLstTest is UnitTestBase, PercentAssertions, TestHelpers, Eip712Helpe
   function _unstake(address _holder, uint256 _amount) internal {
     vm.prank(_holder);
     lst.unstake(_amount);
-  }
-
-  function _setWithdrawalGate(address _newWithdrawalGate) internal {
-    vm.prank(lstOwner);
-    lst.setWithdrawalGate(_newWithdrawalGate);
   }
 
   function _setPayoutAmount(uint256 _payoutAmount) internal {
@@ -1057,10 +1051,10 @@ contract Unstake is UniLstTest {
     _mintUpdateDelegateeAndStake(_holder, _stakeAmount, _delegatee);
     _unstake(_holder, _unstakeAmount);
 
-    assertEq(stakeToken.balanceOf(address(mockWithdrawalGate)), _unstakeAmount);
+    assertEq(stakeToken.balanceOf(address(withdrawGate)), _unstakeAmount);
   }
 
-  function testFuzz_InitiatesWithdrawalOnTheWithdrawalGate(
+  function testFuzz_InitiatesWithdrawalOnTheWithdrawGate(
     uint256 _stakeAmount,
     uint256 _unstakeAmount,
     address _holder,
@@ -1072,13 +1066,15 @@ contract Unstake is UniLstTest {
     _unstakeAmount = bound(_unstakeAmount, 0, _stakeAmount);
 
     _mintUpdateDelegateeAndStake(_holder, _stakeAmount, _delegatee);
+    uint256 _withdrawId = withdrawGate.getNextWithdrawalId();
     _unstake(_holder, _unstakeAmount);
+    (address _receiver, uint256 _amount,,) = withdrawGate.withdrawals(_withdrawId);
 
-    assertEq(mockWithdrawalGate.lastParam__initiateWithdrawal_amount(), _unstakeAmount);
-    assertEq(mockWithdrawalGate.lastParam__initiateWithdrawal_receiver(), _holder);
+    assertEq(_amount, _unstakeAmount);
+    assertEq(_receiver, _holder);
   }
 
-  function testFuzz_TransfersDirectlyToHolderIfTheWithdrawalGateIsAddressZero(
+  function testFuzz_TransfersToHolderIfWithdrawDelayIsSetToZero(
     uint256 _stakeAmount,
     uint256 _unstakeAmount,
     address _holder,
@@ -1089,65 +1085,8 @@ contract Unstake is UniLstTest {
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
     _unstakeAmount = bound(_unstakeAmount, 0, _stakeAmount);
 
-    _setWithdrawalGate(address(0));
-    _mintUpdateDelegateeAndStake(_holder, _stakeAmount, _delegatee);
-    _unstake(_holder, _unstakeAmount);
-
-    assertEq(stakeToken.balanceOf(_holder), _unstakeAmount);
-  }
-
-  function testFuzz_TransfersToHolderIfWithdrawGateIsSetToANonContractAddress(
-    uint256 _stakeAmount,
-    uint256 _unstakeAmount,
-    address _holder,
-    address _delegatee,
-    address _withdrawalGate
-  ) public {
-    _assumeSafeHolders(_holder, _withdrawalGate);
-    vm.assume(_withdrawalGate.code.length == 0); // make sure fuzzer has not picked a contract address
-    _assumeSafeDelegatee(_delegatee);
-    _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
-    _unstakeAmount = bound(_unstakeAmount, 0, _stakeAmount);
-
-    _setWithdrawalGate(_withdrawalGate); // withdrawal gate is set to an EOA
-    _mintUpdateDelegateeAndStake(_holder, _stakeAmount, _delegatee);
-    _unstake(_holder, _unstakeAmount);
-
-    assertEq(stakeToken.balanceOf(_holder), _unstakeAmount);
-  }
-
-  function testFuzz_TransfersDirectlyToHolderIfCallToTheWithdrawalGateFails(
-    uint256 _stakeAmount,
-    uint256 _unstakeAmount,
-    address _holder,
-    address _delegatee
-  ) public {
-    _assumeSafeHolder(_holder);
-    _assumeSafeDelegatee(_delegatee);
-    _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
-    _unstakeAmount = bound(_unstakeAmount, 0, _stakeAmount);
-
-    mockWithdrawalGate.__setShouldRevertOnNextCall(true);
-    _mintUpdateDelegateeAndStake(_holder, _stakeAmount, _delegatee);
-    _unstake(_holder, _unstakeAmount);
-
-    assertEq(stakeToken.balanceOf(_holder), _unstakeAmount);
-  }
-
-  function testFuzz_TransfersDirectlyToHolderIfTheWithdrawalGateDoesNotImplementTheSelector(
-    uint256 _stakeAmount,
-    uint256 _unstakeAmount,
-    address _holder,
-    address _delegatee
-  ) public {
-    _assumeSafeHolder(_holder);
-    _assumeSafeDelegatee(_delegatee);
-    _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
-    _unstakeAmount = bound(_unstakeAmount, 0, _stakeAmount);
-
-    // We set the withdrawal gate to the stake token to act as an arbitrary contract that does not implement the
-    // `initiateWithdrawal` selector
-    _setWithdrawalGate(address(stakeToken));
+    vm.prank(lstOwner);
+    withdrawGate.setDelay(0);
     _mintUpdateDelegateeAndStake(_holder, _stakeAmount, _delegatee);
     _unstake(_holder, _unstakeAmount);
 
@@ -1173,8 +1112,8 @@ contract Unstake is UniLstTest {
     _unstake(_holder, _unstakeAmount);
 
     // The amount unstaked is less than or equal to the amount requested, within some acceptable truncation tolerance
-    assertApproxEqAbs(stakeToken.balanceOf(address(mockWithdrawalGate)), _unstakeAmount, ACCEPTABLE_DELTA);
-    assertLe(stakeToken.balanceOf(address(mockWithdrawalGate)), _unstakeAmount);
+    assertApproxEqAbs(stakeToken.balanceOf(address(withdrawGate)), _unstakeAmount, ACCEPTABLE_DELTA);
+    assertLe(stakeToken.balanceOf(address(withdrawGate)), _unstakeAmount);
   }
 
   function testFuzz_WithdrawsFromUndelegatedBalanceIfItCoversTheAmount(
@@ -1203,8 +1142,8 @@ contract Unstake is UniLstTest {
     assertEq(stakeToken.getCurrentVotes(_delegatee), _stakeAmount);
     // The amount actually unstaked is less than or equal to the amount requested, within some acceptable amount due to
     // truncation.
-    assertApproxEqAbs(stakeToken.balanceOf(address(mockWithdrawalGate)), _unstakeAmount, ACCEPTABLE_DELTA);
-    assertLe(stakeToken.balanceOf(address(mockWithdrawalGate)), _unstakeAmount);
+    assertApproxEqAbs(stakeToken.balanceOf(address(withdrawGate)), _unstakeAmount, ACCEPTABLE_DELTA);
+    assertLe(stakeToken.balanceOf(address(withdrawGate)), _unstakeAmount);
   }
 
   function testFuzz_WithdrawsFromDelegatedBalanceAfterExhaustingUndelegatedBalance(
@@ -1231,8 +1170,8 @@ contract Unstake is UniLstTest {
       stakeToken.getCurrentVotes(_delegatee), _stakeAmount + _rewardAmount - _unstakeAmount, ACCEPTABLE_DELTA
     );
     assertGe(stakeToken.getCurrentVotes(_delegatee), _stakeAmount + _rewardAmount - _unstakeAmount);
-    assertApproxEqAbs(stakeToken.balanceOf(address(mockWithdrawalGate)), _unstakeAmount, ACCEPTABLE_DELTA);
-    assertLe(stakeToken.balanceOf(address(mockWithdrawalGate)), _unstakeAmount);
+    assertApproxEqAbs(stakeToken.balanceOf(address(withdrawGate)), _unstakeAmount, ACCEPTABLE_DELTA);
+    assertLe(stakeToken.balanceOf(address(withdrawGate)), _unstakeAmount);
   }
 
   function testFuzz_RemovesUnstakedAmountFromHoldersBalance(
@@ -1390,7 +1329,7 @@ contract Unstake is UniLstTest {
     _mintUpdateDelegateeAndStake(_holder2, _secondStakeAmount, _delegatee2);
     // The first user unstakes, causing the second user's balance to drop slightly due to truncation.
     _unstake(_holder1, _firstUnstakeAmount);
-    uint256 _interimGateBalance = stakeToken.balanceOf(address(mockWithdrawalGate));
+    uint256 _interimGateBalance = stakeToken.balanceOf(address(withdrawGate));
     // The second user's live balance is now below the balance checkpoint that was created when they staked. We
     // validate this with a require statement rather than an assert, because it's an assumption of the specific test
     // values we've chosen, not a property of the system we are asserting.
@@ -1401,7 +1340,7 @@ contract Unstake is UniLstTest {
     );
     // Now the second user, whose balance is below their delegated balance checkpoint, unstakes.
     _unstake(_holder2, _secondUnstakeAmount);
-    uint256 _finalGateBalance = stakeToken.balanceOf(address(mockWithdrawalGate));
+    uint256 _finalGateBalance = stakeToken.balanceOf(address(withdrawGate));
     // Tha actual amount unstaked by the second user (as opposed to the amount they requested) is calculated as the
     // change in the withdrawal gate's balance.
     uint256 _amountUnstaked = _finalGateBalance - _interimGateBalance;
@@ -1730,7 +1669,7 @@ contract UnstakeOnBehalf is UniLstTest {
 
     // Check balances
     assertEq(lst.balanceOf(_staker), 0);
-    assertEq(stakeToken.balanceOf(address(mockWithdrawalGate)), _amount);
+    assertEq(stakeToken.balanceOf(address(withdrawGate)), _amount);
   }
 
   function testFuzz_RevertIf_InvalidSignature(
@@ -3022,29 +2961,6 @@ contract SetPayoutAmount is UniLstTest {
     vm.prank(_notLstOwner);
     vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, _notLstOwner));
     lst.setPayoutAmount(_newPayoutAmount);
-  }
-}
-
-contract SetWithdrawalGate is UniLstTest {
-  function testFuzz_UpdatesTheWithdrawalGateWhenCalledByTheOwner(address _newWithdrawalGate) public {
-    vm.prank(lstOwner);
-    lst.setWithdrawalGate(_newWithdrawalGate);
-    assertEq(address(lst.withdrawalGate()), _newWithdrawalGate);
-  }
-
-  function testFuzz_EmitsWithdrawalGateSetEvent(address _newWithdrawalGate) public {
-    vm.prank(lstOwner);
-    vm.expectEmit();
-    emit UniLst.WithdrawalGateSet(address(mockWithdrawalGate), _newWithdrawalGate);
-    lst.setWithdrawalGate(_newWithdrawalGate);
-  }
-
-  function testFuzz_RevertIf_CalledByNonOwnerAccount(address _notLstOwner, address _newWithdrawalGate) public {
-    vm.assume(_notLstOwner != lstOwner);
-
-    vm.prank(_notLstOwner);
-    vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, _notLstOwner));
-    lst.setWithdrawalGate(_newWithdrawalGate);
   }
 }
 

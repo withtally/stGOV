@@ -11,14 +11,8 @@ import {UnitTestBase} from "test/UnitTestBase.sol";
 import {UniLstTest} from "test/UniLst.t.sol";
 
 contract UniLstGasReport is UniLstTest, GasReport {
-  WithdrawGate withdrawGate;
-
   function setUp() public override {
     super.setUp();
-
-    withdrawGate = new WithdrawGate(lstOwner, address(lst), 24 hours);
-    vm.prank(lstOwner);
-    lst.setWithdrawalGate(address(withdrawGate));
   }
 
   function REPORT_NAME() public pure override returns (string memory) {

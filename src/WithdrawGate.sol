@@ -81,7 +81,10 @@ contract WithdrawGate is Ownable, EIP712 {
   /// @param _owner The address that will own this contract.
   /// @param _lst The address of the LST contract.
   /// @param _initialDelay The initial withdrawal delay period.
-  constructor(address _owner, address _lst, uint256 _initialDelay) Ownable(_owner) EIP712("WithdrawGate", "1") {
+  constructor(address _owner, address _lst, address _withdrawalToken, uint256 _initialDelay)
+    Ownable(_owner)
+    EIP712("WithdrawGate", "1")
+  {
     if (_lst == address(0)) {
       revert WithdrawGate__InvalidLSTAddress();
     }
@@ -90,7 +93,7 @@ contract WithdrawGate is Ownable, EIP712 {
     }
 
     LST = _lst;
-    WITHDRAWAL_TOKEN = address(UniLst(_lst).STAKE_TOKEN());
+    WITHDRAWAL_TOKEN = _withdrawalToken;
     _setDelay(_initialDelay);
     nextWithdrawalId = 1;
   }

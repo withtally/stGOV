@@ -29,7 +29,7 @@ contract WithdrawGateTest is TestHelpers {
 
     vm.mockCall(lst, abi.encodeWithSelector(UniLst(lst).STAKE_TOKEN.selector), abi.encode(address(stakeToken)));
 
-    withdrawGate = new WithdrawGate(owner, lst, initialDelay);
+    withdrawGate = new WithdrawGate(owner, lst, address(stakeToken), initialDelay);
 
     // Warp to a non-zero timestamp to avoid issues with zero timestamps
     vm.warp(1);
@@ -83,32 +83,38 @@ contract Constructor is WithdrawGateTest {
     assertEq(withdrawGate.delay(), initialDelay);
   }
 
-  function testFuzz_SetsConfigurationParametersToArbitraryValues(address _owner, address _lst, uint256 _initialDelay)
-    public
-  {
+  function testFuzz_SetsConfigurationParametersToArbitraryValues(
+    address _owner,
+    address _lst,
+    address _stakeToken,
+    uint256 _initialDelay
+  ) public {
     _assumeSafeAddress(_owner);
     _assumeSafeAddress(_lst);
     _initialDelay = _boundToReasonableDelay(_initialDelay);
 
-    vm.mockCall(_lst, abi.encodeWithSelector(UniLst(lst).STAKE_TOKEN.selector), abi.encode(address(stakeToken)));
-
-    WithdrawGate _withdrawGate = new WithdrawGate(_owner, _lst, _initialDelay);
+    WithdrawGate _withdrawGate = new WithdrawGate(_owner, _lst, _stakeToken, _initialDelay);
 
     assertEq(_withdrawGate.owner(), _owner);
     assertEq(_withdrawGate.LST(), _lst);
-    assertEq(_withdrawGate.WITHDRAWAL_TOKEN(), address(stakeToken));
+    assertEq(_withdrawGate.WITHDRAWAL_TOKEN(), address(_stakeToken));
     assertEq(_withdrawGate.delay(), _initialDelay);
   }
 
-  function testFuzz_RevertIf_LstAddressIsZero(address _owner, uint256 _initialDelay) public {
+  function testFuzz_RevertIf_LstAddressIsZero(address _owner, address _stakeToken, uint256 _initialDelay) public {
     _assumeSafeAddress(_owner);
     _initialDelay = _boundToReasonableDelay(_initialDelay);
 
     vm.expectRevert(WithdrawGate.WithdrawGate__InvalidLSTAddress.selector);
-    new WithdrawGate(_owner, address(0), _initialDelay);
+    new WithdrawGate(_owner, address(0), _stakeToken, _initialDelay);
   }
 
-  function testFuzz_RevertIf_InitialDelayExceedsMaximum(address _owner, address _lst, uint256 _delay) public {
+  function testFuzz_RevertIf_InitialDelayExceedsMaximum(
+    address _owner,
+    address _lst,
+    address _stakeToken,
+    uint256 _delay
+  ) public {
     _assumeSafeAddress(_owner);
     _assumeSafeAddress(_lst);
     _delay = _boundToUnreasonableDelay(_delay);
@@ -116,7 +122,7 @@ contract Constructor is WithdrawGateTest {
     vm.mockCall(_lst, abi.encodeWithSelector(UniLst(lst).STAKE_TOKEN.selector), abi.encode(address(stakeToken)));
 
     vm.expectRevert(WithdrawGate.WithdrawGate__InvalidDelay.selector);
-    new WithdrawGate(_owner, _lst, _delay);
+    new WithdrawGate(_owner, _lst, _stakeToken, _delay);
   }
 }
 

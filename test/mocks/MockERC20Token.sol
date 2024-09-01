@@ -12,7 +12,7 @@ contract MockERC20Token {
   }
 
   function transfer(address _to, uint256 _amount) external returns (bool) {
-    require(!shouldRevertOnNextCall, "MockWithdrawalGate Revert Requested");
+    require(!shouldRevertOnNextCall, "MockERC20Token Revert Requested");
     lastParam__transfer_amount = _amount;
     lastParam__transfer_to = _to;
     return true;
