@@ -123,14 +123,19 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     return uint256(totals.shares);
   }
 
-  function balanceOf(address _holder) public view returns (uint256 _balance) {
-    uint256 _sharesOf = holderStates[_holder].shares;
+  function balanceOf(address _holder) external view returns (uint256) {
+    HolderState memory _holderState = holderStates[_holder];
+    Totals memory _totals = totals;
 
-    if (_sharesOf == 0) {
+    return _calcBalanceOf(_holderState, _totals);
+  }
+
+  function _calcBalanceOf(HolderState memory _holder, Totals memory _totals) internal pure returns (uint256) {
+    if (_holder.shares == 0) {
       return 0;
     }
 
-    _balance = stakeForShares(_sharesOf);
+    return _calcStakeForShares(_holder.shares, _totals);
   }
 
   function sharesOf(address _holder) external view returns (uint256 _sharesOf) {
@@ -146,7 +151,8 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   }
 
   function delegateeForHolder(address _holder) external view returns (address _delegatee) {
-    (,, _delegatee,) = STAKER.deposits(_depositIdForHolder(_holder));
+    HolderState memory _holderState = holderStates[_holder];
+    (,, _delegatee,) = STAKER.deposits(_calcDepositId(_holderState));
   }
 
   function depositForDelegatee(address _delegatee) public view returns (IUniStaker.DepositIdentifier) {
@@ -198,8 +204,13 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   }
 
   function _updateDeposit(address _account, IUniStaker.DepositIdentifier _newDepositId) internal {
-    IUniStaker.DepositIdentifier _oldDepositId = _depositIdForHolder(_account);
-    uint256 _balanceOf = balanceOf(_account);
+    // Read required state from storage once.
+    Totals memory _totals = totals;
+    HolderState memory _holderState = holderStates[_account];
+
+    IUniStaker.DepositIdentifier _oldDepositId = _calcDepositId(_holderState);
+
+    uint256 _balanceOf = _calcBalanceOf(_holderState, _totals);
 
     emit DepositUpdated(_account, _oldDepositId, _newDepositId);
 
@@ -213,7 +224,7 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
       }
     }
 
-    uint256 _delegatedBalance = holderStates[_account].balanceCheckpoint;
+    uint256 _delegatedBalance = _holderState.balanceCheckpoint;
     if (_delegatedBalance > _balanceOf) {
       _delegatedBalance = _balanceOf;
     }
@@ -222,12 +233,15 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
 
     // Make internal state updates.
     if (_isSameDepositId(_newDepositId, DEFAULT_DEPOSIT_ID)) {
-      holderStates[_account].balanceCheckpoint = 0;
-      holderStates[_account].depositId = 0;
+      _holderState.balanceCheckpoint = 0;
+      _holderState.depositId = 0;
     } else {
-      holderStates[_account].balanceCheckpoint = uint96(_balanceOf);
-      holderStates[_account].depositId = uint32(IUniStaker.DepositIdentifier.unwrap(_newDepositId));
+      _holderState.balanceCheckpoint = uint96(_balanceOf);
+      _holderState.depositId = uint32(IUniStaker.DepositIdentifier.unwrap(_newDepositId));
     }
+
+    // Write updated states back to storage.
+    holderStates[_account] = _holderState;
 
     // OPTIMIZE: if the new or the old delegatee is the default, we can avoid one unneeded withdraw
     if (_undelegatedBalance > 0) {
@@ -244,7 +258,7 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
 
   function stakeWithAttribution(uint256 _amount, address _referrer) public {
     _stake(msg.sender, _amount);
-    IUniStaker.DepositIdentifier _depositId = _depositIdForHolder(msg.sender);
+    IUniStaker.DepositIdentifier _depositId = _calcDepositId(holderStates[msg.sender]);
     emit StakedWithAttribution(_depositId, _amount, _referrer);
   }
 
@@ -253,26 +267,31 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
       revert UniLst__StakeTokenOperationFailed();
     }
 
-    uint256 _initialBalance = balanceOf(_account);
-    uint256 _newShares = sharesForStake(_amount);
-
+    // Read required state from storage once.
     Totals memory _totals = totals;
-    totals = Totals({
-      supply: _totals.supply + uint96(_amount), // cast is safe because we have transferred token amount
-      shares: _totals.shares + uint160(_newShares) // sharesForStake would fail if overflowed
-    });
+    HolderState memory _holderState = holderStates[_account];
 
-    holderStates[_account].shares += uint128(_newShares);
-    IUniStaker.DepositIdentifier _depositId = _depositIdForHolder(_account);
-    uint256 _balanceDelta = balanceOf(_account) - _initialBalance;
-    if (!_isSameDepositId(_depositId, DEFAULT_DEPOSIT_ID)) {
-      holderStates[_account].balanceCheckpoint += uint96(_balanceDelta);
+    uint256 _initialBalance = _calcBalanceOf(_holderState, _totals);
+    uint256 _newShares = _calcSharesForStake(_amount, _totals);
+
+    // cast is safe because we have transferred token amount
+    _totals.supply = _totals.supply + uint96(_amount);
+    // sharesForStake would fail if overflowed
+    _totals.shares = _totals.shares + uint160(_newShares);
+
+    _holderState.shares = _holderState.shares + uint128(_newShares);
+    uint256 _balanceDiff = _calcBalanceOf(_holderState, _totals) - _initialBalance;
+    if (!_isSameDepositId(_calcDepositId(_holderState), DEFAULT_DEPOSIT_ID)) {
+      _holderState.balanceCheckpoint = _holderState.balanceCheckpoint + uint96(_balanceDiff);
     }
 
-    STAKER.stakeMore(_depositId, uint96(_amount));
+    // Write updated states back to storage.
+    totals = _totals;
+    holderStates[_account] = _holderState;
 
+    STAKER.stakeMore(_calcDepositId(_holderState), uint96(_amount));
     emit Staked(_account, _amount);
-    return _balanceDelta;
+    return _balanceDiff;
   }
 
   function stakeOnBehalf(address _account, uint256 _amount, uint256 _nonce, uint256 _deadline, bytes memory _signature)
@@ -292,29 +311,31 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   }
 
   function _unstake(address _account, uint256 _amount) internal returns (uint256) {
-    uint256 _initialBalanceOf = balanceOf(_account);
+    // Read required state from storage once.
+    Totals memory _totals = totals;
+    HolderState memory _holderState = holderStates[_account];
+
+    uint256 _initialBalanceOf = _calcBalanceOf(_holderState, _totals);
 
     if (_amount > _initialBalanceOf) {
       revert UniLst__InsufficientBalance();
     }
 
     // Decreases the holder's balance by the amount being withdrawn
-    uint256 _sharesDestroyed = sharesForStake(_amount);
-    holderStates[_account].shares -= uint128(_sharesDestroyed);
+    uint256 _sharesDestroyed = _calcSharesForStake(_amount, _totals);
+    _holderState.shares -= uint128(_sharesDestroyed);
 
     // By re-calculating amount as the difference between the initial and current balance, we ensure the
     // amount unstaked is reflective of the actual change in balance. This means the amount unstaked might end up being
     // less than the user requested by a small amount.
-    _amount = _initialBalanceOf - balanceOf(_account);
+    _amount = _initialBalanceOf - _calcBalanceOf(_holderState, _totals);
 
-    // Make global state changes
-    Totals memory _totals = totals;
-    totals = Totals({
-      supply: _totals.supply - uint96(_amount), // cast is safe because we've validated user has sufficient balance
-      shares: _totals.shares - uint160(_sharesDestroyed) // cast is safe because we've subtracted the shares from user
-    });
+    // cast is safe because we've validated user has sufficient balance
+    _totals.supply = _totals.supply - uint96(_amount);
+    // cast is safe because we've subtracted the shares from user
+    _totals.shares = _totals.shares - uint160(_sharesDestroyed);
 
-    uint256 _delegatedBalance = holderStates[_account].balanceCheckpoint;
+    uint256 _delegatedBalance = _holderState.balanceCheckpoint;
     if (_delegatedBalance > _initialBalanceOf) {
       _delegatedBalance = _initialBalanceOf;
     }
@@ -326,8 +347,8 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
       // the delegated balance.
       _undelegatedBalanceToWithdraw = _undelegatedBalance;
       uint256 _delegatedBalanceToWithdraw = _amount - _undelegatedBalanceToWithdraw;
-      STAKER.withdraw(_depositIdForHolder(_account), uint96(_delegatedBalanceToWithdraw));
-      holderStates[_account].balanceCheckpoint = uint96(_delegatedBalance - _delegatedBalanceToWithdraw);
+      STAKER.withdraw(_calcDepositId(_holderState), uint96(_delegatedBalanceToWithdraw));
+      _holderState.balanceCheckpoint = uint96(_delegatedBalance - _delegatedBalanceToWithdraw);
     } else {
       // Since the amount is less than or equal to the undelegated balance, we'll source all of it from said balance.
       _undelegatedBalanceToWithdraw = _amount;
@@ -337,6 +358,10 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     if (_undelegatedBalanceToWithdraw > 0) {
       STAKER.withdraw(DEFAULT_DEPOSIT_ID, uint96(_undelegatedBalanceToWithdraw));
     }
+
+    // Write updated states back to storage.
+    totals = _totals;
+    holderStates[_account] = _holderState;
 
     // At this point, the LST holds _amount of stakeToken
 
@@ -499,11 +524,12 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     feeCollector = _newFeeCollector;
   }
 
-  function sharesForStake(uint256 _amount) public view returns (uint256) {
+  function sharesForStake(uint256 _amount) external view returns (uint256) {
     Totals memory _totals = totals;
+    return _calcSharesForStake(_amount, _totals);
+  }
 
-    // OPTIMIZE: If we force the constructor to stake some initial amount sourced from a contract that can never call
-    // `unstake` we should be able to remove these 0 checks altogether.
+  function _calcSharesForStake(uint256 _amount, Totals memory _totals) internal pure returns (uint256) {
     if (_totals.supply == 0) {
       return SHARE_SCALE_FACTOR * _amount;
     }
@@ -511,9 +537,12 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     return (_amount * _totals.shares) / _totals.supply;
   }
 
-  function stakeForShares(uint256 _amount) public view returns (uint256) {
+  function stakeForShares(uint256 _amount) external view returns (uint256) {
     Totals memory _totals = totals;
+    return _calcStakeForShares(_amount, _totals);
+  }
 
+  function _calcStakeForShares(uint256 _amount, Totals memory _totals) internal pure returns (uint256) {
     if (_totals.supply == 0) {
       return 0;
     }
@@ -525,21 +554,29 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     return SYMBOL;
   }
 
-  function _depositIdForHolder(address _holder) internal view returns (IUniStaker.DepositIdentifier) {
-    uint32 _storedId = holderStates[_holder].depositId;
+  function depositIdForHolder(address _holder) external view returns (IUniStaker.DepositIdentifier) {
+    HolderState memory _holderState = holderStates[_holder];
+    return _calcDepositId(_holderState);
+  }
 
-    if (_storedId == 0) {
+  function _calcDepositId(HolderState memory _holder) internal view returns (IUniStaker.DepositIdentifier) {
+    if (_holder.depositId == 0) {
       return DEFAULT_DEPOSIT_ID;
     } else {
-      return IUniStaker.DepositIdentifier.wrap(_storedId);
+      return IUniStaker.DepositIdentifier.wrap(_holder.depositId);
     }
   }
 
   function _transfer(address _sender, address _receiver, uint256 _value) internal returns (bool) {
+    // Read required state from storage once.
+    Totals memory _totals = totals;
+    HolderState memory _senderState = holderStates[_sender];
+    HolderState memory _receiverState = holderStates[_receiver];
+
     // Record initial balances.
-    uint256 _senderInitBalance = balanceOf(_sender);
-    uint256 _receiverInitBalance = balanceOf(_receiver);
-    uint256 _senderDelegatedBalance = holderStates[_sender].balanceCheckpoint;
+    uint256 _senderInitBalance = _calcBalanceOf(_senderState, _totals);
+    uint256 _receiverInitBalance = _calcBalanceOf(_receiverState, _totals);
+    uint256 _senderDelegatedBalance = _senderState.balanceCheckpoint;
     if (_senderDelegatedBalance > _senderInitBalance) {
       _senderDelegatedBalance = _senderInitBalance;
     }
@@ -550,21 +587,24 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     }
 
     // Move underlying shares.
-    uint256 _shares = sharesForStake(_value);
-    holderStates[_sender].shares -= uint128(_shares);
-    holderStates[_receiver].shares += uint128(_shares);
+    {
+      uint256 _shares = _calcSharesForStake(_value, _totals);
+      _senderState.shares -= uint128(_shares);
+      _receiverState.shares += uint128(_shares);
+    }
 
     // Due to truncation, it is possible for the amount which the sender's balance decreases to be different from the
     // amount by which the receiver's balance increases.
-    uint256 _receiverBalanceIncrease = balanceOf(_receiver) - _receiverInitBalance;
-    uint256 _senderBalanceDecrease = _senderInitBalance - balanceOf(_sender);
+    uint256 _senderBalanceDecrease = _senderInitBalance - _calcBalanceOf(_senderState, _totals);
+    uint256 _receiverBalanceIncrease = _calcBalanceOf(_receiverState, _totals) - _receiverInitBalance;
 
-    // To protect the solvency of each underlying Staker deposit, we want to ensure that the sender's balance decreases
+    // To protect the solvency of each underlying Staker deposit, we want to ensure that the sender's balance
+    // decreases
     // by at least as much as the receiver's increases. Therefore, if this is not the case, we shave shares from the
     // sender until such point as it is.
     while (_receiverBalanceIncrease > _senderBalanceDecrease) {
-      holderStates[_sender].shares -= 1;
-      _senderBalanceDecrease = _senderInitBalance - balanceOf(_sender);
+      _senderState.shares -= 1;
+      _senderBalanceDecrease = _senderInitBalance - _calcBalanceOf(_senderState, _totals);
     }
 
     // Knowing the sender's balance has decreased by at least as much as the receiver's has increased, we now base the
@@ -574,20 +614,25 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     // but are instead stuck permanently in the receiver's deposit. This is ok, as the amount lost is miniscule, but
     // we've ensured the solvency of each underlying Staker deposit.
 
-    if (!_isSameDepositId(_depositIdForHolder(_receiver), DEFAULT_DEPOSIT_ID)) {
-      holderStates[_receiver].balanceCheckpoint += uint96(_receiverBalanceIncrease);
+    if (!_isSameDepositId(_calcDepositId(_receiverState), DEFAULT_DEPOSIT_ID)) {
+      _receiverState.balanceCheckpoint += uint96(_receiverBalanceIncrease);
     }
-
     emit Transfer(_sender, _receiver, _value);
 
     // If both the sender and receiver are using the default deposit, then no tokens whatsoever need to move
     // between Staker deposits.
     if (
-      _isSameDepositId(_depositIdForHolder(_receiver), DEFAULT_DEPOSIT_ID)
-        && _isSameDepositId(_depositIdForHolder(_sender), DEFAULT_DEPOSIT_ID)
+      _isSameDepositId(_calcDepositId(_receiverState), DEFAULT_DEPOSIT_ID)
+        && _isSameDepositId(_calcDepositId(_senderState), DEFAULT_DEPOSIT_ID)
     ) {
+      // Write data back to storage once.
+      holderStates[_sender] = _senderState;
+      holderStates[_receiver] = _receiverState;
       return true;
     }
+    // rescoping these vars to avoid stack too deep
+    address _senderRescoped = _sender;
+    address _receiverRescoped = _receiver;
 
     uint256 _undelegatedBalanceToWithdraw;
     uint256 _delegatedBalanceToWithdraw;
@@ -597,19 +642,23 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
       // the delegated balance.
       _undelegatedBalanceToWithdraw = _senderUndelegatedBalance;
       _delegatedBalanceToWithdraw = _senderBalanceDecrease - _undelegatedBalanceToWithdraw;
-      holderStates[_sender].balanceCheckpoint = uint96(_senderDelegatedBalance - _delegatedBalanceToWithdraw);
+      _senderState.balanceCheckpoint = uint96(_senderDelegatedBalance - _delegatedBalanceToWithdraw);
 
-      if (_isSameDepositId(_depositIdForHolder(_receiver), _depositIdForHolder(_sender))) {
+      if (_isSameDepositId(_calcDepositId(_receiverState), _calcDepositId(_senderState))) {
         // If the sender and receiver are using the same deposit, we don't need to move these tokens, so we skip the
         // Staker withdraw and zero out this value so we don't try to "stakeMore" with it later.
         _delegatedBalanceToWithdraw = 0;
       } else {
-        STAKER.withdraw(_depositIdForHolder(_sender), uint96(_delegatedBalanceToWithdraw));
+        STAKER.withdraw(_calcDepositId(_senderState), uint96(_delegatedBalanceToWithdraw));
       }
     } else {
       // Since the amount is less than or equal to the undelegated balance, we'll source all of it from said balance.
       _undelegatedBalanceToWithdraw = _senderBalanceDecrease;
     }
+
+    // Write data back to storage once.
+    holderStates[_senderRescoped] = _senderState;
+    holderStates[_receiverRescoped] = _receiverState;
 
     // If the staker had zero undelegated balance, we won't waste gas executing the withdraw call.
     if (_undelegatedBalanceToWithdraw > 0) {
@@ -620,7 +669,7 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     // have to move any tokens out of Staker deposits, and none need to be put back into the receiver's deposit now.
     if ((_delegatedBalanceToWithdraw + _undelegatedBalanceToWithdraw) > 0) {
       STAKER.stakeMore(
-        _depositIdForHolder(_receiver), uint96(_delegatedBalanceToWithdraw + _undelegatedBalanceToWithdraw)
+        _calcDepositId(_receiverState), uint96(_delegatedBalanceToWithdraw + _undelegatedBalanceToWithdraw)
       );
     }
 
