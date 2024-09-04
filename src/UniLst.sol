@@ -34,6 +34,10 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// @notice Thrown when an operation on the stake token fails.
   error UniLst__StakeTokenOperationFailed();
 
+  /// @notice Thrown when an operation to change the default delegatee or its guardian is attempted by an account that
+  /// does not have permission to alter it.
+  error UniLst__Unauthorized();
+
   /// @notice Thrown when an operation is not possible because the holder's balance is insufficient.
   error UniLst__InsufficientBalance();
 
@@ -85,6 +89,12 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
 
   /// @notice Emitted when the LST owner updates the fee amount and fee collector.
   event FeeParametersSet(uint256 oldFeeAmount, uint256 newFeeAmount, address oldFeeCollector, address newFeeCollector);
+
+  /// @notice Emitted when the default delegatee is updated by the owner or guardian.
+  event DefaultDelegateeSet(address oldDelegatee, address newDelegatee);
+
+  /// @notice Emitted when the delegatee guardian is updated by the owner or guardian itself.
+  event DelegateeGuardianSet(address oldDelegatee, address newDelegatee);
 
   /// @notice Emitted when a UniStaker deposit is initialized for a new delegatee.
   event DepositInitialized(address indexed delegatee, IUniStaker.DepositIdentifier depositId);
@@ -149,8 +159,18 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// @notice The global total supply and total shares for the LST.
   Totals internal totals;
 
-  /// @notice The delegatee to whom the voting weight in the default deposit is delegated. Can be set by the LST owner.
+  /// @notice The delegatee to whom the voting weight in the default deposit is delegated. Can be set by the LST owner,
+  /// or the delegatee guardian. Once the guardian sets it, only the guardian can change it moving forward. The owner
+  /// is no longer able to update it.
   address public defaultDelegatee;
+
+  /// @notice Address which has the right to update the default delegatee assigned to the default deposit. Once this
+  /// address takes an action, it can no longer be changed or overridden by the LST owner.
+  address public delegateeGuardian;
+
+  /// @notice One way switch that flips to true when the delegatee guardian takes its first action. Once set to true,
+  /// the default delegatee and the guardian address can only be changed by the guardian itself.
+  bool public isGuardianControlled;
 
   /// @notice The amount of stake token that an MEV searcher must provide in order to earn the right to claim the
   /// UniStaker rewards earned by the LST. Can be set by the LST owner.
@@ -203,15 +223,18 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     IUniStaker _staker,
     address _initialDefaultDelegatee,
     address _initialOwner,
-    uint256 _initialPayoutAmount
+    uint256 _initialPayoutAmount,
+    address _initialDelegateeGuardian
   ) Ownable(_initialOwner) EIP712("UniLst", "1") {
     STAKER = _staker;
     STAKE_TOKEN = IUni(_staker.STAKE_TOKEN());
     REWARD_TOKEN = IWETH9(payable(_staker.REWARD_TOKEN()));
-    defaultDelegatee = _initialDefaultDelegatee;
-    payoutAmount = _initialPayoutAmount;
     NAME = _name;
     SYMBOL = _symbol;
+
+    _setDefaultDelegatee(_initialDefaultDelegatee);
+    _setPayoutAmount(_initialPayoutAmount);
+    _setDelegateeGuardian(_initialDelegateeGuardian);
 
     if (!STAKE_TOKEN.approve(address(_staker), type(uint256).max)) {
       revert UniLst__StakeTokenOperationFailed();
@@ -812,6 +835,11 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// @param _newPayoutAmount The value that will be the new payout amount. Must be greater than the fee amount.
   function setPayoutAmount(uint256 _newPayoutAmount) external {
     _checkOwner();
+    _setPayoutAmount(_newPayoutAmount);
+  }
+
+  /// @notice Internal helper method that sets the payout amount and emits an event.
+  function _setPayoutAmount(uint256 _newPayoutAmount) internal {
     if (_newPayoutAmount < feeAmount) {
       revert UniLst__InvalidPayoutAmount();
     }
@@ -837,6 +865,51 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
 
     feeAmount = _newFeeAmount;
     feeCollector = _newFeeCollector;
+  }
+
+  /// @notice Update the default delegatee. Can only be called by the delegatee guardian or by the LST owner. Once the
+  /// guardian takes an action on the LST, the owner can no longer override it.
+  /// @param _newDelegatee The address which will be assigned as the delegatee for the default UniStaker deposit.
+  function setDefaultDelegatee(address _newDelegatee) external {
+    _checkAndToggleGuardianControlOrOwner();
+    _setDefaultDelegatee(_newDelegatee);
+    STAKER.alterDelegatee(DEFAULT_DEPOSIT_ID, _newDelegatee);
+  }
+
+  /// @notice Internal helper method that sets the delegatee and emits an event.
+  function _setDefaultDelegatee(address _newDelegatee) internal {
+    emit DefaultDelegateeSet(defaultDelegatee, _newDelegatee);
+    defaultDelegatee = _newDelegatee;
+  }
+
+  /// @notice Update the delegatee guardian. Can only be called by the delegatee guardian or by the LST owner. Once the
+  /// guardian takes an action on the LST, the owner can no longer override it.
+  /// @param _newDelegateeGuardian The address which will become the new delegatee guardian.
+  function setDelegateeGuardian(address _newDelegateeGuardian) external {
+    _checkAndToggleGuardianControlOrOwner();
+    _setDelegateeGuardian(_newDelegateeGuardian);
+  }
+
+  /// @notice Internal helper method that sets the guardian and emits an event.
+  function _setDelegateeGuardian(address _newDelegateeGuardian) internal {
+    emit DelegateeGuardianSet(delegateeGuardian, _newDelegateeGuardian);
+    delegateeGuardian = _newDelegateeGuardian;
+  }
+
+  /// @notice Internal helper which checks that the message sender is either the delegatee guardian or the owner and
+  /// reverts otherwise. If the caller is the owner, it also validates the guardian has never performed an action
+  /// before, and reverts if it has. If the caller is the guardian, it toggles the guardian control flag to true if it
+  /// hasn't yet been.
+  function _checkAndToggleGuardianControlOrOwner() internal {
+    if (msg.sender != owner() && msg.sender != delegateeGuardian) {
+      revert UniLst__Unauthorized();
+    }
+    if (msg.sender == owner() && isGuardianControlled) {
+      revert UniLst__Unauthorized();
+    }
+    if (msg.sender == delegateeGuardian && !isGuardianControlled) {
+      isGuardianControlled = true;
+    }
   }
 
   /// @notice Returns the number of shares that are valued at a given amount of stake token. Note that shares have a

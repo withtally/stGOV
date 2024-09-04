@@ -25,6 +25,7 @@ contract UniLstTest is UnitTestBase, PercentAssertions, TestHelpers, Eip712Helpe
   uint256 initialPayoutAmount = 2500e18;
 
   address defaultDelegatee = makeAddr("Default Delegatee");
+  address delegateeGuardian = makeAddr("Delegatee Guardian");
   string tokenName = "Staked Uni";
   string tokenSymbol = "stUni";
 
@@ -50,7 +51,7 @@ contract UniLstTest is UnitTestBase, PercentAssertions, TestHelpers, Eip712Helpe
     staker.setRewardNotifier(stakerAdmin, true);
 
     // Finally, deploy the lst for tests.
-    lst = new UniLst(tokenName, tokenSymbol, staker, defaultDelegatee, lstOwner, initialPayoutAmount);
+    lst = new UniLst(tokenName, tokenSymbol, staker, defaultDelegatee, lstOwner, initialPayoutAmount, delegateeGuardian);
     // Store the withdraw gate for convenience, set a non-zero withdrawal delay
     withdrawGate = lst.WITHDRAW_GATE();
     vm.prank(lstOwner);
@@ -293,6 +294,7 @@ contract Constructor is UniLstTest {
     assertEq(lst.name(), tokenName);
     assertEq(lst.symbol(), tokenSymbol);
     assertEq(lst.decimals(), 18);
+    assertEq(lst.delegateeGuardian(), delegateeGuardian);
   }
 
   function test_MaxApprovesTheStakerContractToTransferStakeToken() public view {
@@ -311,7 +313,8 @@ contract Constructor is UniLstTest {
     uint256 _payoutAmount,
     address _lstOwner,
     string memory _tokenName,
-    string memory _tokenSymbol
+    string memory _tokenSymbol,
+    address _delegateeGuardian
   ) public {
     _assumeSafeMockAddress(_staker);
     _assumeSafeMockAddress(_stakeToken);
@@ -324,7 +327,9 @@ contract Constructor is UniLstTest {
     bytes4 _stakeWithArrity2Selector = hex"98f2b576";
     vm.mockCall(_staker, abi.encodeWithSelector(_stakeWithArrity2Selector), abi.encode(1));
 
-    UniLst _lst = new UniLst(_tokenName, _tokenSymbol, IUniStaker(_staker), _defaultDelegatee, _lstOwner, _payoutAmount);
+    UniLst _lst = new UniLst(
+      _tokenName, _tokenSymbol, IUniStaker(_staker), _defaultDelegatee, _lstOwner, _payoutAmount, _delegateeGuardian
+    );
     assertEq(address(_lst.STAKER()), _staker);
     assertEq(address(_lst.STAKE_TOKEN()), _stakeToken);
     assertEq(address(_lst.REWARD_TOKEN()), _rewardToken);
@@ -332,6 +337,7 @@ contract Constructor is UniLstTest {
     assertEq(IUniStaker.DepositIdentifier.unwrap(_lst.depositForDelegatee(_defaultDelegatee)), 1);
     assertEq(_lst.payoutAmount(), _payoutAmount);
     assertEq(_lst.owner(), _lstOwner);
+    assertEq(_lst.delegateeGuardian(), _delegateeGuardian);
   }
 
   function testFuzz_RevertIf_MaxApprovalOfTheStakerContractOnTheStakeTokenFails(
@@ -342,7 +348,8 @@ contract Constructor is UniLstTest {
     uint256 _payoutAmount,
     address _lstOwner,
     string memory _tokenName,
-    string memory _tokenSymbol
+    string memory _tokenSymbol,
+    address _delegateeGuardian
   ) public {
     _assumeSafeMockAddress(_staker);
     _assumeSafeMockAddress(_stakeToken);
@@ -352,7 +359,9 @@ contract Constructor is UniLstTest {
     vm.mockCall(_stakeToken, abi.encodeWithSelector(IUni.approve.selector), abi.encode(false));
 
     vm.expectRevert(UniLst.UniLst__StakeTokenOperationFailed.selector);
-    new UniLst(_tokenName, _tokenSymbol, IUniStaker(_staker), _defaultDelegatee, _lstOwner, _payoutAmount);
+    new UniLst(
+      _tokenName, _tokenSymbol, IUniStaker(_staker), _defaultDelegatee, _lstOwner, _payoutAmount, _delegateeGuardian
+    );
   }
 }
 
@@ -3434,5 +3443,137 @@ contract Multicall is UniLstTest {
     vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, _actor));
     vm.prank(_actor);
     lst.multicall(_calls);
+  }
+}
+
+contract SetDefaultDelegatee is UniLstTest {
+  function testFuzz_SetsTheDefaultDelegateeWhenCalledByTheOwnerBeforeTheGuardianHasTakenControl(
+    address _newDefaultDelegatee
+  ) public {
+    _assumeSafeDelegatee(_newDefaultDelegatee);
+
+    vm.prank(lstOwner);
+    lst.setDefaultDelegatee(_newDefaultDelegatee);
+
+    (,, address _depositDelegatee,) = staker.deposits(lst.DEFAULT_DEPOSIT_ID());
+
+    assertEq(_depositDelegatee, _newDefaultDelegatee);
+    assertEq(lst.defaultDelegatee(), _newDefaultDelegatee);
+    assertFalse(lst.isGuardianControlled());
+  }
+
+  function testFuzz_SetsTheDefaultDelegateeAndActivatesGuardianControlWhenCalledByTheGuardianForTheFirstTime(
+    address _newDefaultDelegatee
+  ) public {
+    _assumeSafeDelegatee(_newDefaultDelegatee);
+
+    vm.prank(delegateeGuardian);
+    lst.setDefaultDelegatee(_newDefaultDelegatee);
+
+    (,, address _depositDelegatee,) = staker.deposits(lst.DEFAULT_DEPOSIT_ID());
+
+    assertEq(_depositDelegatee, _newDefaultDelegatee);
+    assertEq(lst.defaultDelegatee(), _newDefaultDelegatee);
+    assertTrue(lst.isGuardianControlled());
+  }
+
+  function testFuzz_EmitsDefaultDelegateeSetEvent(address _newDefaultDelegatee, bool _submitAsOwner) public {
+    _assumeSafeDelegatee(_newDefaultDelegatee);
+    address _caller = _submitAsOwner ? lstOwner : delegateeGuardian;
+
+    vm.expectEmit();
+    emit UniLst.DefaultDelegateeSet(lst.defaultDelegatee(), _newDefaultDelegatee);
+    vm.prank(_caller);
+    lst.setDefaultDelegatee(_newDefaultDelegatee);
+  }
+
+  function testFuzz_RevertIf_CalledByAnyoneOtherThanTheOwnerOrGuardian(
+    address _unauthorizedAccount,
+    address _newDefaultDelegatee
+  ) public {
+    vm.assume(_unauthorizedAccount != lstOwner && _unauthorizedAccount != delegateeGuardian);
+    _assumeSafeDelegatee(_newDefaultDelegatee);
+
+    vm.expectRevert(UniLst.UniLst__Unauthorized.selector);
+    vm.prank(_unauthorizedAccount);
+    lst.setDefaultDelegatee(_newDefaultDelegatee);
+  }
+
+  function testFuzz_RevertIf_CalledByTheOwnerAfterTheGuardianHasTakenControl(
+    address _newDefaultDelegatee1,
+    address _newDefaultDelegatee2
+  ) public {
+    _assumeSafeDelegatee(_newDefaultDelegatee1);
+    _assumeSafeDelegatee(_newDefaultDelegatee2);
+
+    vm.prank(delegateeGuardian);
+    lst.setDefaultDelegatee(_newDefaultDelegatee1);
+
+    vm.expectRevert(UniLst.UniLst__Unauthorized.selector);
+    vm.prank(lstOwner);
+    lst.setDefaultDelegatee(_newDefaultDelegatee2);
+  }
+}
+
+contract SetDelegateeGuardian is UniLstTest {
+  function testFuzz_SetsTheDelegateeGuardianWhenCalledByTheOwnerBeforeTheGuardianHasTakenControl(
+    address _newDelegateeGuardian
+  ) public {
+    _assumeSafeDelegatee(_newDelegateeGuardian);
+
+    vm.prank(lstOwner);
+    lst.setDelegateeGuardian(_newDelegateeGuardian);
+
+    assertEq(lst.delegateeGuardian(), _newDelegateeGuardian);
+    assertFalse(lst.isGuardianControlled());
+  }
+
+  function testFuzz_SetsTheDelegateeGuardianAndActivatesGuardianControlWhenCalledByTheGuardianForTheFirstTime(
+    address _newDelegateeGuardian
+  ) public {
+    _assumeSafeDelegatee(_newDelegateeGuardian);
+
+    vm.prank(delegateeGuardian);
+    lst.setDelegateeGuardian(_newDelegateeGuardian);
+
+    assertEq(lst.delegateeGuardian(), _newDelegateeGuardian);
+    assertTrue(lst.isGuardianControlled());
+  }
+
+  function testFuzz_EmitsDelegateeGuardianSetEvent(address _newDelegateeGuardian, bool _submitAsOwner) public {
+    _assumeSafeDelegatee(_newDelegateeGuardian);
+    address _caller = _submitAsOwner ? lstOwner : delegateeGuardian;
+
+    vm.expectEmit();
+    emit UniLst.DelegateeGuardianSet(lst.delegateeGuardian(), _newDelegateeGuardian);
+    vm.prank(_caller);
+    lst.setDelegateeGuardian(_newDelegateeGuardian);
+  }
+
+  function testFuzz_RevertIf_CalledByAnyoneOtherThanTheOwnerOrGuardian(
+    address _unauthorizedAccount,
+    address _newDelegateeGuardian
+  ) public {
+    vm.assume(_unauthorizedAccount != lstOwner && _unauthorizedAccount != delegateeGuardian);
+    _assumeSafeDelegatee(_newDelegateeGuardian);
+
+    vm.expectRevert(UniLst.UniLst__Unauthorized.selector);
+    vm.prank(_unauthorizedAccount);
+    lst.setDelegateeGuardian(_newDelegateeGuardian);
+  }
+
+  function testFuzz_RevertIf_CalledByTheOwnerAfterTheGuardianHasTakenControl(
+    address _newDelegateeGuardian1,
+    address _newDelegateeGuardian2
+  ) public {
+    _assumeSafeDelegatee(_newDelegateeGuardian1);
+    _assumeSafeDelegatee(_newDelegateeGuardian2);
+
+    vm.prank(delegateeGuardian);
+    lst.setDelegateeGuardian(_newDelegateeGuardian1);
+
+    vm.expectRevert(UniLst.UniLst__Unauthorized.selector);
+    vm.prank(lstOwner);
+    lst.setDelegateeGuardian(_newDelegateeGuardian2);
   }
 }

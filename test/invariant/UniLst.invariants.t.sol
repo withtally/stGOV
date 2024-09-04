@@ -19,6 +19,7 @@ contract UniStakerInvariants is Test, UnitTestBase {
   IUniStaker.DepositIdentifier public currentId;
 
   address defaultDelegatee = makeAddr("Default Delegatee");
+  address delegateeGuardian = makeAddr("Delegatee Guardian");
 
   function setUp() public override {
     // begin UniLst.t.sol setup
@@ -40,7 +41,7 @@ contract UniStakerInvariants is Test, UnitTestBase {
     staker.setRewardNotifier(stakerAdmin, true);
 
     // Finally, deploy the lst for tests.
-    lst = new UniLst("Uni Lst", "stUni", staker, defaultDelegatee, lstOwner, initialPayoutAmount);
+    lst = new UniLst("Uni Lst", "stUni", staker, defaultDelegatee, lstOwner, initialPayoutAmount, delegateeGuardian);
 
     // Set the withdrawal delay to a non-zero amount
     vm.startPrank(lstOwner);
