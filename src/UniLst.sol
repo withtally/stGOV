@@ -50,6 +50,7 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     address feeCollector
   );
   event StakedWithAttribution(IUniStaker.DepositIdentifier _depositId, uint256 _amount, address indexed _referrer);
+  event DepositSubsidized(IUniStaker.DepositIdentifier indexed depositId, uint256 amount);
 
   struct Totals {
     uint96 supply;
@@ -629,5 +630,14 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     returns (bool)
   {
     return IUniStaker.DepositIdentifier.unwrap(_depositIdA) == IUniStaker.DepositIdentifier.unwrap(_depositIdB);
+  }
+
+  function subsidizeDeposit(IUniStaker.DepositIdentifier _depositId, uint256 _amount) external {
+    STAKE_TOKEN.transferFrom(msg.sender, address(this), _amount);
+
+    // This will revert if the deposit is not owned by this contract
+    STAKER.stakeMore(_depositId, uint96(_amount));
+
+    emit DepositSubsidized(_depositId, _amount);
   }
 }

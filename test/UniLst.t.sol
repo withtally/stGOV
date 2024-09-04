@@ -691,6 +691,86 @@ contract UpdateDeposit is UniLstTest {
   }
 }
 
+contract SubsidizeDeposit is UniLstTest {
+  function testFuzz_SubsidizesDepositOwnedByLST(address _subsidizer, uint256 _amount, address _delegatee) public {
+    _assumeSafeHolder(_subsidizer);
+    _assumeSafeDelegatee(_delegatee);
+    _amount = _boundToReasonableStakeTokenAmount(_amount);
+
+    IUniStaker.DepositIdentifier _depositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+
+    _mintStakeToken(_subsidizer, _amount);
+
+    vm.startPrank(_subsidizer);
+    stakeToken.approve(address(lst), _amount);
+
+    vm.expectEmit();
+    emit UniLst.DepositSubsidized(_depositId, _amount);
+
+    lst.subsidizeDeposit(_depositId, _amount);
+    vm.stopPrank();
+
+    // Check that the deposit balance has increased
+    (uint96 _balance,,,) = staker.deposits(_depositId);
+    assertEq(_balance, _amount);
+
+    // Check that the LST's total supply and shares haven't changed
+    assertEq(lst.totalSupply(), 0);
+    assertEq(lst.totalShares(), 0);
+
+    // Check that the subsidizer's balance hasn't changed
+    assertEq(lst.balanceOf(_subsidizer), 0);
+  }
+
+  function testFuzz_RevertIf_TransferFails(address _subsidizer, uint256 _amount, address _delegatee) public {
+    _assumeSafeHolder(_subsidizer);
+    _assumeSafeDelegatee(_delegatee);
+    _amount = _boundToReasonableStakeTokenAmount(_amount);
+
+    IUniStaker.DepositIdentifier _depositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+
+    vm.startPrank(_subsidizer);
+    stakeToken.approve(address(lst), _amount);
+
+    vm.expectRevert("Uni::_transferTokens: transfer amount exceeds balance");
+    lst.subsidizeDeposit(_depositId, _amount);
+    vm.stopPrank();
+  }
+
+  function testFuzz_RevertIf_StakeMoreToNonOwnedDeposit(
+    address _subsidizer,
+    uint256 _amount,
+    IUniStaker.DepositIdentifier _depositId
+  ) public {
+    _assumeSafeHolder(_subsidizer);
+    _amount = _boundToReasonableStakeTokenAmount(_amount);
+    vm.assume(IUniStaker.DepositIdentifier.unwrap(_depositId) != 0);
+
+    // Ensure the deposit is not owned by the LST
+    (, address _owner,,) = staker.deposits(_depositId);
+    vm.assume(_owner != address(lst));
+
+    _mintStakeToken(_subsidizer, _amount);
+
+    vm.startPrank(_subsidizer);
+    stakeToken.approve(address(lst), _amount);
+
+    // Mock the STAKE_TOKEN.transferFrom to return true
+    vm.mockCall(
+      address(stakeToken),
+      abi.encodeWithSelector(IERC20.transferFrom.selector, _subsidizer, address(lst), _amount),
+      abi.encode(true)
+    );
+
+    // Expect revert from UniStaker when trying to stakeMore to a non-owned deposit
+    vm.expectRevert(
+      abi.encodeWithSelector(IUniStaker.UniStaker__Unauthorized.selector, bytes32("not owner"), address(lst))
+    );
+    lst.subsidizeDeposit(_depositId, _amount);
+    vm.stopPrank();
+  }
+}
+
 contract UpdateDepositOnBehalf is UniLstTest {
   function testFuzz_UpdatesDepositWhenCalledWithValidSignature(
     uint256 _amount,
