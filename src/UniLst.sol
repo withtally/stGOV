@@ -344,7 +344,7 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
       _withdrawalTarget = _account;
     } else {
       _withdrawalTarget = address(WITHDRAW_GATE);
-      WITHDRAW_GATE.initiateWithdrawal(_amount, _account);
+      WITHDRAW_GATE.initiateWithdrawal(uint96(_amount), _account);
     }
 
     STAKE_TOKEN.transfer(_withdrawalTarget, _amount);

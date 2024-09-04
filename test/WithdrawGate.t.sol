@@ -160,20 +160,19 @@ contract SetDelay is WithdrawGateTest {
 }
 
 contract InitiateWithdrawal is WithdrawGateTest {
-  function testFuzz_InitiatesWithdrawalWhenCalledByLst(uint256 _amount, address _receiver) public {
+  function testFuzz_InitiatesWithdrawalWhenCalledByLst(uint96 _amount, address _receiver) public {
     _assumeSafeAddress(_receiver);
     vm.prank(lst);
     uint256 identifier = withdrawGate.initiateWithdrawal(_amount, _receiver);
 
-    (address receiver, uint256 amount, uint256 eligibleTimestamp, bool completed) = withdrawGate.withdrawals(identifier);
+    (address receiver, uint96 amount, uint256 eligibleTimestamp) = withdrawGate.withdrawals(identifier);
     assertEq(receiver, _receiver);
     assertEq(amount, _amount);
     assertEq(eligibleTimestamp, block.timestamp + initialDelay);
-    assertFalse(completed);
     assertEq(identifier, 1); // First withdrawal should have ID 1
   }
 
-  function testFuzz_EmitsWithdrawalInitiatedEvent(uint256 _amount, address _receiver) public {
+  function testFuzz_EmitsWithdrawalInitiatedEvent(uint96 _amount, address _receiver) public {
     _assumeSafeAddress(_receiver);
     vm.prank(lst);
 
@@ -189,7 +188,7 @@ contract InitiateWithdrawal is WithdrawGateTest {
     vm.startPrank(lst);
 
     // Inputs the first withdrawal initiation call
-    uint256 _amount = 100;
+    uint96 _amount = 100;
     address _receiver = makeAddr("Receiver");
 
     for (uint256 i = 1; i <= 100; i++) {
@@ -204,7 +203,7 @@ contract InitiateWithdrawal is WithdrawGateTest {
     vm.stopPrank();
   }
 
-  function testFuzz_RevertIf_CalledByNonLst(address _caller, uint256 _amount, address _receiver) public {
+  function testFuzz_RevertIf_CalledByNonLst(address _caller, uint96 _amount, address _receiver) public {
     vm.assume(_caller != lst);
     _assumeSafeAddress(_receiver);
     vm.prank(_caller);
@@ -212,7 +211,7 @@ contract InitiateWithdrawal is WithdrawGateTest {
     withdrawGate.initiateWithdrawal(_amount, _receiver);
   }
 
-  function testFuzz_RevertIf_ReceiverIsZero(uint256 _amount) public {
+  function testFuzz_RevertIf_ReceiverIsZero(uint96 _amount) public {
     vm.prank(lst);
     vm.expectRevert(WithdrawGate.WithdrawGate__CallerNotReceiver.selector);
     withdrawGate.initiateWithdrawal(_amount, address(0));
@@ -220,7 +219,7 @@ contract InitiateWithdrawal is WithdrawGateTest {
 }
 
 contract CompleteWithdrawal is WithdrawGateTest {
-  function testFuzz_CompletesWithdrawalWhenEligible(uint256 _amount, address _receiver, uint256 _extraTime) public {
+  function testFuzz_CompletesWithdrawalWhenEligible(uint96 _amount, address _receiver, uint256 _extraTime) public {
     _assumeSafeAddress(_receiver);
     _extraTime = _boundToReasonableExtraTime(_extraTime);
 
@@ -228,28 +227,23 @@ contract CompleteWithdrawal is WithdrawGateTest {
     vm.prank(lst);
     uint256 withdrawalId = withdrawGate.initiateWithdrawal(_amount, _receiver);
 
-    // Checkpoint the block timestamp before warping time
-    uint256 _checkpointTimestamp = block.timestamp;
-
     // Warp time and complete withdrawal
     vm.warp(block.timestamp + initialDelay + _extraTime);
     vm.prank(_receiver);
     withdrawGate.completeWithdrawal(withdrawalId);
 
-    (address receiver, uint256 amount, uint256 eligibleTimestamp, bool completed) =
-      withdrawGate.withdrawals(withdrawalId);
+    (address receiver, uint96 amount, uint256 eligibleTimestamp) = withdrawGate.withdrawals(withdrawalId);
 
     assertEq(receiver, _receiver);
     assertEq(amount, _amount);
-    assertEq(eligibleTimestamp, _checkpointTimestamp + initialDelay);
-    assertTrue(completed);
+    assertEq(eligibleTimestamp, 0); // Timestamp should be zeroed out after completion
 
     // External call to stakeToken.transfer should have been made
     assertEq(stakeToken.lastParam__transfer_to(), _receiver);
     assertEq(stakeToken.lastParam__transfer_amount(), _amount);
   }
 
-  function testFuzz_EmitsWithdrawalCompletedEvent(uint256 _amount, address _receiver, uint256 _extraTime) public {
+  function testFuzz_EmitsWithdrawalCompletedEvent(uint96 _amount, address _receiver, uint256 _extraTime) public {
     _assumeSafeAddress(_receiver);
     _extraTime = _boundToReasonableExtraTime(_extraTime);
 
@@ -267,7 +261,7 @@ contract CompleteWithdrawal is WithdrawGateTest {
     withdrawGate.completeWithdrawal(withdrawalId);
   }
 
-  function testFuzz_RevertIf_CallerNotReceiver(uint256 _amount, address _receiver, address _caller) public {
+  function testFuzz_RevertIf_CallerNotReceiver(uint96 _amount, address _receiver, address _caller) public {
     _assumeSafeAddress(_receiver);
     vm.assume(_caller != _receiver);
     uint256 warpTime = block.timestamp + initialDelay + 1;
@@ -282,7 +276,7 @@ contract CompleteWithdrawal is WithdrawGateTest {
     withdrawGate.completeWithdrawal(withdrawalId);
   }
 
-  function testFuzz_RevertIf_WithdrawalNotEligible(uint256 _amount, address _receiver, uint256 _earlyTime) public {
+  function testFuzz_RevertIf_WithdrawalNotEligible(uint96 _amount, address _receiver, uint256 _earlyTime) public {
     _assumeSafeAddress(_receiver);
     _earlyTime = bound(_earlyTime, 0, initialDelay - 1);
 
@@ -295,12 +289,24 @@ contract CompleteWithdrawal is WithdrawGateTest {
     withdrawGate.completeWithdrawal(withdrawalId);
   }
 
+  function testFuzz_RevertIf_WithdrawalNotFound(uint256 _nonExistentId, uint96 _amount, address _receiver) public {
+    _nonExistentId = bound(_nonExistentId, 2, type(uint256).max); // 2 since initial withdrawal once
+    _assumeSafeAddress(_receiver);
+
+    // Perform one withdrawal
+    vm.prank(lst);
+    withdrawGate.initiateWithdrawal(_amount, _receiver);
+
+    vm.expectRevert(WithdrawGate.WithdrawGate__WithdrawalNotFound.selector);
+    withdrawGate.completeWithdrawal(_nonExistentId);
+  }
+
   function testFuzz_RevertIf_WithdrawalAlreadyCompleted(uint256 _amount, address _receiver, uint256 _extraTime) public {
     _assumeSafeAddress(_receiver);
     _extraTime = _boundToReasonableExtraTime(_extraTime);
 
     vm.prank(lst);
-    uint256 withdrawalId = withdrawGate.initiateWithdrawal(_amount, _receiver);
+    uint256 withdrawalId = withdrawGate.initiateWithdrawal(uint96(_amount), _receiver);
 
     vm.mockCall(
       address(stakeToken), abi.encodeWithSelector(IERC20.transfer.selector, _receiver, _amount), abi.encode(true)
@@ -309,7 +315,7 @@ contract CompleteWithdrawal is WithdrawGateTest {
     vm.warp(block.timestamp + initialDelay + _extraTime);
     vm.startPrank(_receiver);
     withdrawGate.completeWithdrawal(withdrawalId);
-    vm.expectRevert(WithdrawGate.WithdrawGate__WithdrawalAlreadyCompleted.selector);
+    vm.expectRevert(WithdrawGate.WithdrawGate__WithdrawalNotEligible.selector);
     withdrawGate.completeWithdrawal(withdrawalId);
     vm.stopPrank();
   }
@@ -320,7 +326,7 @@ contract GetNextWithdrawalId is WithdrawGateTest {
     vm.startPrank(lst);
 
     // Inputs the first withdrawal initiation call
-    uint256 _amount = 100;
+    uint96 _amount = 100;
     address _receiver = makeAddr("Receiver");
 
     for (uint256 i = 1; i <= 100; i++) {
@@ -366,7 +372,7 @@ contract CompleteWithdrawalOnBehalf is WithdrawGateTest, Eip712Helper {
   }
 
   function testFuzz_CompletesWithdrawalOnBehalfWithEoaSignature(
-    uint256 _amount,
+    uint96 _amount,
     uint256 _extraTime,
     uint256 _deadline,
     uint256 _alicePk
@@ -389,9 +395,9 @@ contract CompleteWithdrawalOnBehalf is WithdrawGateTest, Eip712Helper {
     // Complete withdrawal on behalf
     withdrawGate.completeWithdrawalOnBehalf(withdrawalId, _deadline, signature);
 
-    // Assert withdrawal is completed
-    (,,, bool completed) = withdrawGate.withdrawals(withdrawalId);
-    assertTrue(completed);
+    // Assert withdrawal is completed (eligibleTimestamp should be 0)
+    (,, uint256 eligibleTimestamp) = withdrawGate.withdrawals(withdrawalId);
+    assertEq(eligibleTimestamp, 0);
 
     // Assert transfer occurred
     assertEq(stakeToken.lastParam__transfer_to(), alice);
@@ -399,7 +405,7 @@ contract CompleteWithdrawalOnBehalf is WithdrawGateTest, Eip712Helper {
   }
 
   function testFuzz_CompletesWithdrawalOnBehalfWithErc1271Signature(
-    uint256 _amount,
+    uint96 _amount,
     uint256 _deadline,
     uint256 _extraTime,
     uint256 _alicePk
@@ -423,9 +429,9 @@ contract CompleteWithdrawalOnBehalf is WithdrawGateTest, Eip712Helper {
     // Complete withdrawal on behalf
     withdrawGate.completeWithdrawalOnBehalf(withdrawalId, _deadline, signature);
 
-    // Assert withdrawal is completed
-    (,,, bool completed) = withdrawGate.withdrawals(withdrawalId);
-    assertTrue(completed);
+    // Assert withdrawal is completed (eligibleTimestamp should be 0)
+    (,, uint256 eligibleTimestamp) = withdrawGate.withdrawals(withdrawalId);
+    assertEq(eligibleTimestamp, 0);
 
     // Assert transfer occurred
     assertEq(stakeToken.lastParam__transfer_to(), address(fakeWallet));
@@ -433,7 +439,7 @@ contract CompleteWithdrawalOnBehalf is WithdrawGateTest, Eip712Helper {
   }
 
   function testFuzz_RevertIf_InvalidSignatureForWithdraw(
-    uint256 _amount,
+    uint96 _amount,
     uint256 _deadline,
     uint256 _extraTime,
     uint256 _fakeKey,
@@ -471,7 +477,7 @@ contract CompleteWithdrawalOnBehalf is WithdrawGateTest, Eip712Helper {
   }
 
   function testFuzz_RevertIf_WithdrawalNotEligible(
-    uint256 _amount,
+    uint96 _amount,
     uint256 _deadline,
     uint256 _earlyTime,
     uint256 _alicePk
@@ -496,37 +502,8 @@ contract CompleteWithdrawalOnBehalf is WithdrawGateTest, Eip712Helper {
     withdrawGate.completeWithdrawalOnBehalf(withdrawalId, _deadline, signature);
   }
 
-  function testFuzz_RevertIf_WithdrawalAlreadyCompleted(
-    uint256 _amount,
-    uint256 _deadline,
-    uint256 _extraTime,
-    uint256 _alicePk
-  ) public {
-    _extraTime = _boundToReasonableExtraTime(_extraTime);
-    _deadline = _boundToReasonableDeadline(_deadline, _extraTime);
-    _alicePk = _boundToValidPrivateKey(_alicePk);
-    address alice = vm.addr(_alicePk);
-
-    // Initiate withdrawal
-    vm.prank(lst);
-    uint256 withdrawalId = withdrawGate.initiateWithdrawal(_amount, alice);
-
-    // Warp time
-    vm.warp(block.timestamp + initialDelay + _extraTime);
-
-    // Sign the withdrawal message
-    bytes memory signature = _signWithdrawalMessage(withdrawalId, _deadline, _alicePk);
-
-    // Complete withdrawal
-    withdrawGate.completeWithdrawalOnBehalf(withdrawalId, _deadline, signature);
-
-    // Attempt to complete again
-    vm.expectRevert(WithdrawGate.WithdrawGate__WithdrawalAlreadyCompleted.selector);
-    withdrawGate.completeWithdrawalOnBehalf(withdrawalId, _deadline, signature);
-  }
-
   function testFuzz_RevertIf_ExpiredSignatureDeadline(
-    uint256 _amount,
+    uint96 _amount,
     uint256 _deadline,
     uint256 _extraTime,
     uint256 _alicePk

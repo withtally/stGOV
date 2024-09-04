@@ -1148,7 +1148,7 @@ contract Unstake is UniLstTest {
     _mintUpdateDelegateeAndStake(_holder, _stakeAmount, _delegatee);
     uint256 _withdrawId = withdrawGate.getNextWithdrawalId();
     _unstake(_holder, _unstakeAmount);
-    (address _receiver, uint256 _amount,,) = withdrawGate.withdrawals(_withdrawId);
+    (address _receiver, uint256 _amount,) = withdrawGate.withdrawals(_withdrawId);
 
     assertEq(_amount, _unstakeAmount);
     assertEq(_receiver, _holder);

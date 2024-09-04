@@ -57,9 +57,8 @@ contract WithdrawGate is Ownable, EIP712 {
   /// @notice A struct to store withdrawal information.
   struct Withdrawal {
     address receiver;
-    uint256 amount;
+    uint96 amount;
     uint256 eligibleTimestamp;
-    bool completed;
   }
 
   /// @notice Mapping from withdrawal identifier to Withdrawal struct.
@@ -127,7 +126,7 @@ contract WithdrawGate is Ownable, EIP712 {
   /// @return _identifier The unique identifier for this withdrawal.
   /// @dev Can only be called by the LST contract.
   /// @dev Assumes the WITHDRAW_TOKENs have already been transferred to this contract.
-  function initiateWithdrawal(uint256 _amount, address _receiver) external returns (uint256 _identifier) {
+  function initiateWithdrawal(uint96 _amount, address _receiver) external returns (uint256 _identifier) {
     if (msg.sender != LST) {
       revert WithdrawGate__CallerNotLST();
     }
@@ -138,8 +137,7 @@ contract WithdrawGate is Ownable, EIP712 {
     _identifier = nextWithdrawalId++;
     uint256 _eligibleTimestamp = block.timestamp + delay;
 
-    withdrawals[_identifier] =
-      Withdrawal({receiver: _receiver, amount: _amount, eligibleTimestamp: _eligibleTimestamp, completed: false});
+    withdrawals[_identifier] = Withdrawal({receiver: _receiver, amount: _amount, eligibleTimestamp: _eligibleTimestamp});
 
     emit WithdrawalInitiated(_amount, _receiver, _eligibleTimestamp, _identifier);
   }
@@ -147,7 +145,11 @@ contract WithdrawGate is Ownable, EIP712 {
   /// @notice Completes a previously initiated withdrawal.
   /// @param _identifier The unique identifier of the withdrawal to complete.
   function completeWithdrawal(uint256 _identifier) external {
-    Withdrawal storage _withdrawal = withdrawals[_identifier];
+    if (nextWithdrawalId <= _identifier) {
+      revert WithdrawGate__WithdrawalNotFound();
+    }
+
+    Withdrawal memory _withdrawal = withdrawals[_identifier];
 
     if (msg.sender != _withdrawal.receiver) {
       revert WithdrawGate__CallerNotReceiver();
@@ -165,7 +167,7 @@ contract WithdrawGate is Ownable, EIP712 {
       revert WithdrawGate__WithdrawalNotFound();
     }
 
-    Withdrawal storage _withdrawal = withdrawals[_identifier];
+    Withdrawal memory _withdrawal = withdrawals[_identifier];
     if (block.timestamp > _deadline) {
       revert WithdrawGate__ExpiredDeadline();
     }
@@ -182,22 +184,19 @@ contract WithdrawGate is Ownable, EIP712 {
 
   /// @notice Internal function to complete a withdrawal.
   /// @param _identifier The unique identifier of the withdrawal to complete.
-  /// @param _withdrawal The storage reference to the Withdrawal struct.
-  function _completeWithdrawal(uint256 _identifier, Withdrawal storage _withdrawal) internal {
-    if (block.timestamp < _withdrawal.eligibleTimestamp) {
+  /// @param _withdrawal The memory reference to the Withdrawal struct.
+  function _completeWithdrawal(uint256 _identifier, Withdrawal memory _withdrawal) internal {
+    if (block.timestamp < _withdrawal.eligibleTimestamp || _withdrawal.eligibleTimestamp == 0) {
       revert WithdrawGate__WithdrawalNotEligible();
     }
-    if (_withdrawal.completed) {
-      revert WithdrawGate__WithdrawalAlreadyCompleted();
-    }
 
-    _withdrawal.completed = true;
-    uint256 _amount = _withdrawal.amount;
+    // Clear the withdrawal by zeroing the eligibleTimestamp
+    withdrawals[_identifier].eligibleTimestamp = 0;
 
     // This transfer assumes WITHDRAWAL_TOKEN will revert if the transfer fails.
-    IERC20(WITHDRAWAL_TOKEN).transfer(_withdrawal.receiver, _amount);
+    IERC20(WITHDRAWAL_TOKEN).transfer(_withdrawal.receiver, _withdrawal.amount);
 
-    emit WithdrawalCompleted(_identifier, _withdrawal.receiver, _amount);
+    emit WithdrawalCompleted(_identifier, _withdrawal.receiver, _withdrawal.amount);
   }
 
   /// @notice Gets the next withdrawal identifier.
