@@ -30,57 +30,6 @@ import {Multicall} from "openzeppelin/utils/Multicall.sol";
 /// deposits remain solvent. Where a deposit might be left short due to truncation, we aim to accumulate these
 /// shortfalls in the default deposit, which can be subsidized to remain solvent.
 contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP712, Nonces {
-  /// @notice Thrown when an operation to change the default delegatee or its guardian is attempted by an account that
-  /// does not have permission to alter it.
-  error UniLst__Unauthorized();
-
-  /// @notice Thrown when an operation is not possible because the holder's balance is insufficient.
-  error UniLst__InsufficientBalance();
-
-  /// @notice Thrown when a caller (likely an MEV searcher) would receive an insufficient payout in
-  /// `claimAndDistributeReward`.
-  error UniLst__InsufficientRewards();
-
-  /// @notice Thrown when the LST owner attempts to set invalid fee parameters.
-  error UniLst__InvalidFeeParameters();
-
-  /// @notice Thrown when the LST owner attempts to set an invalid payout amount.
-  error UniLst__InvalidPayoutAmount();
-
-  /// @notice Thrown by signature-based "onBehalf" methods when a signature is invalid.
-  error UniLst__InvalidSignature();
-
-  /// @notice Thrown by signature-based "onBehalf" methods when a signature is past its expiry date.
-  error UniLst__SignatureExpired();
-
-  /// @notice The UniStaker instance in which staked tokens will be deposited to earn rewards.
-  IUniStaker public immutable STAKER;
-
-  /// @notice The governance token used by the UniStaker instance; in this case, UNI.
-  IUni public immutable STAKE_TOKEN;
-
-  /// @notice The token distributed as rewards by the UniStaker instance; in this case, WETH.
-  IWETH9 public immutable REWARD_TOKEN;
-
-  /// @notice A coupled contract used by the LST to enforce an optional delay when withdrawing staked tokens from the
-  /// LST. Can be used to prevent users from frontrunning rewards by staking and withdrawing repeatedly at opportune
-  /// times.
-  /// Said strategy would likely be unprofitable due to gas fees, but we eliminate the possibility via a delay.
-  WithdrawGate public immutable WITHDRAW_GATE;
-
-  /// @notice The deposit identifier of the default deposit.
-  IUniStaker.DepositIdentifier public immutable DEFAULT_DEPOSIT_ID;
-
-  /// @notice Scale factor applied to UNI before converting it to shares, which are tracked internally and used to
-  /// calculate holders' balances dynamically as rewards are accumulated.
-  uint256 public constant SHARE_SCALE_FACTOR = 1e10;
-
-  /// @notice The name of the LST token.
-  string private NAME;
-
-  /// @notice The symbol of the LST token.
-  string private SYMBOL;
-
   /// @notice Emitted when the LST owner updates the payout amount required for the MEV reward game in
   /// `claimAndDistributeReward`.
   event PayoutAmountSet(uint256 oldPayoutAmount, uint256 newPayoutAmount);
@@ -126,6 +75,51 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// @notice Emitted when someone irrevocably adds stake tokens to a deposit without receiving liquid tokens.
   event DepositSubsidized(IUniStaker.DepositIdentifier indexed depositId, uint256 amount);
 
+  /// @notice Thrown when an operation to change the default delegatee or its guardian is attempted by an account that
+  /// does not have permission to alter it.
+  error UniLst__Unauthorized();
+
+  /// @notice Thrown when an operation is not possible because the holder's balance is insufficient.
+  error UniLst__InsufficientBalance();
+
+  /// @notice Thrown when a caller (likely an MEV searcher) would receive an insufficient payout in
+  /// `claimAndDistributeReward`.
+  error UniLst__InsufficientRewards();
+
+  /// @notice Thrown when the LST owner attempts to set invalid fee parameters.
+  error UniLst__InvalidFeeParameters();
+
+  /// @notice Thrown when the LST owner attempts to set an invalid payout amount.
+  error UniLst__InvalidPayoutAmount();
+
+  /// @notice Thrown by signature-based "onBehalf" methods when a signature is invalid.
+  error UniLst__InvalidSignature();
+
+  /// @notice Thrown by signature-based "onBehalf" methods when a signature is past its expiry date.
+  error UniLst__SignatureExpired();
+
+  /// @notice The UniStaker instance in which staked tokens will be deposited to earn rewards.
+  IUniStaker public immutable STAKER;
+
+  /// @notice The governance token used by the UniStaker instance; in this case, UNI.
+  IUni public immutable STAKE_TOKEN;
+
+  /// @notice The token distributed as rewards by the UniStaker instance; in this case, WETH.
+  IWETH9 public immutable REWARD_TOKEN;
+
+  /// @notice A coupled contract used by the LST to enforce an optional delay when withdrawing staked tokens from the
+  /// LST. Can be used to prevent users from frontrunning rewards by staking and withdrawing repeatedly at opportune
+  /// times.
+  /// Said strategy would likely be unprofitable due to gas fees, but we eliminate the possibility via a delay.
+  WithdrawGate public immutable WITHDRAW_GATE;
+
+  /// @notice The deposit identifier of the default deposit.
+  IUniStaker.DepositIdentifier public immutable DEFAULT_DEPOSIT_ID;
+
+  /// @notice Scale factor applied to UNI before converting it to shares, which are tracked internally and used to
+  /// calculate holders' balances dynamically as rewards are accumulated.
+  uint256 public constant SHARE_SCALE_FACTOR = 1e10;
+
   /// @notice Data structure for global totals for the LST.
   /// @param supply The total staked tokens in the whole system, which by definition also represents the total supply
   /// of the LST token itself.
@@ -154,6 +148,28 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     uint96 balanceCheckpoint;
     uint128 shares;
   }
+
+  /// @notice The name of the LST token.
+  string private NAME;
+
+  /// @notice The symbol of the LST token.
+  string private SYMBOL;
+
+  /// @notice Type hash used when encoding data for `stakeOnBehalf` calls.
+  bytes32 public constant STAKE_TYPEHASH =
+    keccak256("Stake(address account,uint256 amount,uint256 nonce,uint256 deadline)");
+
+  /// @notice Type hash used when encoding data for `unstakeOnBehalf` calls.
+  bytes32 public constant UNSTAKE_TYPEHASH =
+    keccak256("Unstake(address account,uint256 amount,uint256 nonce,uint256 deadline)");
+
+  /// @notice Type hash used when encoding data for `permit` calls.
+  bytes32 public constant PERMIT_TYPEHASH =
+    keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
+
+  /// @notice Type hash used when encoding data for `updateDepositOnBehalf` calls.
+  bytes32 public constant UPDATE_DEPOSIT_TYPEHASH =
+    keccak256("UpdateDeposit(address account,uint256 newDepositId,uint256 nonce,uint256 deadline)");
 
   /// @notice The global total supply and total shares for the LST.
   Totals internal totals;
@@ -193,22 +209,6 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// holder's behalf.
   mapping(address holder => mapping(address spender => uint256 amount)) public allowance;
 
-  /// @notice Type hash used when encoding data for `stakeOnBehalf` calls.
-  bytes32 public constant STAKE_TYPEHASH =
-    keccak256("Stake(address account,uint256 amount,uint256 nonce,uint256 deadline)");
-
-  /// @notice Type hash used when encoding data for `unstakeOnBehalf` calls.
-  bytes32 public constant UNSTAKE_TYPEHASH =
-    keccak256("Unstake(address account,uint256 amount,uint256 nonce,uint256 deadline)");
-
-  /// @notice Type hash used when encoding data for `permit` calls.
-  bytes32 public constant PERMIT_TYPEHASH =
-    keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
-
-  /// @notice Type hash used when encoding data for `updateDepositOnBehalf` calls.
-  bytes32 public constant UPDATE_DEPOSIT_TYPEHASH =
-    keccak256("UpdateDeposit(address account,uint256 newDepositId,uint256 nonce,uint256 deadline)");
-
   /// @param _name The name for the liquid stake token.
   /// @param _symbol The symbol for the liquid stake token.
   /// @param _staker The UniStaker deployment where tokens will be staked.
@@ -244,14 +244,19 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     WITHDRAW_GATE = new WithdrawGate(_initialOwner, address(this), address(STAKE_TOKEN), 0);
   }
 
-  /// @notice Grant an allowance to the spender to transfer up to a certain amount of LST tokens on behalf of the
-  /// message sender.
-  /// @param _spender The address which is granted the allowance to transfer from the message sender.
-  /// @param _amount The total amount of the message sender's LST tokens that the spender will be permitted to transfer.
-  function approve(address _spender, uint256 _amount) external virtual returns (bool) {
-    allowance[msg.sender][_spender] = _amount;
-    emit Approval(msg.sender, _spender, _amount);
-    return true;
+  /// @notice The name of the liquid stake token.
+  function name() external view override returns (string memory) {
+    return NAME;
+  }
+
+  /// @notice The symbol for the liquid stake token.
+  function symbol() external view override returns (string memory) {
+    return SYMBOL;
+  }
+
+  /// @notice The decimal precision which the LST tokens stores its balances with.
+  function decimals() external pure override returns (uint8) {
+    return 18;
   }
 
   /// @notice The total amount of LST token supply, also equal to the total number of stake tokens in the system.
@@ -265,6 +270,24 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     return uint256(totals.shares);
   }
 
+  /// @notice Returns the number of shares that are valued at a given amount of stake token. Note that shares have a
+  /// scale factor of `SHARE_SCALE_FACTOR` applied to minimize precision loss due to truncation.
+  /// @param _amount The quantity of stake token that will be converted to a number of shares.
+  /// @return The quantity of shares that is worth the requested quantity of stake token.
+  function sharesForStake(uint256 _amount) external view returns (uint256) {
+    Totals memory _totals = totals;
+    return _calcSharesForStake(_amount, _totals);
+  }
+
+  /// @notice Returns the quantity of stake tokens that a given number of shares is valued at. In other words,
+  /// ownership of a given number of shares translates to a claim on the quantity of stake tokens returned.
+  /// @param _amount The quantity of shares that will be converted to stake tokens.
+  /// @return The quantity of stake tokens which backs the provided quantity of shares.
+  function stakeForShares(uint256 _amount) external view returns (uint256) {
+    Totals memory _totals = totals;
+    return _calcStakeForShares(_amount, _totals);
+  }
+
   /// @notice The current balance of LST tokens owned by the holder. Unlike a standard ERC20, this amount is calculated
   /// dynamically based on the holder's shares and the total supply of the LST. As rewards are distributed, a holder's
   /// balance will increase, even if they take no actions. In certain circumstances, a holder's balance can also
@@ -275,19 +298,6 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     Totals memory _totals = totals;
 
     return _calcBalanceOf(_holderState, _totals);
-  }
-
-  /// @notice Internal method that takes a holder's state and the global state and calculates the holder's would-be
-  /// balance in such conditions.
-  /// @param _holder The metadata associated with a given holder.
-  /// @param _totals The metadata representing current global conditions.
-  /// @return The calculated balance of the holder given the global conditions.
-  function _calcBalanceOf(HolderState memory _holder, Totals memory _totals) internal pure returns (uint256) {
-    if (_holder.shares == 0) {
-      return 0;
-    }
-
-    return _calcStakeForShares(_holder.shares, _totals);
   }
 
   /// @notice The number of shares a given holder owns. Unlike a holder's balance, shares are stored statically and do
@@ -309,11 +319,6 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     _balanceCheckpoint = holderStates[_holder].balanceCheckpoint;
   }
 
-  /// @notice The decimal precision which the LST tokens stores its balances with.
-  function decimals() external pure override returns (uint8) {
-    return 18;
-  }
-
   /// @notice The delegatee to which a given holder of LST tokens has assigned their voting weight.
   /// @param _holder The holder in question.
   /// @return _delegatee The address to which this holder has assigned his staked voting weight.
@@ -333,6 +338,26 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     }
   }
 
+  /// @notice Returns the UniStaker deposit identifier a given LST holder address is currently assigned to. If the
+  /// address has not set a deposit identifier, it returns the default deposit.
+  function depositIdForHolder(address _holder) external view returns (IUniStaker.DepositIdentifier) {
+    HolderState memory _holderState = holderStates[_holder];
+    return _calcDepositId(_holderState);
+  }
+
+  /// @notice Get the current nonce for an owner
+  /// @dev This function explicitly overrides both Nonces and IERC20Permit to allow compatibility
+  /// @param _owner The address of the owner
+  /// @return The current nonce for the owner
+  function nonces(address _owner) public view override(Nonces, IERC20Permit) returns (uint256) {
+    return Nonces.nonces(_owner);
+  }
+
+  /// @notice The domain separator used by this contract for all EIP712 signature based methods.
+  function DOMAIN_SEPARATOR() external view returns (bytes32) {
+    return _domainSeparatorV4();
+  }
+
   /// @notice Returns the deposit identifier managed by the LST for a given delegatee. If that deposit does not yet
   /// exist, it initializes it. A depositor can call this method if the deposit for their chosen delegatee has not been
   /// previously initialized.
@@ -350,11 +375,6 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     storedDepositIdForDelegatee[_delegatee] = _depositId;
     emit DepositInitialized(_delegatee, _depositId);
     return _depositId;
-  }
-
-  /// @notice The name of the liquid stake token.
-  function name() external view override returns (string memory) {
-    return NAME;
   }
 
   /// @notice Sets the deposit to which the message sender is choosing to assign their staked tokens. By using offchain
@@ -393,6 +413,352 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
       UPDATE_DEPOSIT_TYPEHASH
     );
     _updateDeposit(_account, _newDepositId);
+  }
+
+  /// @notice Stake tokens to receive liquid stake tokens. The caller must pre-approve the LST contract to spend at
+  /// least the would-be amount of tokens.
+  /// @param _amount The quantity of tokens that will be staked.
+  /// @dev The increase in the holder's balance after staking may be slightly less than the amount staked due to
+  /// rounding.
+  function stake(uint256 _amount) external returns (uint256) {
+    return _stake(msg.sender, _amount);
+  }
+
+  function stakeWithAttribution(uint256 _amount, address _referrer) external returns (uint256) {
+    IUniStaker.DepositIdentifier _depositId = _calcDepositId(holderStates[msg.sender]);
+    emit StakedWithAttribution(_depositId, _amount, _referrer);
+    return _stake(msg.sender, _amount);
+  }
+
+  /// @notice Stake tokens to receive liquid stake tokens on behalf of a user, using a signature to validate the user's
+  /// intent. The staking address must pre-approve the LST contract to spend at least the would-be amount of tokens.
+  /// @param _account The address on behalf of whom the staking is being performed.
+  /// @param _amount The quantity of tokens that will be staked.
+  /// @param _nonce The nonce being consumed by this operation.
+  /// @param _deadline The timestamp after which the signature should expire.
+  /// @param _signature Signature of the user authorizing this stake.
+  /// @dev The increase in the holder's balance after staking may be slightly less than the amount staked due to
+  /// rounding.
+  function stakeOnBehalf(address _account, uint256 _amount, uint256 _nonce, uint256 _deadline, bytes memory _signature)
+    external
+  {
+    _validateSignature(_account, _amount, _nonce, _deadline, _signature, STAKE_TYPEHASH);
+    _stake(_account, _amount);
+  }
+
+  /// @notice Stake tokens to receive liquid stake tokens. Before the staking operation occurs, a signature is passed
+  /// to the token contract's permit method to spend the would-be staked amount of the token.
+  /// @param _amount The quantity of tokens that will be staked.
+  /// @param _deadline The timestamp after which the signature should expire.
+  /// @param _v ECDSA signature component: Parity of the `y` coordinate of point `R`
+  /// @param _r ECDSA signature component: x-coordinate of `R`
+  /// @param _s ECDSA signature component: `s` value of the signature
+  function permitAndStake(uint256 _amount, uint256 _deadline, uint8 _v, bytes32 _r, bytes32 _s) external {
+    try STAKE_TOKEN.permit(msg.sender, address(this), _amount, _deadline, _v, _r, _s) {} catch {}
+    _stake(msg.sender, _amount);
+  }
+
+  /// @notice Destroy liquid staked tokens to receive the underlying token in exchange. Tokens are removed first from
+  /// the default deposit, if any are present, then from holder's specified deposit if any are needed.
+  /// @param _amount The amount of tokens to unstake.
+  /// @dev The amount of tokens actually unstaked may be slightly less than the amount specified due to rounding.
+  function unstake(uint256 _amount) external returns (uint256) {
+    return _unstake(msg.sender, _amount);
+  }
+
+  /// @notice Destroy liquid staked tokens, to receive the underlying token in exchange, on behalf of a user. Use a
+  /// signature to validate the user's  intent. Tokens are removed first from the default deposit, if any are present,
+  // then from holder's specified deposit if any are needed.
+  /// @param _account The address on behalf of whom the unstaking is being performed.
+  /// @param _amount The amount of tokens to unstake.
+  /// @param _nonce The nonce being consumed by this operation.
+  /// @param _deadline The timestamp after which the signature should expire.
+  /// @param _signature Signature of the user authorizing this stake.
+  function unstakeOnBehalf(
+    address _account,
+    uint256 _amount,
+    uint256 _nonce,
+    uint256 _deadline,
+    bytes memory _signature
+  ) external {
+    _validateSignature(_account, _amount, _nonce, _deadline, _signature, UNSTAKE_TYPEHASH);
+    _unstake(_account, _amount);
+  }
+
+  /// @notice Grant an allowance to the spender to transfer up to a certain amount of LST tokens on behalf of the
+  /// message sender.
+  /// @param _spender The address which is granted the allowance to transfer from the message sender.
+  /// @param _amount The total amount of the message sender's LST tokens that the spender will be permitted to transfer.
+  function approve(address _spender, uint256 _amount) external virtual returns (bool) {
+    allowance[msg.sender][_spender] = _amount;
+    emit Approval(msg.sender, _spender, _amount);
+    return true;
+  }
+
+  /// @notice Grant an allowance to the spender to transfer up to a certain amount of LST tokens on behalf of a user
+  /// who has signed a message testifying to their intent to grant this allowance.
+  /// @param _owner The account which is granting the allowance.
+  /// @param _spender The address which is granted the allowance to transfer from the holder.
+  /// @param _value The total amount of LST tokens the spender will be permitted to transfer from the holder.
+  /// @param _deadline The timestamp after which the signature should expire.
+  /// @param _v ECDSA signature component: Parity of the `y` coordinate of point `R`
+  /// @param _r ECDSA signature component: x-coordinate of `R`
+  /// @param _s ECDSA signature component: `s` value of the signature
+  function permit(address _owner, address _spender, uint256 _value, uint256 _deadline, uint8 _v, bytes32 _r, bytes32 _s)
+    external
+    virtual
+  {
+    if (block.timestamp > _deadline) {
+      revert UniLst__SignatureExpired();
+    }
+
+    bytes32 _structHash;
+    // Unchecked because the only math done is incrementing
+    // the owner's nonce which cannot realistically overflow.
+    unchecked {
+      _structHash = keccak256(abi.encode(PERMIT_TYPEHASH, _owner, _spender, _value, _useNonce(_owner), _deadline));
+    }
+
+    bytes32 _hash = _hashTypedDataV4(_structHash);
+
+    address _recoveredAddress = ecrecover(_hash, _v, _r, _s);
+
+    if (_recoveredAddress == address(0) || _recoveredAddress != _owner) {
+      revert UniLst__InvalidSignature();
+    }
+
+    allowance[_recoveredAddress][_spender] = _value;
+
+    emit Approval(_owner, _spender, _value);
+  }
+
+  /// @notice Send liquid stake tokens from the message sender to the receiver.
+  /// @param _to The address that will receive the message sender's tokens.
+  /// @param _value The quantity of liquid stake tokens to send.
+  /// @dev The sender's underlying tokens are moved first from the default deposit, if any are present, then from
+  /// sender's specified deposit, if any are needed. All tokens are moved into the receiver's specified deposit.
+  /// @dev The amount of tokens received by the user can be slightly less than the amount lost by the sender.
+  /// Furthermore, both amounts can be less the value requested by the sender. All such effects are due to truncation.
+  function transfer(address _to, uint256 _value) external returns (bool) {
+    _transfer(msg.sender, _to, _value);
+    return true;
+  }
+
+  /// @notice Send liquid stake tokens from the message sender to the receiver, returning the changes in balances of
+  /// each. Primarily intended for use by integrators, who might need to know the exact balance changes for internal
+  /// accounting in other contracts.
+  /// @param _receiver The address that will receive the message sender's tokens.
+  /// @param _value The quantity of liquid stake tokens to send.
+  /// @return _senderBalanceDecrease The amount by which the sender's balance of lst tokens decreased.
+  /// @return _receiverBalanceIncrease The amount by which the receiver's balance of lst tokens increased.
+  /// @dev The amount of tokens received by the user can be slightly less than the amount lost by the sender.
+  /// Furthermore, both amounts can be less the value requested by the sender. All such effects are due to truncation.
+  function transferAndReturnBalanceDiffs(address _receiver, uint256 _value)
+    external
+    returns (uint256 _senderBalanceDecrease, uint256 _receiverBalanceIncrease)
+  {
+    return _transfer(msg.sender, _receiver, _value);
+  }
+
+  /// @notice Send liquid stake tokens from the message sender to the receiver on behalf of a user who has granted the
+  /// message sender an allowance to do so.
+  /// @param _from The address from where tokens will be transferred, which has previously granted the message sender
+  /// an allowance of at least the quantity of tokens being transferred.
+  /// @param _to The address that will receive the sender's tokens.
+  /// @param _value The quantity of liquid stake tokens to send.
+  /// @dev The sender's underlying tokens are moved first from the default deposit, if any are present, then from
+  /// sender's specified deposit, if any are needed. All tokens are moved into the receiver's specified deposit.
+  /// @dev The amount of tokens received by the receiver can be slightly less than the amount lost by the sender.
+  /// Furthermore, both amounts can be less the value requested by the sender. All such effects are due to truncation.
+  function transferFrom(address _from, address _to, uint256 _value) external returns (bool) {
+    uint256 allowed = allowance[_from][msg.sender];
+    if (allowed != type(uint256).max) {
+      allowance[_from][msg.sender] = allowed - _value;
+    }
+    _transfer(_from, _to, _value);
+    return true;
+  }
+
+  /// @notice Public method that allows any caller to claim the UniStaker rewards earned by the LST. Caller must pre-
+  /// approve the LST on the stake token contract for at least the payout amount, which is transferred from the caller
+  /// to the LST, added to the total supply, and sent to the default deposit. The effect of this is to distribute the
+  /// reward proportionally to all LST holders, whose underlying shares will now be worth more of the stake token due
+  /// the addition of the reward to the total supply. Because all holders' balances change simultaneously, transfer
+  /// events cannot be emitted for all users. This makes the LST a non-standard ERC20, similar in nature to stETH.
+  ///
+  /// A quick example can help illustrate why an external party, such as an MEV searcher, would be incentivized to call
+  /// this method. Imagine, purely for the sake of example, that the LST contract has accrued rewards of 1 ETH in the
+  /// UniStaker contract, and the payout amount here in the LST is set to 500 UNI. Imagine ETH is trading at $2,500 and
+  /// UNI is trading at $5. At this point, the value of ETH available to be claimed is equal to the value of the payout
+  /// amount required in UNI. Once a bit more ETH accrues, it will be profitable for a searcher to trade the 500 UNI in
+  /// exchange for the accrued ETH rewards. (This ignores other details, which real searchers would take into
+  /// consideration, such as the gas/builder fee they would pay to call the method).
+  ///
+  /// Note that `payoutAmount` may be changed by the admin (governance). Any proposal that changes this amount is
+  /// expected to be subject to the governance process, including a timelocked execution, and so it's unlikely that a
+  // caller would be surprised by a change in this value. Still, callers should be aware of the edge case where:
+  /// 1. The caller grants a higher-than-necessary payout token approval to this LST.
+  /// 2. Caller's claimAndDistributeReward transaction is in the mempool.
+  /// 3. The payoutAmount is changed.
+  /// 4. The claimAndDistributeReward transaction is now included in a block.
+  /// @param _recipient The address that will receive the UniStaker reward payout.
+  /// @param _minExpectedReward The minimum reward payout, in the reward token of the underlying staker contract, that
+  /// the caller will accept in exchange for providing the payout amount of stake token. If the amount claimed is less
+  /// than this, the transaction will revert. This parameter is a last line of defense against the MEV caller losing
+  /// funds because they've been frontrun by another searcher.
+  function claimAndDistributeReward(address _recipient, uint256 _minExpectedReward) external {
+    uint256 _feeAmount = feeAmount;
+    Totals memory _totals = totals;
+
+    // By increasing the total supply by the amount of tokens that are distributed as part of the reward, the balance
+    // of every holder increases proportional to the underlying shares which they hold.
+    uint96 _newTotalSupply = _totals.supply + uint96(payoutAmount); // payoutAmount is assumed safe
+
+    uint160 _feeShares;
+    if (_feeAmount > 0) {
+      // Our goal is to issue shares to the fee collector such that the new shares the fee collector receives are
+      // worth `feeAmount` of `stakeToken` after the reward is distributed. This can be expressed mathematically
+      // as feeAmount = (feeShares * newTotalSupply) / newTotalShares, where the newTotalShares is equal to the sum of
+      // the fee shares and the total existing shares. In this equation, all the terms are known except the fee shares.
+      // Solving for the fee shares yields the following calculation.
+      _feeShares = uint160((uint256(_feeAmount) * uint256(_totals.shares)) / (_newTotalSupply - _feeAmount));
+
+      // By issuing these new shares to the `feeCollector` we effectively give the it `feeAmount` of the reward by
+      // slightly diluting all other LST holders.
+      holderStates[feeCollector].shares += uint128(_feeShares);
+    }
+
+    totals = Totals({supply: _newTotalSupply, shares: _totals.shares + _feeShares});
+
+    // Transfer stake token to the LST
+    STAKE_TOKEN.transferFrom(msg.sender, address(this), payoutAmount);
+    // Stake the rewards with the default delegatee
+    STAKER.stakeMore(DEFAULT_DEPOSIT_ID, uint96(payoutAmount));
+    // Claim the reward tokens earned by the LST
+    uint256 _rewards = STAKER.claimReward();
+    // Ensure rewards distributed meet the claimers expectations; provides protection from frontrunning resulting in
+    // loss of funds for the MEV racers.
+    if (_rewards < _minExpectedReward) {
+      revert UniLst__InsufficientRewards();
+    }
+    // Transfer the reward tokens to the recipient
+    REWARD_TOKEN.transfer(_recipient, _rewards);
+
+    emit RewardDistributed(msg.sender, _recipient, _rewards, payoutAmount, _feeAmount, feeCollector);
+  }
+
+  /// @notice Open method which allows anyone to add funds to a UniStaker deposit owned by the LST. These funds are not
+  /// added to the LST's supply and no tokens or shares are issues to the caller. The  purpose of this method is to
+  /// provide buffer funds for shortfalls in deposits due to rounding errors. In particular, the system is designed
+  /// such that rounding errors are known to accrue to the default deposit. Being able to provably provide a buffer for
+  /// the default deposit is the primary intended use case for this method. That said, if other unknown issues were to
+  /// arise, it could also be used to ensure the internal solvency of the other UniStaker deposits as well.
+  /// @param _depositId The UniStaker deposit identifier that is being subsidized.
+  /// @param _amount The quantity of stake tokens that will be sent to the deposit.
+  /// @dev Caller must approve the LST contract for at least the `_amount` on the stake token before calling this
+  /// method.
+  function subsidizeDeposit(IUniStaker.DepositIdentifier _depositId, uint256 _amount) external {
+    STAKE_TOKEN.transferFrom(msg.sender, address(this), _amount);
+
+    // This will revert if the deposit is not owned by this contract
+    STAKER.stakeMore(_depositId, uint96(_amount));
+
+    emit DepositSubsidized(_depositId, _amount);
+  }
+
+  /// @notice Update the payout amount. Must be called by owner.
+  /// @param _newPayoutAmount The value that will be the new payout amount. Must be greater than the fee amount.
+  function setPayoutAmount(uint256 _newPayoutAmount) external {
+    _checkOwner();
+    _setPayoutAmount(_newPayoutAmount);
+  }
+
+  /// @notice Update the fee amount and/or the fee collector. Must be called by owner.
+  /// @param _newFeeAmount The amount of the payout amount that is taken as a fee each time
+  /// `claimAndDistributeReward` is called. Must be less than the payoutAmount. Denominated in the stake token.
+  /// @param _newFeeCollector The address that will receive the fees collected when a reward payout occurs. Fees are
+  /// issued in the LST token to this address.
+  function setFeeParameters(uint256 _newFeeAmount, address _newFeeCollector) external {
+    _checkOwner();
+    if (_newFeeAmount > payoutAmount) {
+      revert UniLst__InvalidFeeParameters();
+    }
+    if (_newFeeCollector == address(0)) {
+      revert UniLst__InvalidFeeParameters();
+    }
+
+    emit FeeParametersSet(feeAmount, _newFeeAmount, feeCollector, _newFeeCollector);
+
+    feeAmount = _newFeeAmount;
+    feeCollector = _newFeeCollector;
+  }
+
+  /// @notice Update the default delegatee. Can only be called by the delegatee guardian or by the LST owner. Once the
+  /// guardian takes an action on the LST, the owner can no longer override it.
+  /// @param _newDelegatee The address which will be assigned as the delegatee for the default UniStaker deposit.
+  function setDefaultDelegatee(address _newDelegatee) external {
+    _checkAndToggleGuardianControlOrOwner();
+    _setDefaultDelegatee(_newDelegatee);
+    STAKER.alterDelegatee(DEFAULT_DEPOSIT_ID, _newDelegatee);
+  }
+
+  /// @notice Update the delegatee guardian. Can only be called by the delegatee guardian or by the LST owner. Once the
+  /// guardian takes an action on the LST, the owner can no longer override it.
+  /// @param _newDelegateeGuardian The address which will become the new delegatee guardian.
+  function setDelegateeGuardian(address _newDelegateeGuardian) external {
+    _checkAndToggleGuardianControlOrOwner();
+    _setDelegateeGuardian(_newDelegateeGuardian);
+  }
+
+  /// @notice Internal helper method that takes an amount of stake tokens and metadata representing the global state of
+  /// the LST and returns the quantity of shares that is worth the requested quantity of stake token. All data for the
+  /// calculation is provided in memory and the calculation is performed there, making it a pure function.
+  /// @param _amount The quantity of stake token that will be converted to a number of shares.
+  /// @param _totals The metadata representing current global conditions.
+  /// @return The quantity of shares that is worth the provided quantity of stake token.
+  function _calcSharesForStake(uint256 _amount, Totals memory _totals) internal pure returns (uint256) {
+    if (_totals.supply == 0) {
+      return SHARE_SCALE_FACTOR * _amount;
+    }
+
+    return (_amount * _totals.shares) / _totals.supply;
+  }
+
+  /// @notice Internal helper method that takes an amount of shares, and metadata representing the global state of
+  /// the LST, and returns the quantity of stake tokens that the requested shares are worth. All data for the
+  /// calculation is provided in memory and the calculation is performed there, making it a pure function.
+  /// @param _amount The quantity of shares that will be converted to stake tokens.
+  /// @param _totals The metadata representing current global conditions.
+  /// @return The quantity of stake tokens which backs the provide quantity of shares.
+  function _calcStakeForShares(uint256 _amount, Totals memory _totals) internal pure returns (uint256) {
+    if (_totals.supply == 0) {
+      return 0;
+    }
+
+    return (_amount * _totals.supply) / _totals.shares;
+  }
+
+  /// @notice Internal method that takes a holder's state and the global state and calculates the holder's would-be
+  /// balance in such conditions.
+  /// @param _holder The metadata associated with a given holder.
+  /// @param _totals The metadata representing current global conditions.
+  /// @return The calculated balance of the holder given the global conditions.
+  function _calcBalanceOf(HolderState memory _holder, Totals memory _totals) internal pure returns (uint256) {
+    if (_holder.shares == 0) {
+      return 0;
+    }
+
+    return _calcStakeForShares(_holder.shares, _totals);
+  }
+
+  /// @notice Internal helper method that takes the metadata representing an LST holder and returns the UniStaker
+  /// deposit identifier that holder has assigned his voting weight to.
+  function _calcDepositId(HolderState memory _holder) internal view returns (IUniStaker.DepositIdentifier) {
+    if (_holder.depositId == 0) {
+      return DEFAULT_DEPOSIT_ID;
+    } else {
+      return IUniStaker.DepositIdentifier.wrap(_holder.depositId);
+    }
   }
 
   /// @notice Internal convenience method which performs deposit update operations.
@@ -458,21 +824,6 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     holderStates[_account] = _holderState;
   }
 
-  /// @notice Stake tokens to receive liquid stake tokens. The caller must pre-approve the LST contract to spend at
-  /// least the would-be amount of tokens.
-  /// @param _amount The quantity of tokens that will be staked.
-  /// @dev The increase in the holder's balance after staking may be slightly less than the amount staked due to
-  /// rounding.
-  function stake(uint256 _amount) external returns (uint256) {
-    return _stake(msg.sender, _amount);
-  }
-
-  function stakeWithAttribution(uint256 _amount, address _referrer) external returns (uint256) {
-    IUniStaker.DepositIdentifier _depositId = _calcDepositId(holderStates[msg.sender]);
-    emit StakedWithAttribution(_depositId, _amount, _referrer);
-    return _stake(msg.sender, _amount);
-  }
-
   /// @notice Internal convenience method which performs staking operations.
   /// @dev This method must only be called after proper authorization has been completed.
   /// @dev See public stake methods for additional documentation.
@@ -505,42 +856,6 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     STAKER.stakeMore(_calcDepositId(_holderState), uint96(_amount));
     emit Staked(_account, _amount);
     return _balanceDiff;
-  }
-
-  /// @notice Stake tokens to receive liquid stake tokens on behalf of a user, using a signature to validate the user's
-  /// intent. The staking address must pre-approve the LST contract to spend at least the would-be amount of tokens.
-  /// @param _account The address on behalf of whom the staking is being performed.
-  /// @param _amount The quantity of tokens that will be staked.
-  /// @param _nonce The nonce being consumed by this operation.
-  /// @param _deadline The timestamp after which the signature should expire.
-  /// @param _signature Signature of the user authorizing this stake.
-  /// @dev The increase in the holder's balance after staking may be slightly less than the amount staked due to
-  /// rounding.
-  function stakeOnBehalf(address _account, uint256 _amount, uint256 _nonce, uint256 _deadline, bytes memory _signature)
-    external
-  {
-    _validateSignature(_account, _amount, _nonce, _deadline, _signature, STAKE_TYPEHASH);
-    _stake(_account, _amount);
-  }
-
-  /// @notice Stake tokens to receive liquid stake tokens. Before the staking operation occurs, a signature is passed
-  /// to the token contract's permit method to spend the would-be staked amount of the token.
-  /// @param _amount The quantity of tokens that will be staked.
-  /// @param _deadline The timestamp after which the signature should expire.
-  /// @param _v ECDSA signature component: Parity of the `y` coordinate of point `R`
-  /// @param _r ECDSA signature component: x-coordinate of `R`
-  /// @param _s ECDSA signature component: `s` value of the signature
-  function permitAndStake(uint256 _amount, uint256 _deadline, uint8 _v, bytes32 _r, bytes32 _s) external {
-    try STAKE_TOKEN.permit(msg.sender, address(this), _amount, _deadline, _v, _r, _s) {} catch {}
-    _stake(msg.sender, _amount);
-  }
-
-  /// @notice Destroy liquid staked tokens to receive the underlying token in exchange. Tokens are removed first from
-  /// the default deposit, if any are present, then from holder's specified deposit if any are needed.
-  /// @param _amount The amount of tokens to unstake.
-  /// @dev The amount of tokens actually unstaked may be slightly less than the amount specified due to rounding.
-  function unstake(uint256 _amount) external returns (uint256) {
-    return _unstake(msg.sender, _amount);
   }
 
   /// @notice Internal convenience method which performs unstaking operations.
@@ -614,366 +929,6 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
 
     emit Unstaked(_account, _amount);
     return _amount;
-  }
-
-  /// @notice Destroy liquid staked tokens, to receive the underlying token in exchange, on behalf of a user. Use a
-  /// signature to validate the user's  intent. Tokens are removed first from the default deposit, if any are present,
-  // then from holder's specified deposit if any are needed.
-  /// @param _account The address on behalf of whom the unstaking is being performed.
-  /// @param _amount The amount of tokens to unstake.
-  /// @param _nonce The nonce being consumed by this operation.
-  /// @param _deadline The timestamp after which the signature should expire.
-  /// @param _signature Signature of the user authorizing this stake.
-  function unstakeOnBehalf(
-    address _account,
-    uint256 _amount,
-    uint256 _nonce,
-    uint256 _deadline,
-    bytes memory _signature
-  ) external {
-    _validateSignature(_account, _amount, _nonce, _deadline, _signature, UNSTAKE_TYPEHASH);
-    _unstake(_account, _amount);
-  }
-
-  /// @notice Grant an allowance to the spender to transfer up to a certain amount of LST tokens on behalf of a user
-  /// who has signed a message testifying to their intent to grant this allowance.
-  /// @param _owner The account which is granting the allowance.
-  /// @param _spender The address which is granted the allowance to transfer from the holder.
-  /// @param _value The total amount of LST tokens the spender will be permitted to transfer from the holder.
-  /// @param _deadline The timestamp after which the signature should expire.
-  /// @param _v ECDSA signature component: Parity of the `y` coordinate of point `R`
-  /// @param _r ECDSA signature component: x-coordinate of `R`
-  /// @param _s ECDSA signature component: `s` value of the signature
-  function permit(address _owner, address _spender, uint256 _value, uint256 _deadline, uint8 _v, bytes32 _r, bytes32 _s)
-    external
-    virtual
-  {
-    if (block.timestamp > _deadline) {
-      revert UniLst__SignatureExpired();
-    }
-
-    bytes32 _structHash;
-    // Unchecked because the only math done is incrementing
-    // the owner's nonce which cannot realistically overflow.
-    unchecked {
-      _structHash = keccak256(abi.encode(PERMIT_TYPEHASH, _owner, _spender, _value, _useNonce(_owner), _deadline));
-    }
-
-    bytes32 _hash = _hashTypedDataV4(_structHash);
-
-    address _recoveredAddress = ecrecover(_hash, _v, _r, _s);
-
-    if (_recoveredAddress == address(0) || _recoveredAddress != _owner) {
-      revert UniLst__InvalidSignature();
-    }
-
-    allowance[_recoveredAddress][_spender] = _value;
-
-    emit Approval(_owner, _spender, _value);
-  }
-
-  /// @notice Get the current nonce for an owner
-  /// @dev This function explicitly overrides both Nonces and IERC20Permit to allow compatibility
-  /// @param _owner The address of the owner
-  /// @return The current nonce for the owner
-  function nonces(address _owner) public view override(Nonces, IERC20Permit) returns (uint256) {
-    return Nonces.nonces(_owner);
-  }
-
-  /// @notice The domain separator used by this contract for all EIP712 signature based methods.
-  function DOMAIN_SEPARATOR() external view returns (bytes32) {
-    return _domainSeparatorV4();
-  }
-
-  /// @notice Internal helper method which reverts with UniLst__SignatureExpired if the signature
-  /// is invalid.
-  /// @param _account The address of the signer.
-  /// @param _amount The amount of tokens involved in this operation.
-  /// @param _nonce The nonce being consumed by this operation.
-  /// @param _deadline The timestamp after which the signature should expire.
-  /// @param _signature Signature of the user authorizing this stake.
-  /// @param _typeHash The typehash being signed over for this operation.
-  function _validateSignature(
-    address _account,
-    uint256 _amount,
-    uint256 _nonce,
-    uint256 _deadline,
-    bytes memory _signature,
-    bytes32 _typeHash
-  ) internal {
-    _useCheckedNonce(_account, _nonce);
-    if (block.timestamp > _deadline) {
-      revert UniLst__SignatureExpired();
-    }
-    bytes32 _structHash = keccak256(abi.encode(_typeHash, _account, _amount, _nonce, _deadline));
-    bytes32 _hash = _hashTypedDataV4(_structHash);
-    if (!SignatureChecker.isValidSignatureNow(_account, _hash, _signature)) {
-      revert UniLst__InvalidSignature();
-    }
-  }
-
-  /// @notice Send liquid stake tokens from the message sender to the receiver.
-  /// @param _to The address that will receive the message sender's tokens.
-  /// @param _value The quantity of liquid stake tokens to send.
-  /// @dev The sender's underlying tokens are moved first from the default deposit, if any are present, then from
-  /// sender's specified deposit, if any are needed. All tokens are moved into the receiver's specified deposit.
-  /// @dev The amount of tokens received by the user can be slightly less than the amount lost by the sender.
-  /// Furthermore, both amounts can be less the value requested by the sender. All such effects are due to truncation.
-  function transfer(address _to, uint256 _value) external returns (bool) {
-    _transfer(msg.sender, _to, _value);
-    return true;
-  }
-
-  /// @notice Send liquid stake tokens from the message sender to the receiver on behalf of a user who has granted the
-  /// message sender an allowance to do so.
-  /// @param _from The address from where tokens will be transferred, which has previously granted the message sender
-  /// an allowance of at least the quantity of tokens being transferred.
-  /// @param _to The address that will receive the sender's tokens.
-  /// @param _value The quantity of liquid stake tokens to send.
-  /// @dev The sender's underlying tokens are moved first from the default deposit, if any are present, then from
-  /// sender's specified deposit, if any are needed. All tokens are moved into the receiver's specified deposit.
-  /// @dev The amount of tokens received by the receiver can be slightly less than the amount lost by the sender.
-  /// Furthermore, both amounts can be less the value requested by the sender. All such effects are due to truncation.
-  function transferFrom(address _from, address _to, uint256 _value) external returns (bool) {
-    uint256 allowed = allowance[_from][msg.sender];
-    if (allowed != type(uint256).max) {
-      allowance[_from][msg.sender] = allowed - _value;
-    }
-    _transfer(_from, _to, _value);
-    return true;
-  }
-
-  /// @notice Send liquid stake tokens from the message sender to the receiver, returning the changes in balances of
-  /// each. Primarily intended for use by integrators, who might need to know the exact balance changes for internal
-  /// accounting in other contracts.
-  /// @param _receiver The address that will receive the message sender's tokens.
-  /// @param _value The quantity of liquid stake tokens to send.
-  /// @return _senderBalanceDecrease The amount by which the sender's balance of lst tokens decreased.
-  /// @return _receiverBalanceIncrease The amount by which the receiver's balance of lst tokens increased.
-  /// @dev The amount of tokens received by the user can be slightly less than the amount lost by the sender.
-  /// Furthermore, both amounts can be less the value requested by the sender. All such effects are due to truncation.
-  function transferAndReturnBalanceDiffs(address _receiver, uint256 _value)
-    external
-    returns (uint256 _senderBalanceDecrease, uint256 _receiverBalanceIncrease)
-  {
-    return _transfer(msg.sender, _receiver, _value);
-  }
-
-  /// @notice Public method that allows any caller to claim the UniStaker rewards earned by the LST. Caller must pre-
-  /// approve the LST on the stake token contract for at least the payout amount, which is transferred from the caller
-  /// to the LST, added to the total supply, and sent to the default deposit. The effect of this is to distribute the
-  /// reward proportionally to all LST holders, whose underlying shares will now be worth more of the stake token due
-  /// the addition of the reward to the total supply. Because all holders' balances change simultaneously, transfer
-  /// events cannot be emitted for all users. This makes the LST a non-standard ERC20, similar in nature to stETH.
-  ///
-  /// A quick example can help illustrate why an external party, such as an MEV searcher, would be incentivized to call
-  /// this method. Imagine, purely for the sake of example, that the LST contract has accrued rewards of 1 ETH in the
-  /// UniStaker contract, and the payout amount here in the LST is set to 500 UNI. Imagine ETH is trading at $2,500 and
-  /// UNI is trading at $5. At this point, the value of ETH available to be claimed is equal to the value of the payout
-  /// amount required in UNI. Once a bit more ETH accrues, it will be profitable for a searcher to trade the 500 UNI in
-  /// exchange for the accrued ETH rewards. (This ignores other details, which real searchers would take into
-  /// consideration, such as the gas/builder fee they would pay to call the method).
-  ///
-  /// Note that `payoutAmount` may be changed by the admin (governance). Any proposal that changes this amount is
-  /// expected to be subject to the governance process, including a timelocked execution, and so it's unlikely that a
-  // caller would be surprised by a change in this value. Still, callers should be aware of the edge case where:
-  /// 1. The caller grants a higher-than-necessary payout token approval to this LST.
-  /// 2. Caller's claimAndDistributeReward transaction is in the mempool.
-  /// 3. The payoutAmount is changed.
-  /// 4. The claimAndDistributeReward transaction is now included in a block.
-  /// @param _recipient The address that will receive the UniStaker reward payout.
-  /// @param _minExpectedReward The minimum reward payout, in the reward token of the underlying staker contract, that
-  /// the caller will accept in exchange for providing the payout amount of stake token. If the amount claimed is less
-  /// than this, the transaction will revert. This parameter is a last line of defense against the MEV caller losing
-  /// funds because they've been frontrun by another searcher.
-  function claimAndDistributeReward(address _recipient, uint256 _minExpectedReward) external {
-    uint256 _feeAmount = feeAmount;
-    Totals memory _totals = totals;
-
-    // By increasing the total supply by the amount of tokens that are distributed as part of the reward, the balance
-    // of every holder increases proportional to the underlying shares which they hold.
-    uint96 _newTotalSupply = _totals.supply + uint96(payoutAmount); // payoutAmount is assumed safe
-
-    uint160 _feeShares;
-    if (_feeAmount > 0) {
-      // Our goal is to issue shares to the fee collector such that the new shares the fee collector receives are
-      // worth `feeAmount` of `stakeToken` after the reward is distributed. This can be expressed mathematically
-      // as feeAmount = (feeShares * newTotalSupply) / newTotalShares, where the newTotalShares is equal to the sum of
-      // the fee shares and the total existing shares. In this equation, all the terms are known except the fee shares.
-      // Solving for the fee shares yields the following calculation.
-      _feeShares = uint160((uint256(_feeAmount) * uint256(_totals.shares)) / (_newTotalSupply - _feeAmount));
-
-      // By issuing these new shares to the `feeCollector` we effectively give the it `feeAmount` of the reward by
-      // slightly diluting all other LST holders.
-      holderStates[feeCollector].shares += uint128(_feeShares);
-    }
-
-    totals = Totals({supply: _newTotalSupply, shares: _totals.shares + _feeShares});
-
-    // Transfer stake token to the LST
-    STAKE_TOKEN.transferFrom(msg.sender, address(this), payoutAmount);
-    // Stake the rewards with the default delegatee
-    STAKER.stakeMore(DEFAULT_DEPOSIT_ID, uint96(payoutAmount));
-    // Claim the reward tokens earned by the LST
-    uint256 _rewards = STAKER.claimReward();
-    // Ensure rewards distributed meet the claimers expectations; provides protection from frontrunning resulting in
-    // loss of funds for the MEV racers.
-    if (_rewards < _minExpectedReward) {
-      revert UniLst__InsufficientRewards();
-    }
-    // Transfer the reward tokens to the recipient
-    REWARD_TOKEN.transfer(_recipient, _rewards);
-
-    emit RewardDistributed(msg.sender, _recipient, _rewards, payoutAmount, _feeAmount, feeCollector);
-  }
-
-  /// @notice Update the payout amount. Must be called by owner.
-  /// @param _newPayoutAmount The value that will be the new payout amount. Must be greater than the fee amount.
-  function setPayoutAmount(uint256 _newPayoutAmount) external {
-    _checkOwner();
-    _setPayoutAmount(_newPayoutAmount);
-  }
-
-  /// @notice Internal helper method that sets the payout amount and emits an event.
-  function _setPayoutAmount(uint256 _newPayoutAmount) internal {
-    if (_newPayoutAmount < feeAmount) {
-      revert UniLst__InvalidPayoutAmount();
-    }
-    emit PayoutAmountSet(payoutAmount, _newPayoutAmount);
-    payoutAmount = _newPayoutAmount;
-  }
-
-  /// @notice Update the fee amount and/or the fee collector. Must be called by owner.
-  /// @param _newFeeAmount The amount of the payout amount that is taken as a fee each time
-  /// `claimAndDistributeReward` is called. Must be less than the payoutAmount. Denominated in the stake token.
-  /// @param _newFeeCollector The address that will receive the fees collected when a reward payout occurs. Fees are
-  /// issued in the LST token to this address.
-  function setFeeParameters(uint256 _newFeeAmount, address _newFeeCollector) external {
-    _checkOwner();
-    if (_newFeeAmount > payoutAmount) {
-      revert UniLst__InvalidFeeParameters();
-    }
-    if (_newFeeCollector == address(0)) {
-      revert UniLst__InvalidFeeParameters();
-    }
-
-    emit FeeParametersSet(feeAmount, _newFeeAmount, feeCollector, _newFeeCollector);
-
-    feeAmount = _newFeeAmount;
-    feeCollector = _newFeeCollector;
-  }
-
-  /// @notice Update the default delegatee. Can only be called by the delegatee guardian or by the LST owner. Once the
-  /// guardian takes an action on the LST, the owner can no longer override it.
-  /// @param _newDelegatee The address which will be assigned as the delegatee for the default UniStaker deposit.
-  function setDefaultDelegatee(address _newDelegatee) external {
-    _checkAndToggleGuardianControlOrOwner();
-    _setDefaultDelegatee(_newDelegatee);
-    STAKER.alterDelegatee(DEFAULT_DEPOSIT_ID, _newDelegatee);
-  }
-
-  /// @notice Internal helper method that sets the delegatee and emits an event.
-  function _setDefaultDelegatee(address _newDelegatee) internal {
-    emit DefaultDelegateeSet(defaultDelegatee, _newDelegatee);
-    defaultDelegatee = _newDelegatee;
-  }
-
-  /// @notice Update the delegatee guardian. Can only be called by the delegatee guardian or by the LST owner. Once the
-  /// guardian takes an action on the LST, the owner can no longer override it.
-  /// @param _newDelegateeGuardian The address which will become the new delegatee guardian.
-  function setDelegateeGuardian(address _newDelegateeGuardian) external {
-    _checkAndToggleGuardianControlOrOwner();
-    _setDelegateeGuardian(_newDelegateeGuardian);
-  }
-
-  /// @notice Internal helper method that sets the guardian and emits an event.
-  function _setDelegateeGuardian(address _newDelegateeGuardian) internal {
-    emit DelegateeGuardianSet(delegateeGuardian, _newDelegateeGuardian);
-    delegateeGuardian = _newDelegateeGuardian;
-  }
-
-  /// @notice Internal helper which checks that the message sender is either the delegatee guardian or the owner and
-  /// reverts otherwise. If the caller is the owner, it also validates the guardian has never performed an action
-  /// before, and reverts if it has. If the caller is the guardian, it toggles the guardian control flag to true if it
-  /// hasn't yet been.
-  function _checkAndToggleGuardianControlOrOwner() internal {
-    if (msg.sender != owner() && msg.sender != delegateeGuardian) {
-      revert UniLst__Unauthorized();
-    }
-    if (msg.sender == owner() && isGuardianControlled) {
-      revert UniLst__Unauthorized();
-    }
-    if (msg.sender == delegateeGuardian && !isGuardianControlled) {
-      isGuardianControlled = true;
-    }
-  }
-
-  /// @notice Returns the number of shares that are valued at a given amount of stake token. Note that shares have a
-  /// scale factor of `SHARE_SCALE_FACTOR` applied to minimize precision loss due to truncation.
-  /// @param _amount The quantity of stake token that will be converted to a number of shares.
-  /// @return The quantity of shares that is worth the requested quantity of stake token.
-  function sharesForStake(uint256 _amount) external view returns (uint256) {
-    Totals memory _totals = totals;
-    return _calcSharesForStake(_amount, _totals);
-  }
-
-  /// @notice Internal helper method that takes an amount of stake tokens and metadata representing the global state of
-  /// the LST and returns the quantity of shares that is worth the requested quantity of stake token. All data for the
-  /// calculation is provided in memory and the calculation is performed there, making it a pure function.
-  /// @param _amount The quantity of stake token that will be converted to a number of shares.
-  /// @param _totals The metadata representing current global conditions.
-  /// @return The quantity of shares that is worth the provided quantity of stake token.
-  function _calcSharesForStake(uint256 _amount, Totals memory _totals) internal pure returns (uint256) {
-    if (_totals.supply == 0) {
-      return SHARE_SCALE_FACTOR * _amount;
-    }
-
-    return (_amount * _totals.shares) / _totals.supply;
-  }
-
-  /// @notice Returns the quantity of stake tokens that a given number of shares is valued at. In other words,
-  /// ownership of a given number of shares translates to a claim on the quantity of stake tokens returned.
-  /// @param _amount The quantity of shares that will be converted to stake tokens.
-  /// @return The quantity of stake tokens which backs the provided quantity of shares.
-  function stakeForShares(uint256 _amount) external view returns (uint256) {
-    Totals memory _totals = totals;
-    return _calcStakeForShares(_amount, _totals);
-  }
-
-  /// @notice Internal helper method that takes an amount of shares, and metadata representing the global state of
-  /// the LST, and returns the quantity of stake tokens that the requested shares are worth. All data for the
-  /// calculation is provided in memory and the calculation is performed there, making it a pure function.
-  /// @param _amount The quantity of shares that will be converted to stake tokens.
-  /// @param _totals The metadata representing current global conditions.
-  /// @return The quantity of stake tokens which backs the provide quantity of shares.
-  function _calcStakeForShares(uint256 _amount, Totals memory _totals) internal pure returns (uint256) {
-    if (_totals.supply == 0) {
-      return 0;
-    }
-
-    return (_amount * _totals.supply) / _totals.shares;
-  }
-
-  /// @notice The symbol for the liquid stake token.
-  function symbol() external view override returns (string memory) {
-    return SYMBOL;
-  }
-
-  /// @notice Returns the UniStaker deposit identifier a given LST holder address is currently assigned to. If the
-  /// address has not set a deposit identifier, it returns the default deposit.
-  function depositIdForHolder(address _holder) external view returns (IUniStaker.DepositIdentifier) {
-    HolderState memory _holderState = holderStates[_holder];
-    return _calcDepositId(_holderState);
-  }
-
-  /// @notice Internal helper method that takes the metadata representing an LST holder and returns the UniStaker
-  /// deposit identifier that holder has assigned his voting weight to.
-  function _calcDepositId(HolderState memory _holder) internal view returns (IUniStaker.DepositIdentifier) {
-    if (_holder.depositId == 0) {
-      return DEFAULT_DEPOSIT_ID;
-    } else {
-      return IUniStaker.DepositIdentifier.wrap(_holder.depositId);
-    }
   }
 
   /// @notice Internal convenience method which performs transfer operations.
@@ -1088,6 +1043,70 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     return (_senderBalanceDecrease, _receiverBalanceIncrease);
   }
 
+  /// @notice Internal helper method that sets the payout amount and emits an event.
+  function _setPayoutAmount(uint256 _newPayoutAmount) internal {
+    if (_newPayoutAmount < feeAmount) {
+      revert UniLst__InvalidPayoutAmount();
+    }
+    emit PayoutAmountSet(payoutAmount, _newPayoutAmount);
+    payoutAmount = _newPayoutAmount;
+  }
+
+  /// @notice Internal helper method that sets the delegatee and emits an event.
+  function _setDefaultDelegatee(address _newDelegatee) internal {
+    emit DefaultDelegateeSet(defaultDelegatee, _newDelegatee);
+    defaultDelegatee = _newDelegatee;
+  }
+
+  /// @notice Internal helper method that sets the guardian and emits an event.
+  function _setDelegateeGuardian(address _newDelegateeGuardian) internal {
+    emit DelegateeGuardianSet(delegateeGuardian, _newDelegateeGuardian);
+    delegateeGuardian = _newDelegateeGuardian;
+  }
+
+  /// @notice Internal helper method which reverts with UniLst__SignatureExpired if the signature
+  /// is invalid.
+  /// @param _account The address of the signer.
+  /// @param _amount The amount of tokens involved in this operation.
+  /// @param _nonce The nonce being consumed by this operation.
+  /// @param _deadline The timestamp after which the signature should expire.
+  /// @param _signature Signature of the user authorizing this stake.
+  /// @param _typeHash The typehash being signed over for this operation.
+  function _validateSignature(
+    address _account,
+    uint256 _amount,
+    uint256 _nonce,
+    uint256 _deadline,
+    bytes memory _signature,
+    bytes32 _typeHash
+  ) internal {
+    _useCheckedNonce(_account, _nonce);
+    if (block.timestamp > _deadline) {
+      revert UniLst__SignatureExpired();
+    }
+    bytes32 _structHash = keccak256(abi.encode(_typeHash, _account, _amount, _nonce, _deadline));
+    bytes32 _hash = _hashTypedDataV4(_structHash);
+    if (!SignatureChecker.isValidSignatureNow(_account, _hash, _signature)) {
+      revert UniLst__InvalidSignature();
+    }
+  }
+
+  /// @notice Internal helper which checks that the message sender is either the delegatee guardian or the owner and
+  /// reverts otherwise. If the caller is the owner, it also validates the guardian has never performed an action
+  /// before, and reverts if it has. If the caller is the guardian, it toggles the guardian control flag to true if it
+  /// hasn't yet been.
+  function _checkAndToggleGuardianControlOrOwner() internal {
+    if (msg.sender != owner() && msg.sender != delegateeGuardian) {
+      revert UniLst__Unauthorized();
+    }
+    if (msg.sender == owner() && isGuardianControlled) {
+      revert UniLst__Unauthorized();
+    }
+    if (msg.sender == delegateeGuardian && !isGuardianControlled) {
+      isGuardianControlled = true;
+    }
+  }
+
   /// @notice Internal convenience helper for comparing the equality of two UniStaker DepositIdentifiers.
   /// @param _depositIdA The first deposit identifier.
   /// @param _depositIdB The second deposit identifier.
@@ -1098,24 +1117,5 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     returns (bool)
   {
     return IUniStaker.DepositIdentifier.unwrap(_depositIdA) == IUniStaker.DepositIdentifier.unwrap(_depositIdB);
-  }
-
-  /// @notice Open method which allows anyone to add funds to a UniStaker deposit owned by the LST. These funds are not
-  /// added to the LST's supply and no tokens or shares are issues to the caller. The  purpose of this method is to
-  /// provide buffer funds for shortfalls in deposits due to rounding errors. In particular, the system is designed
-  /// such that rounding errors are known to accrue to the default deposit. Being able to provably provide a buffer for
-  /// the default deposit is the primary intended use case for this method. That said, if other unknown issues were to
-  /// arise, it could also be used to ensure the internal solvency of the other UniStaker deposits as well.
-  /// @param _depositId The UniStaker deposit identifier that is being subsidized.
-  /// @param _amount The quantity of stake tokens that will be sent to the deposit.
-  /// @dev Caller must approve the LST contract for at least the `_amount` on the stake token before calling this
-  /// method.
-  function subsidizeDeposit(IUniStaker.DepositIdentifier _depositId, uint256 _amount) external {
-    STAKE_TOKEN.transferFrom(msg.sender, address(this), _amount);
-
-    // This will revert if the deposit is not owned by this contract
-    STAKER.stakeMore(_depositId, uint96(_amount));
-
-    emit DepositSubsidized(_depositId, _amount);
   }
 }
