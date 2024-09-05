@@ -407,7 +407,10 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     uint256 _undelegatedBalance = _balanceOf - _delegatedBalance;
 
     // Make internal state updates.
-    if (_isSameDepositId(_oldDepositId, _newDepositId)) {
+    if (_isSameDepositId(_oldDepositId, _newDepositId) && _isSameDepositId(_newDepositId, DEFAULT_DEPOSIT_ID)) {
+      // do nothing and return
+      return;
+    } else if (_isSameDepositId(_oldDepositId, _newDepositId)) {
       _holderState.balanceCheckpoint = uint96(_balanceOf);
       STAKER.withdraw(DEFAULT_DEPOSIT_ID, uint96(_undelegatedBalance));
       STAKER.stakeMore(_newDepositId, uint96(_undelegatedBalance));
