@@ -1,6 +1,6 @@
 [profile.default]
   auto-detect-solc = true
-  evm_version = "paris"
+  evm_version = "cancun"
   fs_permissions = [
     { access = "write", path = "./test/gas-reports/lst-gas-report.json" },
   ]
