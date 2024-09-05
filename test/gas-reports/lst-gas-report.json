@@ -1,5 +1,5 @@
 {
-  "generatedAt": 1725545652,
+  "generatedAt": 1725568523,
   "reportName:": "lstGasReport",
   "results": [
     {
@@ -236,19 +236,19 @@
     },
     {
       "scenarioName": "Updating from default deposit after staking",
-      "gasUsed": 221694
+      "gasUsed": 205558
     },
     {
       "scenarioName": "Updating from custom deposit after staking",
-      "gasUsed": 205516
+      "gasUsed": 205555
     },
     {
       "scenarioName": "Updating from default deposit after staking and earning rewards",
-      "gasUsed": 221694
+      "gasUsed": 205558
     },
     {
       "scenarioName": "Updating from custom deposit after staking and earning rewards",
-      "gasUsed": 251714
+      "gasUsed": 251753
     }
   ]
 }

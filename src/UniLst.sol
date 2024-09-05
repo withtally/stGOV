@@ -407,23 +407,32 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     uint256 _undelegatedBalance = _balanceOf - _delegatedBalance;
 
     // Make internal state updates.
-    if (_isSameDepositId(_newDepositId, DEFAULT_DEPOSIT_ID)) {
+    if (_isSameDepositId(_oldDepositId, _newDepositId)) {
+      _holderState.balanceCheckpoint = uint96(_balanceOf);
+      STAKER.withdraw(DEFAULT_DEPOSIT_ID, uint96(_undelegatedBalance));
+      STAKER.stakeMore(_newDepositId, uint96(_undelegatedBalance));
+    } else if (_isSameDepositId(_newDepositId, DEFAULT_DEPOSIT_ID)) {
       _holderState.balanceCheckpoint = 0;
       _holderState.depositId = 0;
+      STAKER.withdraw(_oldDepositId, uint96(_delegatedBalance));
+      STAKER.stakeMore(_newDepositId, uint96(_delegatedBalance));
+    } else if ((_isSameDepositId(_oldDepositId, DEFAULT_DEPOSIT_ID))) {
+      _holderState.balanceCheckpoint = uint96(_balanceOf);
+      _holderState.depositId = uint32(IUniStaker.DepositIdentifier.unwrap(_newDepositId));
+      STAKER.withdraw(DEFAULT_DEPOSIT_ID, uint96(_balanceOf));
+      STAKER.stakeMore(_newDepositId, uint96(_balanceOf));
     } else {
       _holderState.balanceCheckpoint = uint96(_balanceOf);
       _holderState.depositId = uint32(IUniStaker.DepositIdentifier.unwrap(_newDepositId));
+      if (_undelegatedBalance > 0) {
+        STAKER.withdraw(DEFAULT_DEPOSIT_ID, uint96(_undelegatedBalance));
+      }
+      STAKER.withdraw(_oldDepositId, uint96(_delegatedBalance));
+      STAKER.stakeMore(_newDepositId, uint96(_balanceOf));
     }
 
     // Write updated states back to storage.
     holderStates[_account] = _holderState;
-
-    if (_undelegatedBalance > 0) {
-      STAKER.withdraw(DEFAULT_DEPOSIT_ID, uint96(_undelegatedBalance));
-    }
-
-    STAKER.withdraw(_oldDepositId, uint96(_delegatedBalance));
-    STAKER.stakeMore(_newDepositId, uint96(_balanceOf));
   }
 
   /// @notice Stake tokens to receive liquid stake tokens. The caller must pre-approve the LST contract to spend at
