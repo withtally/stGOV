@@ -451,7 +451,8 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   }
 
   function transfer(address _receiver, uint256 _value) external returns (bool) {
-    return _transfer(msg.sender, _receiver, _value);
+    _transfer(msg.sender, _receiver, _value);
+    return true;
   }
 
   function transferFrom(address _from, address _to, uint256 _amount) external returns (bool) {
@@ -459,7 +460,15 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     if (allowed != type(uint256).max) {
       allowance[_from][msg.sender] = allowed - _amount;
     }
-    return _transfer(_from, _to, _amount);
+    _transfer(_from, _to, _amount);
+    return true;
+  }
+
+  function transferAndReturnBalanceDiffs(address _receiver, uint256 _value)
+    external
+    returns (uint256 _senderBalanceDecrease, uint256 _receiverBalanceIncrease)
+  {
+    return _transfer(msg.sender, _receiver, _value);
   }
 
   function claimAndDistributeReward(address _recipient, uint256 _minExpectedReward) external {
@@ -567,7 +576,7 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     }
   }
 
-  function _transfer(address _sender, address _receiver, uint256 _value) internal returns (bool) {
+  function _transfer(address _sender, address _receiver, uint256 _value) internal returns (uint256, uint256) {
     // Read required state from storage once.
     Totals memory _totals = totals;
     HolderState memory _senderState = holderStates[_sender];
@@ -619,6 +628,10 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     }
     emit Transfer(_sender, _receiver, _value);
 
+    // rescoping these vars to avoid stack too deep
+    address _senderRescoped = _sender;
+    address _receiverRescoped = _receiver;
+
     // If both the sender and receiver are using the default deposit, then no tokens whatsoever need to move
     // between Staker deposits.
     if (
@@ -626,13 +639,10 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
         && _isSameDepositId(_calcDepositId(_senderState), DEFAULT_DEPOSIT_ID)
     ) {
       // Write data back to storage once.
-      holderStates[_sender] = _senderState;
-      holderStates[_receiver] = _receiverState;
-      return true;
+      holderStates[_senderRescoped] = _senderState;
+      holderStates[_receiverRescoped] = _receiverState;
+      return (_senderBalanceDecrease, _receiverBalanceIncrease);
     }
-    // rescoping these vars to avoid stack too deep
-    address _senderRescoped = _sender;
-    address _receiverRescoped = _receiver;
 
     uint256 _undelegatedBalanceToWithdraw;
     uint256 _delegatedBalanceToWithdraw;
@@ -672,8 +682,7 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
         _calcDepositId(_receiverState), uint96(_delegatedBalanceToWithdraw + _undelegatedBalanceToWithdraw)
       );
     }
-
-    return true;
+    return (_senderBalanceDecrease, _receiverBalanceIncrease);
   }
 
   function _isSameDepositId(IUniStaker.DepositIdentifier _depositIdA, IUniStaker.DepositIdentifier _depositIdB)

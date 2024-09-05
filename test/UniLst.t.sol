@@ -2821,6 +2821,73 @@ contract Transfer is UniLstTest {
   }
 }
 
+contract TransferAndReturnBalanceDiffs is UniLstTest {
+  function testFuzz_MovesFullBalanceToAReceiver(uint256 _amount, address _sender, address _receiver) public {
+    _assumeSafeHolders(_sender, _receiver);
+    _amount = _boundToReasonableStakeTokenAmount(_amount);
+
+    _mintAndStake(_sender, _amount);
+    uint256 _originalSenderBalance = lst.balanceOf(_sender);
+    uint256 _originalReceiverBalance = lst.balanceOf(_receiver);
+
+    vm.prank(_sender);
+    (uint256 _senderBalanceDecrease, uint256 _receiverBalanceIncrease) =
+      lst.transferAndReturnBalanceDiffs(_receiver, _amount);
+
+    assertEq(lst.balanceOf(_sender), _originalSenderBalance - _senderBalanceDecrease);
+    assertEq(lst.balanceOf(_receiver), _originalReceiverBalance + _receiverBalanceIncrease);
+  }
+
+  function testFuzz_MovesPartialBalanceToAReceiver(
+    uint256 _stakeAmount,
+    uint256 _sendAmount,
+    address _sender,
+    address _receiver
+  ) public {
+    _assumeSafeHolders(_sender, _receiver);
+    _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
+    // Amount to send should be less than or equal to the full stake amount
+    _sendAmount = bound(_sendAmount, 0, _stakeAmount);
+
+    _mintAndStake(_sender, _stakeAmount);
+
+    uint256 _originalSenderBalance = lst.balanceOf(_sender);
+    uint256 _originalReceiverBalance = lst.balanceOf(_receiver);
+
+    vm.prank(_sender);
+    (uint256 _senderBalanceDecrease, uint256 _receiverBalanceIncrease) =
+      lst.transferAndReturnBalanceDiffs(_receiver, _sendAmount);
+
+    assertEq(lst.balanceOf(_sender), _originalSenderBalance - _senderBalanceDecrease);
+    assertEq(lst.balanceOf(_receiver), _originalReceiverBalance + _receiverBalanceIncrease);
+  }
+
+  function testFuzz_MovesFullBalanceToAReceiverWhenBalanceOfSenderIncludesEarnedRewards(
+    uint256 _stakeAmount,
+    uint256 _rewardAmount,
+    address _sender,
+    address _receiver
+  ) public {
+    _assumeSafeHolders(_sender, _receiver);
+    _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
+    _rewardAmount = _boundToReasonableStakeTokenAmount(_rewardAmount);
+
+    _mintAndStake(_sender, _stakeAmount);
+    _distributeReward(_rewardAmount);
+
+    uint256 _originalSenderBalance = lst.balanceOf(_sender);
+    uint256 _originalReceiverBalance = lst.balanceOf(_receiver);
+
+    // As the only staker, the sender's balance should be the stake and rewards
+    vm.prank(_sender);
+    (uint256 _senderBalanceDecrease, uint256 _receiverBalanceIncrease) =
+      lst.transferAndReturnBalanceDiffs(_receiver, _stakeAmount + _rewardAmount);
+
+    assertEq(lst.balanceOf(_sender), _originalSenderBalance - _senderBalanceDecrease);
+    assertEq(lst.balanceOf(_receiver), _originalReceiverBalance + _receiverBalanceIncrease);
+  }
+}
+
 contract ClaimAndDistributeReward is UniLstTest {
   struct RewardDistributedEventData {
     address claimer;
