@@ -147,11 +147,12 @@ contract UniLstTest is UnitTestBase, PercentAssertions, TestHelpers, Eip712Helpe
     lst.updateDeposit(_depositId);
   }
 
-  function _stake(address _holder, uint256 _amount) internal {
+  function _stake(address _holder, uint256 _amount) internal returns (uint256) {
     vm.startPrank(_holder);
     stakeToken.approve(address(lst), _amount);
-    lst.stake(_amount);
+    uint256 _balanceDelta = lst.stake(_amount);
     vm.stopPrank();
+    return _balanceDelta;
   }
 
   function _stakeWithAttribution(address _holder, uint256 _amount, address _referrer) internal {
@@ -976,6 +977,20 @@ contract Stake is UniLstTest {
     assertEq(lst.balanceOf(_holder), _amount);
   }
 
+  function testFuzz_ReturnedValueMatchesBalanceDelta(uint256 _amount, address _holder, address _delegatee) public {
+    _assumeSafeHolder(_holder);
+    _assumeSafeDelegatee(_delegatee);
+    _amount = _boundToReasonableStakeTokenAmount(_amount);
+
+    _mintStakeToken(_holder, _amount);
+    _updateDelegatee(_holder, _delegatee);
+
+    uint256 _oldBalance = lst.balanceOf(_holder);
+    uint256 _balanceDelta = _stake(_holder, _amount);
+
+    assertEq(lst.balanceOf(_holder) - _oldBalance, _balanceDelta);
+  }
+
   function testFuzz_DelegatesToTheDefaultDelegateeIfTheHolderHasNotSetADelegate(uint256 _amount, address _holder)
     public
   {
@@ -1164,13 +1179,34 @@ contract Unstake is UniLstTest {
     _assumeSafeDelegatee(_delegatee);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
     _unstakeAmount = bound(_unstakeAmount, 0, _stakeAmount);
-
     vm.prank(lstOwner);
     withdrawGate.setDelay(0);
     _mintUpdateDelegateeAndStake(_holder, _stakeAmount, _delegatee);
     _unstake(_holder, _unstakeAmount);
 
     assertEq(stakeToken.balanceOf(_holder), _unstakeAmount);
+  }
+
+  function testFuzz_ReturnValueMatchesAmount(
+    uint256 _stakeAmount,
+    uint256 _unstakeAmount,
+    address _holder,
+    address _delegatee
+  ) public {
+    _assumeSafeHolder(_holder);
+    _assumeSafeDelegatee(_delegatee);
+    _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
+    _unstakeAmount = bound(_unstakeAmount, 0, _stakeAmount);
+
+    vm.prank(lstOwner);
+    withdrawGate.setDelay(0);
+    _mintUpdateDelegateeAndStake(_holder, _stakeAmount, _delegatee);
+
+    uint256 _oldBalance = lst.balanceOf(_holder);
+    vm.prank(_holder);
+    uint256 _unstakedAmountDelta = lst.unstake(_unstakeAmount);
+
+    assertEq(_oldBalance - lst.balanceOf(_holder), _unstakedAmountDelta);
   }
 
   function testFuzz_AllowsAHolderToWithdrawBalanceThatIncludesEarnedRewards(

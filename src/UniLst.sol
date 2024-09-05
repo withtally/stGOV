@@ -238,8 +238,8 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     STAKER.stakeMore(_newDepositId, uint96(_balanceOf));
   }
 
-  function stake(uint256 _amount) public {
-    _stake(msg.sender, _amount);
+  function stake(uint256 _amount) public returns (uint256) {
+    return _stake(msg.sender, _amount);
   }
 
   function stakeWithAttribution(uint256 _amount, address _referrer) public {
@@ -248,7 +248,7 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     emit StakedWithAttribution(_depositId, _amount, _referrer);
   }
 
-  function _stake(address _account, uint256 _amount) internal {
+  function _stake(address _account, uint256 _amount) internal returns (uint256) {
     if (!STAKE_TOKEN.transferFrom(_account, address(this), _amount)) {
       revert UniLst__StakeTokenOperationFailed();
     }
@@ -264,13 +264,15 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
 
     holderStates[_account].shares += uint128(_newShares);
     IUniStaker.DepositIdentifier _depositId = _depositIdForHolder(_account);
+    uint256 _balanceDelta = balanceOf(_account) - _initialBalance;
     if (!_isSameDepositId(_depositId, DEFAULT_DEPOSIT_ID)) {
-      holderStates[_account].balanceCheckpoint += uint96(balanceOf(_account) - _initialBalance);
+      holderStates[_account].balanceCheckpoint += uint96(_balanceDelta);
     }
 
     STAKER.stakeMore(_depositId, uint96(_amount));
 
     emit Staked(_account, _amount);
+    return _balanceDelta;
   }
 
   function stakeOnBehalf(address _account, uint256 _amount, uint256 _nonce, uint256 _deadline, bytes memory _signature)
@@ -285,11 +287,11 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     _stake(msg.sender, _amount);
   }
 
-  function unstake(uint256 _amount) external {
-    _unstake(msg.sender, _amount);
+  function unstake(uint256 _amount) external returns (uint256) {
+    return _unstake(msg.sender, _amount);
   }
 
-  function _unstake(address _account, uint256 _amount) internal {
+  function _unstake(address _account, uint256 _amount) internal returns (uint256) {
     uint256 _initialBalanceOf = balanceOf(_account);
 
     if (_amount > _initialBalanceOf) {
@@ -350,6 +352,7 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     STAKE_TOKEN.transfer(_withdrawalTarget, _amount);
 
     emit Unstaked(_account, _amount);
+    return _amount;
   }
 
   function unstakeOnBehalf(
