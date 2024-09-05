@@ -31,9 +31,6 @@ import {Multicall} from "openzeppelin/utils/Multicall.sol";
 /// all deposits remain solvent. Where a deposit might be left short due to truncation, we aim to accumulate these
 /// shortfalls in the default deposit, which can be subsidized to remain solvent.
 contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP712, Nonces {
-  /// @notice Thrown when an operation on the stake token fails.
-  error UniLst__StakeTokenOperationFailed();
-
   /// @notice Thrown when an operation to change the default delegatee or its guardian is attempted by an account that
   /// does not have permission to alter it.
   error UniLst__Unauthorized();
@@ -236,10 +233,8 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     _setPayoutAmount(_initialPayoutAmount);
     _setDelegateeGuardian(_initialDelegateeGuardian);
 
-    if (!STAKE_TOKEN.approve(address(_staker), type(uint256).max)) {
-      revert UniLst__StakeTokenOperationFailed();
-    }
-
+    // UNI reverts on failure so it's not necessary to check return value.
+    STAKE_TOKEN.approve(address(_staker), type(uint256).max);
     // Create initial deposit for default so other methods can assume it exists.
     DEFAULT_DEPOSIT_ID = STAKER.stake(0, _initialDefaultDelegatee);
 
@@ -480,9 +475,8 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// @dev This method must only be called after proper authorization has been completed.
   /// @dev See public stake methods for additional documentation.
   function _stake(address _account, uint256 _amount) internal returns (uint256) {
-    if (!STAKE_TOKEN.transferFrom(_account, address(this), _amount)) {
-      revert UniLst__StakeTokenOperationFailed();
-    }
+    // UNI reverts on failure so it's not necessary to check return value.
+    STAKE_TOKEN.transferFrom(_account, address(this), _amount);
 
     // Read required state from storage once.
     Totals memory _totals = totals;

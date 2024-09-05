@@ -339,30 +339,6 @@ contract Constructor is UniLstTest {
     assertEq(_lst.owner(), _lstOwner);
     assertEq(_lst.delegateeGuardian(), _delegateeGuardian);
   }
-
-  function testFuzz_RevertIf_MaxApprovalOfTheStakerContractOnTheStakeTokenFails(
-    address _staker,
-    address _stakeToken,
-    address _rewardToken,
-    address _defaultDelegatee,
-    uint256 _payoutAmount,
-    address _lstOwner,
-    string memory _tokenName,
-    string memory _tokenSymbol,
-    address _delegateeGuardian
-  ) public {
-    _assumeSafeMockAddress(_staker);
-    _assumeSafeMockAddress(_stakeToken);
-    vm.assume(_lstOwner != address(0));
-    vm.mockCall(_staker, abi.encodeWithSelector(IUniStaker.STAKE_TOKEN.selector), abi.encode(_stakeToken));
-    vm.mockCall(_staker, abi.encodeWithSelector(IUniStaker.REWARD_TOKEN.selector), abi.encode(_rewardToken));
-    vm.mockCall(_stakeToken, abi.encodeWithSelector(IUni.approve.selector), abi.encode(false));
-
-    vm.expectRevert(UniLst.UniLst__StakeTokenOperationFailed.selector);
-    new UniLst(
-      _tokenName, _tokenSymbol, IUniStaker(_staker), _defaultDelegatee, _lstOwner, _payoutAmount, _delegateeGuardian
-    );
-  }
 }
 
 contract DelegateeForHolder is UniLstTest {
@@ -1072,22 +1048,6 @@ contract Stake is UniLstTest {
     _mintAndStake(_holder, _amount2);
 
     assertLteWithinOneUnit(lst.balanceCheckpoint(_holder), _amount1 + _amount2);
-  }
-
-  function testFuzz_RevertIf_TheTransferFromTheStakeTokenFails(uint256 _amount, address _holder, address _delegatee)
-    public
-  {
-    _assumeSafeHolder(_holder);
-    _assumeSafeDelegatee(_delegatee);
-    _amount = _boundToReasonableStakeTokenAmount(_amount);
-    _updateDelegatee(_holder, _delegatee);
-
-    vm.startPrank(_holder);
-    stakeToken.approve(address(lst), _amount);
-    vm.mockCall(address(stakeToken), abi.encodeWithSelector(IUni.transferFrom.selector), abi.encode(false));
-    vm.expectRevert(UniLst.UniLst__StakeTokenOperationFailed.selector);
-    lst.stake(_amount);
-    vm.stopPrank();
   }
 
   function testFuzz_EmitsStakedEvent(uint256 _amount, address _holder) public {

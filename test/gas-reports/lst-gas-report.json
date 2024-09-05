@@ -1,5 +1,5 @@
 {
-  "generatedAt": 1725571276,
+  "generatedAt": 1725572455,
   "reportName:": "lstGasReport",
   "results": [
     {
@@ -12,23 +12,23 @@
     },
     {
       "scenarioName": "First Stake to Default Delegate",
-      "gasUsed": 144697
+      "gasUsed": 144685
     },
     {
       "scenarioName": "Second Stake To Default Delegatee",
-      "gasUsed": 127866
+      "gasUsed": 127854
     },
     {
       "scenarioName": "First Stake After Updating To A New Delegatee",
-      "gasUsed": 181707
+      "gasUsed": 181695
     },
     {
       "scenarioName": "First Stake After Updating To An Existing LST Delegatee",
-      "gasUsed": 127724
+      "gasUsed": 127712
     },
     {
       "scenarioName": "Second Stake To A Custom Delegatee",
-      "gasUsed": 127993
+      "gasUsed": 127981
     },
     {
       "scenarioName": "Sender With Default Delegatee Transfers Balance To New Receiver With Default Delegatee",
@@ -164,59 +164,59 @@
     },
     {
       "scenarioName": "Unstake Full Balance From The Default Delegatee",
-      "gasUsed": 181850
+      "gasUsed": 181828
     },
     {
       "scenarioName": "Unstake Partial Balance From The Default Delegatee",
-      "gasUsed": 186943
+      "gasUsed": 186921
     },
     {
       "scenarioName": "Unstake Full Balance From Unique Custom Delegatee",
-      "gasUsed": 182136
+      "gasUsed": 182114
     },
     {
       "scenarioName": "Unstake Partial Balance From Unique Custom Delegatee",
-      "gasUsed": 187229
+      "gasUsed": 187207
     },
     {
       "scenarioName": "Unstake Full Balance From a Non-Unique Custom Delegatee",
-      "gasUsed": 186936
+      "gasUsed": 186914
     },
     {
       "scenarioName": "Unstake Partial Balance From a Non-Unique Custom Delegatee",
-      "gasUsed": 187229
+      "gasUsed": 187207
     },
     {
       "scenarioName": "Unstake Full Balance From The Default Delegatee After Rewards",
-      "gasUsed": 186943
+      "gasUsed": 186921
     },
     {
       "scenarioName": "Unstake Partial Balance From The Default Delegatee After Rewards",
-      "gasUsed": 186943
+      "gasUsed": 186921
     },
     {
       "scenarioName": "Unstake Full Balance From Unique Custom Delegatee After Rewards",
-      "gasUsed": 233427
+      "gasUsed": 233405
     },
     {
       "scenarioName": "Unstake Partial Balance From Unique Custom Delegatee After Rewards",
-      "gasUsed": 233427
+      "gasUsed": 233405
     },
     {
       "scenarioName": "Unstake Full Balance From a Non-Unique Custom Delegatee After Rewards",
-      "gasUsed": 233427
+      "gasUsed": 233405
     },
     {
       "scenarioName": "Unstake Partial Balance From a Non-Unique Custom Delegatee After Rewards",
-      "gasUsed": 233427
+      "gasUsed": 233405
     },
     {
       "scenarioName": "Unstake Earned Rewards Only From The Default Delegatee After Rewards",
-      "gasUsed": 186847
+      "gasUsed": 186825
     },
     {
       "scenarioName": "Unstake Earned Rewards Only From Unique Custom Delegatee After Rewards",
-      "gasUsed": 186847
+      "gasUsed": 186825
     },
     {
       "scenarioName": "Claim and distribute a reward",
