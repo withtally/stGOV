@@ -17,18 +17,17 @@ import {Multicall} from "openzeppelin/utils/Multicall.sol";
 /// @title UniLst
 /// @author [ScopeLift](https://scopelift.co)
 /// @notice A liquid staking token implemented on top of UniStaker. Users can deposit UNI and receive stUNI in
-/// exchange. UNI is deposited in UniStaker. Holders can specify a delegatee and their staked tokens' voting weight
-/// will be delegated that address. 1 stUNI is equivalent to 1 underlying UNI. As rewards are distributed, holders'
-/// balances automatically increase to reflect their share of the rewards earned. Reward balances are delegated to a
-/// default delegatee set by the Uniswap DAO. Holders can consolidate their voting weight back to their chosen
-/// delegate. Holders who don't specify a custom delegatee also have their stake's voting weight assigned to the
-// default delegatee.
+/// exchange. UNI is deposited in UniStaker. Holders can specify a delegatee to which staked tokens' voting weight
+/// will be delegated. 1 stUNI is equivalent to 1 underlying UNI. As rewards are distributed, holders' balances
+/// automatically increase to reflect their share of the rewards earned. Reward balances are delegated to a default
+/// delegatee set by the Uniswap DAO. Holders can consolidate their voting weight back to their chosen delegate. Holders
+/// who don't specify a custom delegatee also have their stake's voting weight assigned to the default delegatee.
 ///
 /// To enable delegation functionality, the LST must manage an individual UniStaker deposit for each delegatee,
 /// including one for the default delegatee. As tokens are staked, unstaked, or transferred, the LST must move tokens
-/// between these deposits to reflect the changing state. Because holders' balances are calculated dynamically,
-/// according to their share of the total staked supply, they are subject to truncation. Care must be taken to ensure
-/// all deposits remain solvent. Where a deposit might be left short due to truncation, we aim to accumulate these
+/// between these deposits to reflect the changing state. Because a holder balance is a dynamic calculation based on
+/// its share of the total staked supply, the balance is subject to truncation. Care must be taken to ensure all
+/// deposits remain solvent. Where a deposit might be left short due to truncation, we aim to accumulate these
 /// shortfalls in the default deposit, which can be subsidized to remain solvent.
 contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP712, Nonces {
   /// @notice Thrown when an operation to change the default delegatee or its guardian is attempted by an account that
@@ -38,8 +37,8 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// @notice Thrown when an operation is not possible because the holder's balance is insufficient.
   error UniLst__InsufficientBalance();
 
-  /// @notice Thrown when a searcher participating in the MEV race to provide rewards would receive fewer rewards from
-  /// UniStaker than they have deemed needed to compensate them for providing the payout.
+  /// @notice Thrown when a caller (likely an MEV searcher) would receive an insufficient payout in
+  /// `claimAndDistributeReward`.
   error UniLst__InsufficientRewards();
 
   /// @notice Thrown when the LST owner attempts to set invalid fee parameters.
@@ -48,24 +47,25 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// @notice Thrown when the LST owner attempts to set an invalid payout amount.
   error UniLst__InvalidPayoutAmount();
 
-  /// @notice Thrown by signature based "onBehalf" methods when a signature is invalid.
+  /// @notice Thrown by signature-based "onBehalf" methods when a signature is invalid.
   error UniLst__InvalidSignature();
 
-  /// @notice Thrown by signature based "onBehalf" methods when a signature is past its expiry date.
+  /// @notice Thrown by signature-based "onBehalf" methods when a signature is past its expiry date.
   error UniLst__SignatureExpired();
 
   /// @notice The UniStaker instance in which staked tokens will be deposited to earn rewards.
   IUniStaker public immutable STAKER;
 
-  /// @notice The governance token used by the UniStaker instance, in this case, UNI.
+  /// @notice The governance token used by the UniStaker instance; in this case, UNI.
   IUni public immutable STAKE_TOKEN;
 
-  /// @notice The token distributed as rewards by the UniStaker instance, in this case, WETH.
+  /// @notice The token distributed as rewards by the UniStaker instance; in this case, WETH.
   IWETH9 public immutable REWARD_TOKEN;
 
   /// @notice A coupled contract used by the LST to enforce an optional delay when withdrawing staked tokens from the
-  /// LST. Can be used to prevent users from staking and withdrawing repeatedly at opportune times to frontrun rewards.
-  /// Said strategy would likely be unprofitable due to gas fees, but can be made totally inviable via a delay.
+  /// LST. Can be used to prevent users from frontrunning rewards by staking and withdrawing repeatedly at opportune
+  /// times.
+  /// Said strategy would likely be unprofitable due to gas fees, but we eliminate the possibility via a delay.
   WithdrawGate public immutable WITHDRAW_GATE;
 
   /// @notice The deposit identifier of the default deposit.
@@ -81,10 +81,12 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// @notice The symbol of the LST token.
   string private SYMBOL;
 
-  /// @notice Emitted when the LST owner updates the payout amount required for claiming rewards.
+  /// @notice Emitted when the LST owner updates the payout amount required for the MEV reward game in
+  /// `claimAndDistributeReward`.
   event PayoutAmountSet(uint256 oldPayoutAmount, uint256 newPayoutAmount);
 
-  /// @notice Emitted when the LST owner updates the fee amount and fee collector.
+  /// @notice Emitted when the LST owner updates the fee amount and/or fee collector (fee assessed in
+  /// `claimAndDistributeReward`).
   event FeeParametersSet(uint256 oldFeeAmount, uint256 newFeeAmount, address oldFeeCollector, address newFeeCollector);
 
   /// @notice Emitted when the default delegatee is updated by the owner or guardian.
@@ -96,7 +98,7 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// @notice Emitted when a UniStaker deposit is initialized for a new delegatee.
   event DepositInitialized(address indexed delegatee, IUniStaker.DepositIdentifier depositId);
 
-  /// @notice Emitted when a user updates the UniStaker deposit where their staked tokens should are deposited.
+  /// @notice Emitted when a user updates their UniStaker deposit, moving their staked tokens accordingly.
   event DepositUpdated(
     address indexed holder, IUniStaker.DepositIdentifier oldDepositId, IUniStaker.DepositIdentifier newDepositId
   );
@@ -129,18 +131,18 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// of the LST token itself.
   /// @param shares The total shares that have been issued to all token holders, representing their proportional claim
   /// on the total supply.
-  /// @dev The data types chosen for each parameter are meant to enable the data to pack into a single slot while still
-  /// being safe from overflow for real values that can occur in the system.
+  /// @dev The data types chosen for each parameter are meant to enable the data to pack into a single slot, while
+  /// ensuring
+  /// that real values occurring in the system are safe from overflow.
   struct Totals {
     uint96 supply;
     uint160 shares;
   }
 
   /// @notice Data structure for data pertaining to a given LST holder.
-  /// @param depositId The UniStaker deposit identifier corresponding to the delegatee this holder chooses to delegate
-  /// their staked voting power to.
+  /// @param depositId The UniStaker deposit identifier corresponding to the holder's delegatee of choice.
   /// @param balanceCheckpoint The portion of the holder's balance that is currently delegated to the delegatee of
-  /// their choosing. When a user stakes or receives LST tokens via transfer, they are a assigned to their delegatee.
+  /// their choosing. LST tokens are assigned to this delegatee when a user stakes or receives tokens via transfer.
   /// When rewards are distributed, they accrue to the default delegatee unless the holder chooses to consolidate them.
   /// Holders who leave their delegatee set to the default have a balance checkpoint of zero by definition.
   /// @param shares The number of shares held by this holder, used to calculate the holder's balance dynamically, based
@@ -179,16 +181,16 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// @notice The address that receives the fees (as stUNI) when rewards are distributed.
   address public feeCollector;
 
-  /// @notice Mapping of delegatee address to the UniStaker deposit identifier assigned to delegate to it. The
+  /// @notice Mapping of delegatee address to the delegate's UniLST-created UniStaker deposit identifier. The
   /// delegatee for a given deposit can not change. All LST holders who choose the same delegatee will have their
-  /// tokens put in the corresponding deposit. Each delegatee can only have a single deposit.
+  /// tokens staked in the corresponding deposit. Each delegatee can only have a single deposit.
   mapping(address delegatee => IUniStaker.DepositIdentifier depositId) internal storedDepositIdForDelegatee;
 
   /// @notice Mapping of holder addresses to the data pertaining to their holdings.
   mapping(address holder => HolderState state) private holderStates;
 
-  /// @notice Mapping of holder addresses to spender address to the amount of LST tokens the spender has been approved
-  /// to transfer on the holder's behalf.
+  /// @notice Mapping used to determine the amount of LST tokens the spender has been approved to transfer on the
+  /// holder's behalf.
   mapping(address holder => mapping(address spender => uint256 amount)) public allowance;
 
   /// @notice Type hash used when encoding data for `stakeOnBehalf` calls.
@@ -210,7 +212,7 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// @param _name The name for the liquid stake token.
   /// @param _symbol The symbol for the liquid stake token.
   /// @param _staker The UniStaker deployment where tokens will be staked.
-  /// @param _initialDefaultDelegatee The initial delegatee that will be delegated to by the default deposit.
+  /// @param _initialDefaultDelegatee The initial delegatee to which the default deposit will be delegated.
   /// @param _initialOwner The address of the initial LST owner.
   /// @param _initialPayoutAmount The initial amount that must be provided to win the MEV race and claim the LST's
   /// UniStaker rewards.
@@ -245,14 +247,14 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// @notice Grant an allowance to the spender to transfer up to a certain amount of LST tokens on behalf of the
   /// message sender.
   /// @param _spender The address which is granted the allowance to transfer from the message sender.
-  /// @param _amount The total amount of LST tokens the spender will be permitted to transfer from the message sender.
+  /// @param _amount The total amount of the message sender's LST tokens that the spender will be permitted to transfer.
   function approve(address _spender, uint256 _amount) external virtual returns (bool) {
     allowance[msg.sender][_spender] = _amount;
     emit Approval(msg.sender, _spender, _amount);
     return true;
   }
 
-  /// @notice The total amount of LST tokens, also equal to the total number of stake tokens in the system.
+  /// @notice The total amount of LST token supply, also equal to the total number of stake tokens in the system.
   function totalSupply() external view returns (uint256) {
     return uint256(totals.supply);
   }
@@ -275,7 +277,7 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     return _calcBalanceOf(_holderState, _totals);
   }
 
-  /// @notice Internal method that takes a holder's state  and the global state and calculates the holder's would-be
+  /// @notice Internal method that takes a holder's state and the global state and calculates the holder's would-be
   /// balance in such conditions.
   /// @param _holder The metadata associated with a given holder.
   /// @param _totals The metadata representing current global conditions.
@@ -1010,9 +1012,8 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     uint256 _receiverBalanceIncrease = _calcBalanceOf(_receiverState, _totals) - _receiverInitBalance;
 
     // To protect the solvency of each underlying Staker deposit, we want to ensure that the sender's balance
-    // decreases
-    // by at least as much as the receiver's increases. Therefore, if this is not the case, we shave shares from the
-    // sender until such point as it is.
+    // decreases by at least as much as the receiver's increases. Therefore, if this is not the case, we shave shares
+    // from the sender until such point as it is.
     while (_receiverBalanceIncrease > _senderBalanceDecrease) {
       _senderState.shares -= 1;
       _senderBalanceDecrease = _senderInitBalance - _calcBalanceOf(_senderState, _totals);
