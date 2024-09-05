@@ -3145,6 +3145,18 @@ contract SetPayoutAmount is UniLstTest {
     vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, _notLstOwner));
     lst.setPayoutAmount(_newPayoutAmount);
   }
+
+  function testFuzz_RevertIf_PayountAmountIsLessThanFeeAmount(uint256 _newPayoutAmount, uint256 _newFeeAmount) public {
+    vm.assume(_newFeeAmount != 0);
+    _newFeeAmount = bound(_newFeeAmount, 0, lst.payoutAmount());
+    _newPayoutAmount = bound(_newPayoutAmount, 0, _newFeeAmount - 1);
+    vm.startPrank(lstOwner);
+    lst.setFeeParameters(_newFeeAmount, address(0x1));
+
+    vm.expectRevert(UniLst.UniLst__InvalidPayoutAmount.selector);
+    lst.setPayoutAmount(_newPayoutAmount);
+    vm.stopPrank();
+  }
 }
 
 contract SetFeeParameters is UniLstTest {

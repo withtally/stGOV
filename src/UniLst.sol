@@ -44,6 +44,9 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// @notice Thrown when the LST owner attempts to set invalid fee parameters.
   error UniLst__InvalidFeeParameters();
 
+  /// @notice Thrown when the LST owner attempts to set an invalid payout amount.
+  error UniLst__InvalidPayoutAmount();
+
   /// @notice Thrown by signature based "onBehalf" methods when a signature is invalid.
   error UniLst__InvalidSignature();
 
@@ -797,6 +800,9 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// @param _newPayoutAmount The value that will be the new payout amount. Must be greater than the fee amount.
   function setPayoutAmount(uint256 _newPayoutAmount) external {
     _checkOwner();
+    if (_newPayoutAmount < feeAmount) {
+      revert UniLst__InvalidPayoutAmount();
+    }
     emit PayoutAmountSet(payoutAmount, _newPayoutAmount);
     payoutAmount = _newPayoutAmount;
   }
