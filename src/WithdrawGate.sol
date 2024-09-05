@@ -6,11 +6,12 @@ import {UniLst} from "src/UniLst.sol";
 import {IERC20} from "openzeppelin/token/ERC20/IERC20.sol";
 import {EIP712} from "openzeppelin/utils/cryptography/EIP712.sol";
 import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
+import {Multicall} from "openzeppelin/utils/Multicall.sol";
 
 /// @title WithdrawGate
 /// @author ScopeLift
 /// @notice A contract to enforce a withdrawal delay for users exiting the LST.
-contract WithdrawGate is Ownable, EIP712 {
+contract WithdrawGate is Ownable, Multicall, EIP712 {
   /// @notice Thrown when an invalid LST address is provided.
   error WithdrawGate__InvalidLSTAddress();
 
