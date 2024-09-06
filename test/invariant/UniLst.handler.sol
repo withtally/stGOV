@@ -72,7 +72,7 @@ contract UniLstHandler is CommonBase, StdCheats, StdUtils {
     vm.assume(_depositor != address(lst.WITHDRAW_GATE()));
     holders.add(_depositor);
 
-    _amount = uint96(bound(_amount, 0, 100_000_000e18));
+    _amount = uint96(_bound(_amount, 0, 100_000_000e18));
 
     // assume user has stake amount
     _mintStakeToken(_depositor, _amount);
@@ -97,7 +97,7 @@ contract UniLstHandler is CommonBase, StdCheats, StdUtils {
     vm.assume(_holder != address(0));
 
     uint256 _holderBalance = lst.balanceOf(_holder);
-    _amount = bound(_amount, 0, _holderBalance);
+    _amount = _bound(_amount, 0, _holderBalance);
 
     vm.startPrank(_holder);
     uint256 _balanceBefore = stakeToken.balanceOf(address(lst.WITHDRAW_GATE()));
@@ -114,7 +114,7 @@ contract UniLstHandler is CommonBase, StdCheats, StdUtils {
 
     uint256 _holderBalance = lst.balanceOf(_holder);
     uint256 _toBalance = lst.balanceOf(_to);
-    _amount = bound(_amount, 0, _holderBalance);
+    _amount = _bound(_amount, 0, _holderBalance);
 
     vm.startPrank(_holder);
     lst.transfer(_to, _amount);
@@ -154,7 +154,7 @@ contract UniLstHandler is CommonBase, StdCheats, StdUtils {
   }
 
   function notifyRewardAmount(uint256 _amount) public countCall("notifyRewardAmount") {
-    _amount = bound(_amount, 0, 100_000_000e18);
+    _amount = _bound(_amount, 0, 100_000_000e18);
     _mintRewardToken(admin, _amount);
     vm.startPrank(admin);
     rewardToken.transfer(address(staker), _amount);
@@ -170,7 +170,7 @@ contract UniLstHandler is CommonBase, StdCheats, StdUtils {
     vm.assume(_actor != address(0));
     vm.assume(_recipient != address(0));
     // in REWARD_TOKEN
-    _minExpectedAmount = bound(_minExpectedAmount, 0, staker.unclaimedReward(address(lst)));
+    _minExpectedAmount = _bound(_minExpectedAmount, 0, staker.unclaimedReward(address(lst)));
     uint256 _payoutAmount = lst.payoutAmount();
     _mintStakeToken(_actor, _payoutAmount);
     vm.startPrank(_actor);
@@ -182,7 +182,7 @@ contract UniLstHandler is CommonBase, StdCheats, StdUtils {
   }
 
   function warpAhead(uint256 _seconds) public countCall("warpAhead") {
-    _seconds = bound(_seconds, 0, lst.STAKER().REWARD_DURATION() * 2);
+    _seconds = _bound(_seconds, 0, lst.STAKER().REWARD_DURATION() * 2);
     skip(_seconds);
   }
 
