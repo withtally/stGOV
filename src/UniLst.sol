@@ -560,7 +560,7 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     return _transfer(msg.sender, _receiver, _value);
   }
 
-  /// @notice Send liquid stake tokens from the message sender to the receiver on behalf of a user who has granted the
+  /// @notice Send liquid stake tokens from one account to the another on behalf of a user who has granted the
   /// message sender an allowance to do so.
   /// @param _from The address from where tokens will be transferred, which has previously granted the message sender
   /// an allowance of at least the quantity of tokens being transferred.
@@ -571,12 +571,28 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// @dev The amount of tokens received by the receiver can be slightly less than the amount lost by the sender.
   /// Furthermore, both amounts can be less the value requested by the sender. All such effects are due to truncation.
   function transferFrom(address _from, address _to, uint256 _value) external returns (bool) {
-    uint256 allowed = allowance[_from][msg.sender];
-    if (allowed != type(uint256).max) {
-      allowance[_from][msg.sender] = allowed - _value;
-    }
+    _checkAndUpdateAllowance(_from, _value);
     _transfer(_from, _to, _value);
     return true;
+  }
+
+  /// @notice /// @notice Send liquid stake tokens from one account to the another on behalf of a user who has granted
+  /// the message sender an allowance to do so, returning the changes in balances of each. Primarily intended for use
+  /// by integrators, who might need to know the exact balance changes for internal accounting in other contracts.
+  /// @param _from The address from where tokens will be transferred, which has previously granted the message sender
+  /// an allowance of at least the quantity of tokens being transferred.
+  /// @param _to The address that will receive the message sender's tokens.
+  /// @param _value The quantity of liquid stake tokens to send.
+  /// @return _senderBalanceDecrease The amount by which the sender's balance of lst tokens decreased.
+  /// @return _receiverBalanceIncrease The amount by which the receiver's balance of lst tokens increased.
+  /// @dev The amount of tokens received by the user can be slightly less than the amount lost by the sender.
+  /// Furthermore, both amounts can be less the value requested by the sender. All such effects are due to truncation.
+  function transferFromAndReturnBalanceDiffs(address _from, address _to, uint256 _value)
+    external
+    returns (uint256 _senderBalanceDecrease, uint256 _receiverBalanceIncrease)
+  {
+    _checkAndUpdateAllowance(_from, _value);
+    return _transfer(_from, _to, _value);
   }
 
   /// @notice Public method that allows any caller to claim the UniStaker rewards earned by the LST. Caller must pre-
@@ -1088,6 +1104,17 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     bytes32 _hash = _hashTypedDataV4(_structHash);
     if (!SignatureChecker.isValidSignatureNow(_account, _hash, _signature)) {
       revert UniLst__InvalidSignature();
+    }
+  }
+
+  /// @notice Internal helper that updates the allowance of the from address for the message sender, and reverts if the
+  /// message sender does not have sufficient allowance.
+  /// @param _from The address for which the message sender's allowance should be checked & updated.
+  /// @param _value The amount of the allowance to check and decrement.
+  function _checkAndUpdateAllowance(address _from, uint256 _value) internal {
+    uint256 allowed = allowance[_from][msg.sender];
+    if (allowed != type(uint256).max) {
+      allowance[_from][msg.sender] = allowed - _value;
     }
   }
 
