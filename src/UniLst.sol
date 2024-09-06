@@ -424,6 +424,13 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     return _stake(msg.sender, _amount);
   }
 
+  /// @notice Stake tokens to receive liquid stake tokens, while also declaring the address that is responsible for
+  /// referring the holder to the LST. This can be, for example, the owner of the frontend client who allowed the
+  /// holder to interact with the contracts onchain. The call must pre-approve the LST contract to spend at least the
+  /// would-be amount of tokens.
+  /// @param _amount The quantity of tokens that will be staked.
+  /// @param _referrer The address the holder is declaring has referred them to the LST. It will be emitted in an
+  /// attribution event, but not otherwise used.
   function stakeWithAttribution(uint256 _amount, address _referrer) external returns (uint256) {
     IUniStaker.DepositIdentifier _depositId = _calcDepositId(holderStates[msg.sender]);
     emit StakedWithAttribution(_depositId, _amount, _referrer);
