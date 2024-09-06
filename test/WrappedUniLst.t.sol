@@ -64,6 +64,13 @@ contract Constructor is WrappedUniLstTest {
 
     // The constructor calls these methods on the LST to set up its own deposit, so we mock them here when testing the
     // constructor with an arbitrary address for the LST.
+    bytes4 shareScaleFactorSelector = hex"f5706759";
+    vm.mockCall(
+      _lst,
+      // Hardcode the selector for the scale factor variable which is not a selector we can access here
+      abi.encodeWithSelector(shareScaleFactorSelector),
+      abi.encode(lst.SHARE_SCALE_FACTOR())
+    );
     vm.mockCall(
       _lst,
       abi.encodeWithSelector(UniLst.fetchOrInitializeDepositForDelegatee.selector, _delegatee),
@@ -214,7 +221,6 @@ contract Unwrap is WrappedUniLstTest {
 
     _unwrap(_holder, _unwrapAmount);
 
-    // TODO: update these assertions when the wrapper fix is implemented
     assertLe(lst.balanceOf(_holder), _holderExpectedBalance);
     assertApproxEqAbs(lst.balanceOf(_holder), _holderExpectedBalance, ACCEPTABLE_DELTA);
   }
@@ -239,8 +245,8 @@ contract Unwrap is WrappedUniLstTest {
 
     _unwrap(_holder, _unwrapAmount);
 
-    assertEq(wrappedLst.balanceOf(_holder), _wrappedBalance - _unwrapAmount);
-    assertEq(wrappedLst.totalSupply(), _wrappedBalance - _unwrapAmount);
+    assertLteWithinOneUnit(_wrappedBalance - _unwrapAmount, wrappedLst.balanceOf(_holder));
+    assertLteWithinOneUnit(_wrappedBalance - _unwrapAmount, wrappedLst.totalSupply());
   }
 
   function testFuzz_ReturnsTheAmountOfLstTokenThatWasUnwrapped(
@@ -264,7 +270,6 @@ contract Unwrap is WrappedUniLstTest {
     uint256 _priorLstBalance = lst.balanceOf(_holder);
     uint256 _returnValue = _unwrap(_holder, _unwrapAmount);
 
-    // TODO: Fix these tests in accordance with the TODO's in the Wrapper Contract
     assertApproxEqAbs(lst.balanceOf(_holder), _priorLstBalance + _returnValue, ACCEPTABLE_DELTA);
     assertLe(lst.balanceOf(_holder), _priorLstBalance + _returnValue);
   }
@@ -301,17 +306,30 @@ contract Unwrap is WrappedUniLstTest {
     uint256 _unwrapAmount
   ) public {
     _assumeSafeWrapHolder(_holder);
+    address _otherHolder = makeAddr("Other Holder");
+    vm.assume(_holder != _otherHolder);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
     _rewardAmount = _boundToReasonableStakeTokenAmount(_rewardAmount);
     _mintAndStake(_holder, _stakeAmount);
-    _distributeReward(_rewardAmount);
-    _wrapAmount = bound(_wrapAmount, 0.0001e18, _stakeAmount + _rewardAmount);
 
+    // Another holder wraps a large number of tokens. This is to make sure the revert is because the revert we are
+    // expecting below is happening because the *holder* has insufficient balance, not because the wrapper doesn't
+    // itself own too few LST tokens.
+    uint256 _otherWrapAmount = 10_000_000_000e18;
+    _mintAndStake(_otherHolder, _otherWrapAmount);
+    _approveWrapperToTransferLstToken(_otherHolder);
+    _wrap(_otherHolder, lst.balanceOf(_otherHolder));
+
+    // A reward is distributed
+    _distributeReward(_rewardAmount);
+
+    // The holder wraps some amount of their LST tokens
+    _wrapAmount = bound(_wrapAmount, 0.0001e18, lst.balanceOf(_holder));
     _approveWrapperToTransferLstToken(_holder);
     uint256 _wrappedBalance = _wrap(_holder, _wrapAmount);
-    // The holder will try to unwrap more than their balance. The maximum number is meant to be high,
-    // but not enough to overflow the shares with the scale factor applied.
-    _unwrapAmount = bound(_unwrapAmount, _wrappedBalance + 1, type(uint96).max);
+
+    // The holder will try to unwrap more than their balance.
+    _unwrapAmount = bound(_unwrapAmount, _wrappedBalance + 1, 5_000_000_000e18);
 
     vm.expectRevert(
       abi.encodeWithSelector(IERC20Errors.ERC20InsufficientBalance.selector, _holder, _wrappedBalance, _unwrapAmount)
