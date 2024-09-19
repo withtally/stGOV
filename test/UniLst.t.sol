@@ -2788,6 +2788,73 @@ contract Transfer is UniLstTest {
     // means the system is performing truncations in a way that ensures each deposit will remain solvent.
     assertLteWithinOneUnit(lst.balanceOf(_holder2), stakeToken.getCurrentVotes(_delegatee2));
   }
+
+  function testFuzz_DoesNotChangeBalanceWhenSenderAndReceiverAreTheSame(address _holder, uint256 _amount) public {
+    _assumeSafeHolder(_holder);
+    _amount = _boundToReasonableStakeTokenAmount(_amount);
+
+    _mintAndStake(_holder, _amount);
+    uint256 _initialBalance = lst.balanceOf(_holder);
+
+    vm.prank(_holder);
+    lst.transfer(_holder, _amount);
+
+    assertEq(lst.balanceOf(_holder), _initialBalance, "Balance should remain unchanged after self-transfer");
+  }
+
+  function testFuzz_EmitsTransferEventWhenSenderAndReceiverAreTheSame(address _holder, uint256 _amount) public {
+    _assumeSafeHolder(_holder);
+    _amount = _boundToReasonableStakeTokenAmount(_amount);
+
+    _mintAndStake(_holder, _amount);
+
+    vm.expectEmit();
+    emit IERC20.Transfer(_holder, _holder, _amount);
+
+    vm.prank(_holder);
+    lst.transfer(_holder, _amount);
+  }
+
+  function testFuzz_DoesNotChangeBalanceCheckpointWhenSenderAndReceiverAreTheSame(address _holder, uint256 _amount)
+    public
+  {
+    _assumeSafeHolder(_holder);
+    _amount = _boundToReasonableStakeTokenAmount(_amount);
+
+    _mintAndStake(_holder, _amount);
+    uint256 _initialBalanceCheckpoint = lst.balanceCheckpoint(_holder);
+
+    vm.prank(_holder);
+    lst.transfer(_holder, _amount);
+
+    assertEq(
+      lst.balanceCheckpoint(_holder),
+      _initialBalanceCheckpoint,
+      "Balance checkpoint should remain unchanged after self-transfer"
+    );
+  }
+
+  function testFuzz_DoesNotChangeVotingWeightWhenSenderAndReceiverAreTheSame(
+    address _holder,
+    uint256 _amount,
+    address _delegatee
+  ) public {
+    _assumeSafeHolder(_holder);
+    _assumeSafeDelegatee(_delegatee);
+    _amount = _boundToReasonableStakeTokenAmount(_amount);
+
+    _mintUpdateDelegateeAndStake(_holder, _amount, _delegatee);
+    uint256 _initialVotingWeight = stakeToken.getCurrentVotes(_delegatee);
+
+    vm.prank(_holder);
+    lst.transfer(_holder, _amount);
+
+    assertEq(
+      stakeToken.getCurrentVotes(_delegatee),
+      _initialVotingWeight,
+      "Voting weight should remain unchanged after self-transfer"
+    );
+  }
 }
 
 contract TransferAndReturnBalanceDiffs is UniLstTest {
@@ -2854,6 +2921,20 @@ contract TransferAndReturnBalanceDiffs is UniLstTest {
 
     assertEq(lst.balanceOf(_sender), _originalSenderBalance - _senderBalanceDecrease);
     assertEq(lst.balanceOf(_receiver), _originalReceiverBalance + _receiverBalanceIncrease);
+  }
+
+  function testFuzz_ReturnsZeroBalanceDiffsWhenSenderAndReceiverAreTheSame(address _holder, uint256 _amount) public {
+    _assumeSafeHolder(_holder);
+    _amount = _boundToReasonableStakeTokenAmount(_amount);
+
+    _mintAndStake(_holder, _amount);
+
+    vm.prank(_holder);
+    (uint256 senderBalanceDecrease, uint256 receiverBalanceIncrease) =
+      lst.transferAndReturnBalanceDiffs(_holder, _amount);
+
+    assertEq(senderBalanceDecrease, 0, "Sender balance decrease should be zero for self-transfer");
+    assertEq(receiverBalanceIncrease, 0, "Receiver balance increase should be zero for self-transfer");
   }
 }
 

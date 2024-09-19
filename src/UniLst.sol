@@ -959,6 +959,12 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// @dev See public transfer methods for additional documentation.
   /// @return A tuple containing the sender's balance decrease and the receiver's balance increase in that order.
   function _transfer(address _sender, address _receiver, uint256 _value) internal returns (uint256, uint256) {
+    // Early check for self-transfer
+    if (_sender == _receiver) {
+      emit Transfer(_sender, _receiver, _value);
+      return (0, 0);
+    }
+
     // Read required state from storage once.
     Totals memory _totals = totals;
     HolderState memory _senderState = holderStates[_sender];
