@@ -13,6 +13,7 @@ import {EIP712} from "openzeppelin/utils/cryptography/EIP712.sol";
 import {SignatureChecker} from "openzeppelin/utils/cryptography/SignatureChecker.sol";
 import {Nonces} from "openzeppelin/utils/Nonces.sol";
 import {Multicall} from "openzeppelin/utils/Multicall.sol";
+import {SafeCast} from "openzeppelin/utils/math/SafeCast.sol";
 
 /// @title UniLst
 /// @author [ScopeLift](https://scopelift.co)
@@ -803,7 +804,7 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     if (_balanceOf == 0) {
       (, address _owner,,) = STAKER.deposits(_newDepositId);
       if (_owner == address(this)) {
-        holderStates[_account].depositId = uint32(IUniStaker.DepositIdentifier.unwrap(_newDepositId));
+        holderStates[_account].depositId = _depositIdToUInt32(_newDepositId);
         return;
       }
     }
@@ -830,12 +831,12 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
       STAKER.stakeMore(_newDepositId, uint96(_delegatedBalance));
     } else if ((_isSameDepositId(_oldDepositId, DEFAULT_DEPOSIT_ID))) {
       _holderState.balanceCheckpoint = uint96(_balanceOf);
-      _holderState.depositId = uint32(IUniStaker.DepositIdentifier.unwrap(_newDepositId));
+      _holderState.depositId = _depositIdToUInt32(_newDepositId);
       STAKER.withdraw(DEFAULT_DEPOSIT_ID, uint96(_balanceOf));
       STAKER.stakeMore(_newDepositId, uint96(_balanceOf));
     } else {
       _holderState.balanceCheckpoint = uint96(_balanceOf);
-      _holderState.depositId = uint32(IUniStaker.DepositIdentifier.unwrap(_newDepositId));
+      _holderState.depositId = _depositIdToUInt32(_newDepositId);
       if (_undelegatedBalance > 0) {
         STAKER.withdraw(DEFAULT_DEPOSIT_ID, uint96(_undelegatedBalance));
       }
@@ -1157,5 +1158,12 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     returns (bool)
   {
     return IUniStaker.DepositIdentifier.unwrap(_depositIdA) == IUniStaker.DepositIdentifier.unwrap(_depositIdB);
+  }
+
+  /// @notice Internal helper function to convert a UniStaker DepositIdentifier to a uint32
+  /// @param _depositId The DepositIdentifier to convert
+  /// @return The uint32 representation of the DepositIdentifier
+  function _depositIdToUInt32(IUniStaker.DepositIdentifier _depositId) private pure returns (uint32) {
+    return SafeCast.toUint32(IUniStaker.DepositIdentifier.unwrap(_depositId));
   }
 }
