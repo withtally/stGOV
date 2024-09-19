@@ -755,8 +755,8 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// @param _totals The metadata representing current global conditions.
   /// @return The quantity of stake tokens which backs the provide quantity of shares.
   function _calcStakeForShares(uint256 _amount, Totals memory _totals) internal pure returns (uint256) {
-    if (_totals.supply == 0) {
-      return 0;
+    if (_totals.shares == 0) {
+      return _amount / SHARE_SCALE_FACTOR;
     }
 
     return (_amount * _totals.supply) / _totals.shares;
