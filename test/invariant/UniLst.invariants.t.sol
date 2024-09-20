@@ -13,7 +13,7 @@ contract UniStakerInvariants is Test, UnitTestBase {
   address rewardsNotifier;
   UniLst lst;
   address lstOwner;
-  uint256 initialPayoutAmount = 2500e18;
+  uint80 initialPayoutAmount = 2500e18;
 
   // vars for reducers
   IUniStaker.DepositIdentifier public currentId;

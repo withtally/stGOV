@@ -22,7 +22,7 @@ contract UniLstTest is UnitTestBase, PercentAssertions, TestHelpers, Eip712Helpe
   UniLst lst;
   WithdrawGate withdrawGate;
   address lstOwner;
-  uint256 initialPayoutAmount = 2500e18;
+  uint80 initialPayoutAmount = 2500e18;
 
   address defaultDelegatee = makeAddr("Default Delegatee");
   address delegateeGuardian = makeAddr("Delegatee Guardian");
@@ -115,6 +115,11 @@ contract UniLstTest is UnitTestBase, PercentAssertions, TestHelpers, Eip712Helpe
     _boundedAmount = bound(_amount, 0.000001e18, 250_000_000e18);
   }
 
+  function _boundToReasonableRewardAmount(uint256 _amount) internal pure returns (uint80) {
+    // Bound to within 1/1,000,000th of an ETH and the maximum value of uint80
+    return uint80(bound(_amount, 0.000001e18, type(uint80).max));
+  }
+
   function _boundToReasonableStakeTokenAmount(uint256 _amount) internal pure returns (uint256 _boundedAmount) {
     // Bound to within 1/10,000th of a UNI and 4 times the current total supply of UNI
     _boundedAmount = uint256(bound(_amount, 0.0001e18, 2_000_000_000e18));
@@ -122,6 +127,10 @@ contract UniLstTest is UnitTestBase, PercentAssertions, TestHelpers, Eip712Helpe
 
   function _boundToValidPrivateKey(uint256 _privateKey) internal pure returns (uint256) {
     return bound(_privateKey, 1, SECP256K1_ORDER - 1);
+  }
+
+  function _boundToReasonablePayoutAmount(uint256 _payoutAmount) internal pure returns (uint80) {
+    return uint80(bound(_payoutAmount, 0.0001e18, type(uint80).max));
   }
 
   function _mintStakeToken(address _to, uint256 _amount) internal {
@@ -203,14 +212,11 @@ contract UniLstTest is UnitTestBase, PercentAssertions, TestHelpers, Eip712Helpe
     lst.unstake(_amount);
   }
 
-  function _setPayoutAmount(uint256 _payoutAmount) internal {
+  function _setRewardParameters(uint80 _payoutAmount, uint16 _feeBips, address _feeCollector) internal {
     vm.prank(lstOwner);
-    lst.setPayoutAmount(_payoutAmount);
-  }
-
-  function _setFeeParameters(uint256 _feeAmount, address _feeCollector) internal {
-    vm.prank(lstOwner);
-    lst.setFeeParameters(_feeAmount, _feeCollector);
+    lst.setRewardParameters(
+      UniLst.RewardParameters({payoutAmount: _payoutAmount, feeBips: _feeBips, feeCollector: _feeCollector})
+    );
   }
 
   function _distributeStakerReward(uint256 _amount) internal {
@@ -239,11 +245,11 @@ contract UniLstTest is UnitTestBase, PercentAssertions, TestHelpers, Eip712Helpe
     vm.stopPrank();
   }
 
-  function _distributeReward(uint256 _amount) internal {
-    _setPayoutAmount(_amount);
+  function _distributeReward(uint80 _payoutAmount) internal {
+    _setRewardParameters(_payoutAmount, 0, address(1));
     address _claimer = makeAddr("Claimer");
     uint256 _rewardTokenAmount = 10e18; // arbitrary amount of reward token
-    _mintStakeToken(_claimer, _amount);
+    _mintStakeToken(_claimer, _payoutAmount);
     _approveLstAndClaimAndDistributeReward(_claimer, _rewardTokenAmount, _claimer);
   }
 
@@ -289,12 +295,13 @@ contract Constructor is UniLstTest {
     assertEq(address(lst.STAKE_TOKEN()), address(stakeToken));
     assertEq(address(lst.REWARD_TOKEN()), address(rewardToken));
     assertEq(lst.defaultDelegatee(), defaultDelegatee);
-    assertEq(lst.payoutAmount(), initialPayoutAmount);
+    assertEq(uint80(lst.payoutAmount()), initialPayoutAmount);
     assertEq(lst.owner(), lstOwner);
     assertEq(lst.name(), tokenName);
     assertEq(lst.symbol(), tokenSymbol);
     assertEq(lst.decimals(), 18);
     assertEq(lst.delegateeGuardian(), delegateeGuardian);
+    assertEq(lst.MAX_FEE_BIPS(), 2000); // 20% in bips
   }
 
   function test_MaxApprovesTheStakerContractToTransferStakeToken() public view {
@@ -310,7 +317,7 @@ contract Constructor is UniLstTest {
     address _stakeToken,
     address _rewardToken,
     address _defaultDelegatee,
-    uint256 _payoutAmount,
+    uint80 _payoutAmount,
     address _lstOwner,
     string memory _tokenName,
     string memory _tokenSymbol,
@@ -476,14 +483,14 @@ contract UpdateDeposit is UniLstTest {
     address _holder,
     address _initialDelegatee,
     address _newDelegatee,
-    uint256 _rewardAmount
+    uint80 _rewardAmount
   ) public {
     _assumeSafeHolder(_holder);
     _assumeSafeDelegatee(_initialDelegatee);
     _assumeSafeDelegatee(_newDelegatee);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
     _mintUpdateDelegateeAndStake(_holder, _stakeAmount, _initialDelegatee);
-    _rewardAmount = _boundToReasonableStakeTokenAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
     _distributeReward(_rewardAmount);
     IUniStaker.DepositIdentifier _newDepositId = lst.fetchOrInitializeDepositForDelegatee(_newDelegatee);
 
@@ -507,13 +514,13 @@ contract UpdateDeposit is UniLstTest {
     uint256 _stakeAmount,
     address _holder,
     address _newDelegatee,
-    uint256 _rewardAmount
+    uint80 _rewardAmount
   ) public {
     _assumeSafeHolder(_holder);
     _assumeSafeDelegatee(_newDelegatee);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
     _mintAndStake(_holder, _stakeAmount);
-    _rewardAmount = _boundToReasonableStakeTokenAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
     _distributeReward(_rewardAmount);
     IUniStaker.DepositIdentifier _newDepositId = lst.fetchOrInitializeDepositForDelegatee(_newDelegatee);
 
@@ -535,13 +542,13 @@ contract UpdateDeposit is UniLstTest {
     uint256 _stakeAmount,
     address _holder,
     address _initialDelegatee,
-    uint256 _rewardAmount
+    uint80 _rewardAmount
   ) public {
     _assumeSafeHolder(_holder);
     _assumeSafeDelegatee(_initialDelegatee);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
     _mintUpdateDelegateeAndStake(_holder, _stakeAmount, _initialDelegatee);
-    _rewardAmount = _boundToReasonableStakeTokenAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
     _distributeReward(_rewardAmount);
     // Returns the default deposit ID.
     IUniStaker.DepositIdentifier _newDepositId = lst.depositForDelegatee(address(0));
@@ -590,7 +597,7 @@ contract UpdateDeposit is UniLstTest {
     uint256 _stakeAmount2,
     address _holder1,
     address _holder2,
-    uint256 _rewardAmount,
+    uint80 _rewardAmount,
     address _delegatee1,
     address _delegatee2
   ) public {
@@ -598,7 +605,7 @@ contract UpdateDeposit is UniLstTest {
     _assumeSafeDelegatees(_delegatee1, _delegatee2);
     _stakeAmount1 = _boundToReasonableStakeTokenAmount(_stakeAmount1);
     _stakeAmount2 = _boundToReasonableStakeTokenAmount(_stakeAmount2);
-    _rewardAmount = _boundToReasonableStakeTokenAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
     IUniStaker.DepositIdentifier _depositId2 = lst.fetchOrInitializeDepositForDelegatee(_delegatee2);
 
     // Two users stake to the same delegatee
@@ -641,7 +648,7 @@ contract UpdateDeposit is UniLstTest {
     // where one user's live balance drops below their last delegated balance checkpoint due to the actions of
     // another user.
     uint256 _firstStakeAmount = 100_000_001;
-    uint256 _rewardAmount = 100_000_003;
+    uint80 _rewardAmount = 100_000_003;
     uint256 _secondStakeAmount = 100_000_002;
     uint256 _firstUnstakeAmount = 138_542_415;
 
@@ -1033,7 +1040,7 @@ contract Stake is UniLstTest {
   function testFuzz_IncrementsTheBalanceCheckpointForAHolderAddingToTheirStakeWhoHasPreviouslyEarnedAReward(
     uint256 _amount1,
     uint256 _amount2,
-    uint256 _rewardAmount,
+    uint80 _rewardAmount,
     address _holder,
     address _delegatee
   ) public {
@@ -1041,7 +1048,7 @@ contract Stake is UniLstTest {
     _assumeSafeDelegatee(_delegatee);
     _amount1 = _boundToReasonableStakeTokenAmount(_amount1);
     _amount2 = _boundToReasonableStakeTokenAmount(_amount2);
-    _rewardAmount = _boundToReasonableStakeTokenAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
 
     _mintUpdateDelegateeAndStake(_holder, _amount1, _delegatee);
     _distributeReward(_rewardAmount);
@@ -1180,7 +1187,7 @@ contract Unstake is UniLstTest {
 
   function testFuzz_AllowsAHolderToWithdrawBalanceThatIncludesEarnedRewards(
     uint256 _stakeAmount,
-    uint256 _rewardAmount,
+    uint80 _rewardAmount,
     uint256 _unstakeAmount,
     address _holder,
     address _delegatee
@@ -1188,7 +1195,7 @@ contract Unstake is UniLstTest {
     _assumeSafeHolder(_holder);
     _assumeSafeDelegatee(_delegatee);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
-    _rewardAmount = _boundToReasonableStakeTokenAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
     _unstakeAmount = bound(_unstakeAmount, 0, _stakeAmount + _rewardAmount);
 
     // One holder stakes and earns the full reward amount
@@ -1203,7 +1210,7 @@ contract Unstake is UniLstTest {
 
   function testFuzz_WithdrawsFromUndelegatedBalanceIfItCoversTheAmount(
     uint256 _stakeAmount,
-    uint256 _rewardAmount,
+    uint80 _rewardAmount,
     uint256 _unstakeAmount,
     address _holder,
     address _delegatee
@@ -1211,7 +1218,7 @@ contract Unstake is UniLstTest {
     _assumeSafeHolder(_holder);
     _assumeSafeDelegatee(_delegatee);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
-    _rewardAmount = _boundToReasonableStakeTokenAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
     // The unstake amount is _less_ than the reward amount.
     _unstakeAmount = bound(_unstakeAmount, 0, _rewardAmount);
 
@@ -1233,7 +1240,7 @@ contract Unstake is UniLstTest {
 
   function testFuzz_WithdrawsFromDelegatedBalanceAfterExhaustingUndelegatedBalance(
     uint256 _stakeAmount,
-    uint256 _rewardAmount,
+    uint80 _rewardAmount,
     uint256 _unstakeAmount,
     address _holder,
     address _delegatee
@@ -1241,7 +1248,7 @@ contract Unstake is UniLstTest {
     _assumeSafeHolder(_holder);
     _assumeSafeDelegatee(_delegatee);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
-    _rewardAmount = _boundToReasonableStakeTokenAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
     // The unstake amount is _more_ than the reward amount.
     _unstakeAmount = bound(_unstakeAmount, _rewardAmount, _stakeAmount + _rewardAmount);
 
@@ -1264,12 +1271,12 @@ contract Unstake is UniLstTest {
     address _holder,
     address _delegatee,
     uint256 _unstakeAmount,
-    uint256 _rewardAmount
+    uint80 _rewardAmount
   ) public {
     _assumeSafeHolder(_holder);
     _assumeSafeDelegatee(_delegatee);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
-    _rewardAmount = _boundToReasonableStakeTokenAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
     _unstakeAmount = bound(_unstakeAmount, 0, _stakeAmount + _rewardAmount);
 
     _mintUpdateDelegateeAndStake(_holder, _stakeAmount, _delegatee);
@@ -1283,7 +1290,7 @@ contract Unstake is UniLstTest {
 
   function testFuzz_SubtractsFromTheHoldersDelegatedBalanceCheckpointIfUndelegatedBalanceIsUnstaked(
     uint256 _stakeAmount,
-    uint256 _rewardAmount,
+    uint80 _rewardAmount,
     uint256 _unstakeAmount,
     address _holder,
     address _delegatee
@@ -1291,7 +1298,7 @@ contract Unstake is UniLstTest {
     _assumeSafeHolder(_holder);
     _assumeSafeDelegatee(_delegatee);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
-    _rewardAmount = _boundToReasonableStakeTokenAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
     // The unstake amount is _more_ than the reward amount.
     _unstakeAmount = bound(_unstakeAmount, _rewardAmount, _stakeAmount + _rewardAmount);
 
@@ -1317,12 +1324,12 @@ contract Unstake is UniLstTest {
     address _holder,
     address _delegatee,
     uint256 _unstakeAmount,
-    uint256 _rewardAmount
+    uint80 _rewardAmount
   ) public {
     _assumeSafeHolder(_holder);
     _assumeSafeDelegatee(_delegatee);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
-    _rewardAmount = _boundToReasonableStakeTokenAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
     _unstakeAmount = bound(_unstakeAmount, 0, _stakeAmount + _rewardAmount);
 
     _mintUpdateDelegateeAndStake(_holder, _stakeAmount, _delegatee);
@@ -1345,12 +1352,12 @@ contract Unstake is UniLstTest {
     address _holder,
     address _delegatee,
     uint256 _unstakeAmount,
-    uint256 _rewardAmount
+    uint80 _rewardAmount
   ) public {
     _assumeSafeHolder(_holder);
     _assumeSafeDelegatee(_delegatee);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
-    _rewardAmount = _boundToReasonableStakeTokenAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
     _unstakeAmount = bound(_unstakeAmount, 0, _stakeAmount + _rewardAmount);
 
     _mintUpdateDelegateeAndStake(_holder, _stakeAmount, _delegatee);
@@ -1401,7 +1408,7 @@ contract Unstake is UniLstTest {
     // where one user's live balance drops below their last delegated balance checkpoint due to the actions of
     // another user.
     uint256 _firstStakeAmount = 100_000_001;
-    uint256 _rewardAmount = 100_000_003;
+    uint80 _rewardAmount = 100_000_003;
     uint256 _secondStakeAmount = 100_000_002;
     uint256 _firstUnstakeAmount = 138_542_415;
     _secondUnstakeAmount = bound(_secondUnstakeAmount, 2, _secondStakeAmount - 1);
@@ -1930,13 +1937,13 @@ contract BalanceOf is UniLstTest {
     uint256 _stakeAmount,
     address _holder,
     address _delegatee,
-    uint256 _rewardAmount
+    uint80 _rewardAmount
   ) public {
     _assumeSafeHolder(_holder);
     _assumeSafeDelegatee(_delegatee);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
     _mintUpdateDelegateeAndStake(_holder, _stakeAmount, _delegatee);
-    _rewardAmount = _boundToReasonableStakeTokenAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
     _distributeReward(_rewardAmount);
 
     // Since there is only one LST holder, they should own the whole balance of the LST, both the tokens they staked
@@ -1948,7 +1955,7 @@ contract BalanceOf is UniLstTest {
     uint256 _stakeAmount1,
     address _holder1,
     address _holder2,
-    uint256 _rewardAmount,
+    uint80 _rewardAmount,
     address _delegatee1,
     address _delegatee2
   ) public {
@@ -1957,7 +1964,7 @@ contract BalanceOf is UniLstTest {
     _stakeAmount1 = _boundToReasonableStakeTokenAmount(_stakeAmount1);
     // The second user will stake 150% of the first user
     uint256 _stakeAmount2 = _percentOf(_stakeAmount1, 150);
-    _rewardAmount = _boundToReasonableStakeTokenAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
 
     // Both users stake
     _mintUpdateDelegateeAndStake(_holder1, _stakeAmount1, _delegatee1);
@@ -1980,7 +1987,7 @@ contract BalanceOf is UniLstTest {
     uint256 _stakeAmount2,
     address _holder1,
     address _holder2,
-    uint256 _rewardAmount,
+    uint80 _rewardAmount,
     address _delegatee1,
     address _delegatee2
   ) public {
@@ -1989,7 +1996,7 @@ contract BalanceOf is UniLstTest {
 
     _stakeAmount1 = _boundToReasonableStakeTokenAmount(_stakeAmount1);
     _stakeAmount2 = _boundToReasonableStakeTokenAmount(_stakeAmount2);
-    _rewardAmount = _boundToReasonableStakeTokenAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
 
     // The first user stakes
     _mintUpdateDelegateeAndStake(_holder1, _stakeAmount1, _delegatee1);
@@ -2013,8 +2020,8 @@ contract BalanceOf is UniLstTest {
     uint256 _stakeAmount2,
     address _holder1,
     address _holder2,
-    uint256 _rewardAmount1,
-    uint256 _rewardAmount2,
+    uint80 _rewardAmount1,
+    uint80 _rewardAmount2,
     address _delegatee1,
     address _delegatee2
   ) public {
@@ -2024,8 +2031,10 @@ contract BalanceOf is UniLstTest {
     // second user will stake 250% of first user
     _stakeAmount2 = _percentOf(_stakeAmount1, 250);
     // the first reward will be 25 percent of the first holders stake amount
-    _rewardAmount1 = _percentOf(_stakeAmount1, 25);
-    _rewardAmount2 = bound(_rewardAmount2, _percentOf(_stakeAmount1, 5), _percentOf(_stakeAmount1, 150));
+    _rewardAmount1 = _boundToReasonableRewardAmount(_percentOf(_stakeAmount1, 25));
+    _rewardAmount2 = _boundToReasonableRewardAmount(
+      bound(_rewardAmount2, _percentOf(_stakeAmount1, 5), _percentOf(_stakeAmount1, 150))
+    );
 
     // The first user stakes
     _mintUpdateDelegateeAndStake(_holder1, _stakeAmount1, _delegatee1);
@@ -2072,12 +2081,12 @@ contract BalanceOf is UniLstTest {
     address _holder,
     address _delegatee,
     uint256 _unstakeAmount,
-    uint256 _rewardAmount
+    uint80 _rewardAmount
   ) public {
     _assumeSafeHolder(_holder);
     _assumeSafeDelegatee(_delegatee);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
-    _rewardAmount = _boundToReasonableStakeTokenAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
     _unstakeAmount = bound(_unstakeAmount, 0, _stakeAmount + _rewardAmount);
 
     _mintUpdateDelegateeAndStake(_holder, _stakeAmount, _delegatee);
@@ -2092,28 +2101,29 @@ contract BalanceOf is UniLstTest {
     address _claimer,
     address _recipient,
     uint256 _rewardTokenAmount,
-    uint256 _rewardPayoutAmount,
+    uint80 _rewardPayoutAmount,
     address _holder,
     uint256 _stakeAmount,
     address _feeCollector,
-    uint256 _feeAmount
+    uint16 _feeBips
   ) public {
     // Apply constraints to parameters.
     _assumeSafeHolders(_holder, _claimer);
     _assumeSafeHolder(_feeCollector);
     vm.assume(_feeCollector != address(0) && _feeCollector != _holder && _feeCollector != _claimer);
     _rewardTokenAmount = _boundToReasonableRewardTokenAmount(_rewardTokenAmount);
-    _rewardPayoutAmount = _boundToReasonableStakeTokenAmount(_rewardPayoutAmount);
-    _feeAmount = bound(_feeAmount, 0, _rewardPayoutAmount);
+    _rewardPayoutAmount = _boundToReasonablePayoutAmount(_rewardPayoutAmount);
+    _feeBips = uint16(bound(_feeBips, 0, lst.MAX_FEE_BIPS()));
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
     // Set up actors to enable reward distribution with fees.
-    _setPayoutAmount(_rewardPayoutAmount);
-    _setFeeParameters(_feeAmount, _feeCollector);
+    _setRewardParameters(_rewardPayoutAmount, _feeBips, _feeCollector);
     _mintStakeToken(_claimer, _rewardPayoutAmount);
     _mintAndStake(_holder, _stakeAmount);
 
     // Execute reward distribution that includes a fee payout.
     _approveLstAndClaimAndDistributeReward(_claimer, _rewardTokenAmount, _recipient);
+
+    uint256 _feeAmount = (uint256(_rewardPayoutAmount) * uint256(_feeBips)) / 1e4;
 
     // Fee collector should now have a balance less than or equal to, within a small delta to account for truncation,
     // the fee amount.
@@ -2266,13 +2276,13 @@ contract Transfer is UniLstTest {
 
   function testFuzz_MovesFullBalanceToAReceiverWhenBalanceOfSenderIncludesEarnedRewards(
     uint256 _stakeAmount,
-    uint256 _rewardAmount,
+    uint80 _rewardAmount,
     address _sender,
     address _receiver
   ) public {
     _assumeSafeHolders(_sender, _receiver);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
-    _rewardAmount = _boundToReasonableStakeTokenAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
 
     _mintAndStake(_sender, _stakeAmount);
     _distributeReward(_rewardAmount);
@@ -2286,14 +2296,14 @@ contract Transfer is UniLstTest {
 
   function testFuzz_MovesPartialBalanceToAReceiverWhenBalanceOfSenderIncludesEarnedRewards(
     uint256 _stakeAmount,
-    uint256 _rewardAmount,
+    uint80 _rewardAmount,
     uint256 _sendAmount,
     address _sender,
     address _receiver
   ) public {
     _assumeSafeHolders(_sender, _receiver);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
-    _rewardAmount = _boundToReasonableStakeTokenAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
     _sendAmount = bound(_sendAmount, 0, _stakeAmount + _rewardAmount);
 
     _mintAndStake(_sender, _stakeAmount);
@@ -2340,7 +2350,7 @@ contract Transfer is UniLstTest {
 
   function testFuzz_MovesFullVotingWeightToTheReceiversDelegateeWhenBalanceOfSenderIncludesEarnedRewards(
     uint256 _stakeAmount,
-    uint256 _rewardAmount,
+    uint80 _rewardAmount,
     address _sender,
     address _senderDelegatee,
     address _receiver,
@@ -2349,7 +2359,7 @@ contract Transfer is UniLstTest {
     _assumeSafeHolders(_sender, _receiver);
     _assumeSafeDelegatees(_senderDelegatee, _receiverDelegatee);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
-    _rewardAmount = _boundToReasonableStakeTokenAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
 
     _mintUpdateDelegateeAndStake(_sender, _stakeAmount, _senderDelegatee);
     _updateDelegatee(_receiver, _receiverDelegatee);
@@ -2365,7 +2375,7 @@ contract Transfer is UniLstTest {
 
   function testFuzz_MovesPartialVotingWeightToTheReceiversDelegateeWhenBalanceOfSenderIncludesRewards(
     uint256 _stakeAmount,
-    uint256 _rewardAmount,
+    uint80 _rewardAmount,
     uint256 _sendAmount,
     address _sender,
     address _senderDelegatee,
@@ -2375,7 +2385,7 @@ contract Transfer is UniLstTest {
     _assumeSafeHolders(_sender, _receiver);
     _assumeSafeDelegatees(_senderDelegatee, _receiverDelegatee);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
-    _rewardAmount = _boundToReasonableStakeTokenAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
     _sendAmount = bound(_sendAmount, 0, _stakeAmount + _rewardAmount);
 
     _mintUpdateDelegateeAndStake(_sender, _stakeAmount, _senderDelegatee);
@@ -2403,7 +2413,7 @@ contract Transfer is UniLstTest {
 
   function testFuzz_LeavesTheSendersDelegatedBalanceUntouchedIfTheSendAmountIsLessThanTheSendersUndelegatedBalance(
     uint256 _stakeAmount,
-    uint256 _rewardAmount,
+    uint80 _rewardAmount,
     uint256 _sendAmount,
     address _sender,
     address _senderDelegatee,
@@ -2413,7 +2423,7 @@ contract Transfer is UniLstTest {
     _assumeSafeHolders(_sender, _receiver);
     _assumeSafeDelegatees(_senderDelegatee, _receiverDelegatee);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
-    _rewardAmount = _boundToReasonableStakeTokenAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
     // The amount sent will be less than or equal to the rewards the sender has earned
     _sendAmount = bound(_sendAmount, 0, _rewardAmount);
 
@@ -2431,7 +2441,7 @@ contract Transfer is UniLstTest {
 
   function testFuzz_PullsFromTheSendersDelegatedBalanceAfterTheUndelegatedBalanceHasBeenExhausted(
     uint256 _stakeAmount,
-    uint256 _rewardAmount,
+    uint80 _rewardAmount,
     uint256 _sendAmount,
     address _sender,
     address _senderDelegatee,
@@ -2441,7 +2451,7 @@ contract Transfer is UniLstTest {
     _assumeSafeHolders(_sender, _receiver);
     _assumeSafeDelegatees(_senderDelegatee, _receiverDelegatee);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
-    _rewardAmount = _boundToReasonableStakeTokenAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
     // The amount sent will be more than the original stake amount
     _sendAmount = bound(_sendAmount, _rewardAmount, _rewardAmount + _stakeAmount);
 
@@ -2468,7 +2478,7 @@ contract Transfer is UniLstTest {
 
   function testFuzz_AddsToTheBalanceCheckpointOfTheReceiverAndVotingWeightOfReceiversDelegatee(
     uint256 _stakeAmount1,
-    uint256 _rewardAmount,
+    uint80 _rewardAmount,
     uint256 _sendAmount,
     address _sender,
     address _receiver,
@@ -2480,7 +2490,7 @@ contract Transfer is UniLstTest {
     _stakeAmount1 = _boundToReasonableStakeTokenAmount(_stakeAmount1);
     // The second user will stake 150% of the first user
     uint256 _stakeAmount2 = _percentOf(_stakeAmount1, 150);
-    _rewardAmount = _boundToReasonableStakeTokenAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
 
     // Both users stake
     _mintUpdateDelegateeAndStake(_sender, _stakeAmount1, _senderDelegatee);
@@ -2516,7 +2526,7 @@ contract Transfer is UniLstTest {
 
   function testFuzz_MovesPartialVotingWeightToTheReceiversDelegateeWhenBothBalancesIncludeRewards(
     uint256 _stakeAmount1,
-    uint256 _rewardAmount,
+    uint80 _rewardAmount,
     uint256 _sendAmount,
     address _sender,
     address _receiver,
@@ -2528,7 +2538,7 @@ contract Transfer is UniLstTest {
     _stakeAmount1 = _boundToReasonableStakeTokenAmount(_stakeAmount1);
     // The second user will stake 150% of the first user
     uint256 _stakeAmount2 = _percentOf(_stakeAmount1, 150);
-    _rewardAmount = _boundToReasonableStakeTokenAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
 
     // Both users stake
     _mintUpdateDelegateeAndStake(_sender, _stakeAmount1, _senderDelegatee);
@@ -2555,7 +2565,7 @@ contract Transfer is UniLstTest {
   function testFuzz_TransfersTheBalanceAndMovesTheVotingWeightBetweenMultipleHoldersWhoHaveStakedAndReceivedRewards(
     uint256 _stakeAmount1,
     uint256 _stakeAmount2,
-    uint256 _rewardAmount,
+    uint80 _rewardAmount,
     uint256 _sendAmount1,
     uint256 _sendAmount2,
     address _sender1,
@@ -2570,7 +2580,7 @@ contract Transfer is UniLstTest {
     _assumeSafeDelegatees(_sender1Delegatee, _sender2Delegatee);
     _stakeAmount1 = _boundToReasonableStakeTokenAmount(_stakeAmount1);
     _stakeAmount2 = _boundToReasonableStakeTokenAmount(_stakeAmount2);
-    _rewardAmount = _boundToReasonableStakeTokenAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
     _sendAmount1 = bound(_sendAmount1, 0.0001e18, _stakeAmount1);
     _sendAmount2 = bound(_sendAmount2, 0.0001e18, _stakeAmount2 + _sendAmount1);
 
@@ -2613,7 +2623,7 @@ contract Transfer is UniLstTest {
 
   function testFuzz_EmitsATransferEvent(
     uint256 _stakeAmount,
-    uint256 _rewardAmount,
+    uint80 _rewardAmount,
     uint256 _sendAmount,
     address _sender,
     address _senderDelegatee,
@@ -2623,7 +2633,7 @@ contract Transfer is UniLstTest {
     _assumeSafeHolders(_sender, _receiver);
     _assumeSafeDelegatees(_senderDelegatee, _receiverDelegatee);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
-    _rewardAmount = _boundToReasonableStakeTokenAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
     _sendAmount = bound(_sendAmount, 0, _stakeAmount + _rewardAmount);
 
     _mintUpdateDelegateeAndStake(_sender, _stakeAmount, _senderDelegatee);
@@ -2637,7 +2647,7 @@ contract Transfer is UniLstTest {
 
   function testFuzz_RevertIf_TheHolderTriesToTransferMoreThanTheirBalance(
     uint256 _stakeAmount,
-    uint256 _rewardAmount,
+    uint80 _rewardAmount,
     uint256 _sendAmount,
     address _sender,
     address _senderDelegatee,
@@ -2646,7 +2656,7 @@ contract Transfer is UniLstTest {
     _assumeSafeHolders(_sender, _receiver);
     _assumeSafeDelegatee(_senderDelegatee);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
-    _rewardAmount = _boundToReasonableStakeTokenAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
     uint256 _totalAmount = _rewardAmount + _stakeAmount;
     // Send amount will be some value more than the sender's balance, up to 2x as much
     _sendAmount = bound(_sendAmount, _totalAmount + 1, 2 * _totalAmount);
@@ -2678,7 +2688,7 @@ contract Transfer is UniLstTest {
     // where one user's live balance drops below their last delegated balance checkpoint due to the actions of
     // another user.
     uint256 _firstStakeAmount = 100_000_001;
-    uint256 _rewardAmount = 100_000_003;
+    uint80 _rewardAmount = 100_000_003;
     uint256 _secondStakeAmount = 100_000_002;
     uint256 _firstUnstakeAmount = 138_542_415;
     _transferAmount = bound(_transferAmount, 2, _secondStakeAmount - 1);
@@ -2742,7 +2752,10 @@ contract Transfer is UniLstTest {
 
     for (uint256 _index; _index < _stakeAmounts.length; _index++) {
       _executeSenderShaveTest(
-        _stakeAmounts[_index], _rewardAmounts[_index], _firstTransferAmounts[_index], _secondTransferAmounts[_index]
+        _stakeAmounts[_index],
+        uint80(_rewardAmounts[_index]),
+        _firstTransferAmounts[_index],
+        _secondTransferAmounts[_index]
       );
       // Reset the chain state after executing last test.
       vm.revertTo(_snapshotId);
@@ -2751,7 +2764,7 @@ contract Transfer is UniLstTest {
 
   function _executeSenderShaveTest(
     uint256 _stakeAmount,
-    uint256 _rewardAmount,
+    uint80 _rewardAmount,
     uint256 _firstTransferAmount,
     uint256 _secondTransferAmount
   ) public {
@@ -2900,13 +2913,13 @@ contract TransferAndReturnBalanceDiffs is UniLstTest {
 
   function testFuzz_MovesFullBalanceToAReceiverWhenBalanceOfSenderIncludesEarnedRewards(
     uint256 _stakeAmount,
-    uint256 _rewardAmount,
+    uint80 _rewardAmount,
     address _sender,
     address _receiver
   ) public {
     _assumeSafeHolders(_sender, _receiver);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
-    _rewardAmount = _boundToReasonableStakeTokenAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
 
     _mintAndStake(_sender, _stakeAmount);
     _distributeReward(_rewardAmount);
@@ -2951,18 +2964,26 @@ contract ClaimAndDistributeReward is UniLstTest {
   function testFuzz_TransfersStakeTokenPayoutFromTheClaimer(
     address _claimer,
     address _recipient,
-    uint256 _rewardAmount,
+    uint80 _rewardAmount,
     uint256 _payoutAmount,
     uint256 _extraBalance,
     address _holder,
-    uint256 _stakeAmount
+    uint256 _stakeAmount,
+    uint16 _feeBips,
+    address _feeCollector
   ) public {
     _assumeSafeHolders(_holder, _claimer);
-    _rewardAmount = _boundToReasonableRewardTokenAmount(_rewardAmount);
-    _payoutAmount = _boundToReasonableStakeTokenAmount(_payoutAmount);
+    vm.assume(_feeCollector != address(0) && _feeCollector != _claimer && _feeCollector != _holder);
+    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
+    _payoutAmount = _boundToReasonablePayoutAmount(_payoutAmount);
     _extraBalance = _boundToReasonableStakeTokenAmount(_extraBalance);
-    _setPayoutAmount(_payoutAmount);
-    // The claimer should hold at least the payout amount with some extra balance.
+    _feeBips = uint16(bound(_feeBips, 0, lst.MAX_FEE_BIPS()));
+    _setRewardParameters(uint80(_payoutAmount), _feeBips, _feeCollector);
+
+    // Calculate the fee amount
+    uint256 _feeAmount = (_payoutAmount * _feeBips) / 10_000;
+
+    // The claimer should hold at least the payout amount (including fee) with some extra balance.
     _mintStakeToken(_claimer, _payoutAmount + _extraBalance);
     // There must be some stake in the LST for it to earn the underlying staker rewards
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
@@ -2972,20 +2993,29 @@ contract ClaimAndDistributeReward is UniLstTest {
 
     // Because the tokens were transferred from the claimer, his balance should have decreased by the payout amount.
     assertEq(stakeToken.balanceOf(_claimer), _extraBalance);
+
+    // Check that the fee collector received the correct fee amount
+    if (_feeAmount > 0) {
+      assertApproxEqAbs(lst.balanceOf(_feeCollector), _feeAmount, ACCEPTABLE_DELTA);
+    }
   }
 
   function testFuzz_AssignsVotingWeightFromRewardsToTheDefaultDelegatee(
     address _claimer,
     address _recipient,
-    uint256 _rewardAmount,
+    uint80 _rewardAmount,
     uint256 _payoutAmount,
     address _holder,
-    uint256 _stakeAmount
+    uint256 _stakeAmount,
+    uint16 _feeBips,
+    address _feeCollector
   ) public {
     _assumeSafeHolders(_holder, _claimer);
-    _rewardAmount = _boundToReasonableRewardTokenAmount(_rewardAmount);
-    _payoutAmount = _boundToReasonableStakeTokenAmount(_payoutAmount);
-    _setPayoutAmount(_payoutAmount);
+    vm.assume(_feeCollector != address(0) && _feeCollector != _claimer && _feeCollector != _holder);
+    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
+    _payoutAmount = _boundToReasonablePayoutAmount(_payoutAmount);
+    _feeBips = uint16(bound(_feeBips, 0, lst.MAX_FEE_BIPS()));
+    _setRewardParameters(uint80(_payoutAmount), _feeBips, _feeCollector);
     _mintStakeToken(_claimer, _payoutAmount);
     // There must be some stake in the LST for it to earn the underlying staker rewards
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
@@ -3000,15 +3030,19 @@ contract ClaimAndDistributeReward is UniLstTest {
   function testFuzz_SendsStakerRewardsToRewardRecipient(
     address _claimer,
     address _recipient,
-    uint256 _rewardAmount,
+    uint80 _rewardAmount,
     uint256 _payoutAmount,
     address _holder,
-    uint256 _stakeAmount
+    uint256 _stakeAmount,
+    uint16 _feeBips,
+    address _feeCollector
   ) public {
     _assumeSafeHolders(_holder, _claimer);
-    _rewardAmount = _boundToReasonableRewardTokenAmount(_rewardAmount);
-    _payoutAmount = _boundToReasonableStakeTokenAmount(_payoutAmount);
-    _setPayoutAmount(_payoutAmount);
+    vm.assume(_feeCollector != address(0) && _feeCollector != _claimer && _feeCollector != _holder);
+    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
+    _payoutAmount = _boundToReasonablePayoutAmount(_payoutAmount);
+    _feeBips = uint16(bound(_feeBips, 0, lst.MAX_FEE_BIPS()));
+    _setRewardParameters(uint80(_payoutAmount), _feeBips, _feeCollector);
     _mintStakeToken(_claimer, _payoutAmount);
     // There must be some stake in the LST for it to earn the underlying staker rewards
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
@@ -3022,15 +3056,19 @@ contract ClaimAndDistributeReward is UniLstTest {
   function testFuzz_IncreasesTheTotalSupplyByThePayoutAmount(
     address _claimer,
     address _recipient,
-    uint256 _rewardAmount,
+    uint80 _rewardAmount,
     uint256 _payoutAmount,
     address _holder,
-    uint256 _stakeAmount
+    uint256 _stakeAmount,
+    uint16 _feeBips,
+    address _feeCollector
   ) public {
     _assumeSafeHolders(_holder, _claimer);
-    _rewardAmount = _boundToReasonableRewardTokenAmount(_rewardAmount);
-    _payoutAmount = _boundToReasonableStakeTokenAmount(_payoutAmount);
-    _setPayoutAmount(_payoutAmount);
+    vm.assume(_feeCollector != address(0) && _feeCollector != _claimer && _feeCollector != _holder);
+    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
+    _payoutAmount = _boundToReasonablePayoutAmount(_payoutAmount);
+    _feeBips = uint16(bound(_feeBips, 0, lst.MAX_FEE_BIPS()));
+    _setRewardParameters(uint80(_payoutAmount), _feeBips, _feeCollector);
     _mintStakeToken(_claimer, _payoutAmount);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
     _mintAndStake(_holder, _stakeAmount);
@@ -3044,30 +3082,30 @@ contract ClaimAndDistributeReward is UniLstTest {
   function testFuzz_IssuesFeesToTheFeeCollectorEqualToTheFeeAmount(
     address _claimer,
     address _recipient,
-    uint256 _rewardAmount,
+    uint80 _rewardAmount,
     uint256 _payoutAmount,
     address _holder,
     uint256 _stakeAmount,
-    address _feeCollector,
-    uint256 _feeAmount
+    uint16 _feeBips,
+    address _feeCollector
   ) public {
     // Apply constraints to parameters.
     _assumeSafeHolders(_holder, _claimer);
     _assumeSafeHolder(_feeCollector);
     vm.assume(_feeCollector != address(0) && _feeCollector != _holder && _feeCollector != _claimer);
-    _rewardAmount = _boundToReasonableRewardTokenAmount(_rewardAmount);
-    _payoutAmount = _boundToReasonableStakeTokenAmount(_payoutAmount);
-    _feeAmount = bound(_feeAmount, 0, _payoutAmount);
+    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
+    _payoutAmount = _boundToReasonablePayoutAmount(_payoutAmount);
+    _feeBips = uint16(bound(_feeBips, 0, lst.MAX_FEE_BIPS()));
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
     // Set up actors to enable reward distribution with fees.
-    _setPayoutAmount(_payoutAmount);
-    _setFeeParameters(_feeAmount, _feeCollector);
+    _setRewardParameters(uint80(_payoutAmount), _feeBips, _feeCollector);
     _mintStakeToken(_claimer, _payoutAmount);
     _mintAndStake(_holder, _stakeAmount);
 
     // Execute reward distribution that includes a fee payout.
     _approveLstAndClaimAndDistributeReward(_claimer, _rewardAmount, _recipient);
 
+    uint256 _feeAmount = (_payoutAmount * _feeBips) / 10_000;
     // The fee collector should now have a balance less than or equal to the fee amount, within some tolerable delta
     // to account for truncation issues.
     assertApproxEqAbs(lst.balanceOf(_feeCollector), _feeAmount, ACCEPTABLE_DELTA);
@@ -3077,16 +3115,20 @@ contract ClaimAndDistributeReward is UniLstTest {
   function testFuzz_RevertIf_RewardsReceivedAreLessThanTheExpectedAmount(
     address _claimer,
     address _recipient,
-    uint256 _rewardAmount,
+    uint80 _rewardAmount,
     uint256 _payoutAmount,
-    uint256 _minExpectedReward
+    uint256 _minExpectedReward,
+    uint16 _feeBips,
+    address _feeCollector
   ) public {
     _assumeSafeHolder(_claimer);
-    _rewardAmount = _boundToReasonableRewardTokenAmount(_rewardAmount);
-    _payoutAmount = _boundToReasonableStakeTokenAmount(_payoutAmount);
-    _setPayoutAmount(_payoutAmount);
+    vm.assume(_feeCollector != address(0) && _feeCollector != _claimer);
+    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
+    _payoutAmount = _boundToReasonablePayoutAmount(_payoutAmount);
+    _feeBips = uint16(bound(_feeBips, 0, lst.MAX_FEE_BIPS()));
+    _setRewardParameters(uint80(_payoutAmount), _feeBips, _feeCollector);
     // The claimer will request a minimum reward amount greater than the actual reward.
-    _minExpectedReward = bound(_minExpectedReward, _rewardAmount + 1, type(uint256).max);
+    _minExpectedReward = bound(_minExpectedReward, uint256(_rewardAmount) + 1, type(uint256).max);
     _mintStakeToken(_claimer, _payoutAmount);
 
     vm.startPrank(_claimer);
@@ -3099,23 +3141,22 @@ contract ClaimAndDistributeReward is UniLstTest {
   function testFuzz_EmitsRewardDistributedEvent(
     address _claimer,
     address _recipient,
-    uint256 _rewardAmount,
+    uint80 _rewardAmount,
     uint256 _payoutAmount,
     uint256 _extraBalance,
     address _holder,
     uint256 _stakeAmount,
-    address _feeCollector,
-    uint256 _feeAmount
+    uint16 _feeBips,
+    address _feeCollector
   ) public {
     _assumeSafeHolders(_holder, _claimer);
     _assumeSafeHolder(_feeCollector);
     vm.assume(_feeCollector != address(0) && _feeCollector != _holder && _feeCollector != _claimer);
-    _rewardAmount = _boundToReasonableRewardTokenAmount(_rewardAmount);
-    _payoutAmount = _boundToReasonableStakeTokenAmount(_payoutAmount);
+    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
+    _payoutAmount = _boundToReasonablePayoutAmount(_payoutAmount);
     _extraBalance = _boundToReasonableStakeTokenAmount(_extraBalance);
-    _feeAmount = bound(_feeAmount, 1, _payoutAmount);
-    _setPayoutAmount(_payoutAmount);
-    _setFeeParameters(_feeAmount, _feeCollector);
+    _feeBips = uint16(bound(_feeBips, 0, lst.MAX_FEE_BIPS()));
+    _setRewardParameters(uint80(_payoutAmount), _feeBips, _feeCollector);
     _mintStakeToken(_claimer, _payoutAmount + _extraBalance);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
     _mintAndStake(_holder, _stakeAmount);
@@ -3133,6 +3174,7 @@ contract ClaimAndDistributeReward is UniLstTest {
 
     Vm.Log[] memory entries = vm.getRecordedLogs();
 
+    uint256 _feeAmount = (_payoutAmount * _feeBips) / 10_000;
     _assertRewardDistributedEvent(
       entries,
       RewardDistributedEventData({
@@ -3174,94 +3216,128 @@ contract ClaimAndDistributeReward is UniLstTest {
   }
 }
 
-contract SetPayoutAmount is UniLstTest {
-  function testFuzz_UpdatesThePayoutAmountWhenCalledByTheOwner(uint256 _newPayoutAmount) public {
+contract SetRewardParameters is UniLstTest {
+  function testFuzz_UpdatesRewardParametersWhenCalledByOwner(
+    uint80 _payoutAmount,
+    uint16 _feeBips,
+    address _feeCollector
+  ) public {
+    vm.assume(_feeCollector != address(0));
+    _feeBips = uint16(bound(_feeBips, 1, lst.MAX_FEE_BIPS()));
+    _payoutAmount = _boundToReasonablePayoutAmount(_payoutAmount);
+
     vm.prank(lstOwner);
-    lst.setPayoutAmount(_newPayoutAmount);
-    assertEq(lst.payoutAmount(), _newPayoutAmount);
+    lst.setRewardParameters(
+      UniLst.RewardParameters({payoutAmount: _payoutAmount, feeBips: _feeBips, feeCollector: _feeCollector})
+    );
+
+    assertEq(lst.payoutAmount(), _payoutAmount);
+    assertEq(lst.feeAmount(), (uint256(_payoutAmount) * uint256(_feeBips)) / 1e4);
+    assertEq(lst.feeCollector(), _feeCollector);
   }
 
-  function testFuzz_EmitsPayoutAmountSetEvent(uint256 _newPayoutAmount) public {
-    vm.prank(lstOwner);
-    vm.expectEmit();
-    emit UniLst.PayoutAmountSet(initialPayoutAmount, _newPayoutAmount);
-    lst.setPayoutAmount(_newPayoutAmount);
+  function testFuzz_RevertIf_CalledByNonOwner(address _notOwner) public {
+    vm.assume(_notOwner != lstOwner);
+
+    vm.prank(_notOwner);
+    vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, _notOwner));
+    lst.setRewardParameters(UniLst.RewardParameters({payoutAmount: 1000, feeBips: 100, feeCollector: address(0x1)}));
   }
 
-  function testFuzz_RevertIf_CalledByNonOwnerAccount(address _notLstOwner, uint256 _newPayoutAmount) public {
-    vm.assume(_notLstOwner != lstOwner);
+  function testFuzz_RevertIf_FeeBipsExceedsMaximum(uint16 _invalidFeeBips, uint80 _payoutAmount, address _feeCollector)
+    public
+  {
+    vm.assume(_feeCollector != address(0));
+    _invalidFeeBips = uint16(bound(_invalidFeeBips, lst.MAX_FEE_BIPS() + 1, type(uint16).max));
+    _payoutAmount = _boundToReasonablePayoutAmount(_payoutAmount);
 
-    vm.prank(_notLstOwner);
-    vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, _notLstOwner));
-    lst.setPayoutAmount(_newPayoutAmount);
-  }
-
-  function testFuzz_RevertIf_PayountAmountIsLessThanFeeAmount(uint256 _newPayoutAmount, uint256 _newFeeAmount) public {
-    vm.assume(_newFeeAmount != 0);
-    _newFeeAmount = bound(_newFeeAmount, 0, lst.payoutAmount());
-    _newPayoutAmount = bound(_newPayoutAmount, 0, _newFeeAmount - 1);
     vm.startPrank(lstOwner);
-    lst.setFeeParameters(_newFeeAmount, address(0x1));
+    vm.expectRevert(
+      abi.encodeWithSelector(UniLst.UniLst__FeeBipsExceedMaximum.selector, _invalidFeeBips, lst.MAX_FEE_BIPS())
+    );
+    lst.setRewardParameters(
+      UniLst.RewardParameters({payoutAmount: _payoutAmount, feeBips: _invalidFeeBips, feeCollector: _feeCollector})
+    );
+    vm.stopPrank();
+  }
 
-    vm.expectRevert(UniLst.UniLst__InvalidPayoutAmount.selector);
-    lst.setPayoutAmount(_newPayoutAmount);
+  function testFuzz_RevertIf_FeeCollectorIsZeroAddress(uint80 _payoutAmount, uint16 _feeBips) public {
+    _payoutAmount = _boundToReasonablePayoutAmount(_payoutAmount);
+    _feeBips = uint16(bound(_feeBips, 1, lst.MAX_FEE_BIPS()));
+
+    vm.prank(lstOwner);
+    vm.expectRevert(UniLst.UniLst__FeeCollectorCannotBeZeroAddress.selector);
+    lst.setRewardParameters(
+      UniLst.RewardParameters({payoutAmount: _payoutAmount, feeBips: _feeBips, feeCollector: address(0)})
+    );
+  }
+
+  function testFuzz_EmitsRewardParametersSetEvent(uint80 _payoutAmount, uint16 _feeBips, address _feeCollector) public {
+    vm.assume(_feeCollector != address(0));
+    _feeBips = uint16(bound(_feeBips, 1, lst.MAX_FEE_BIPS()));
+    _payoutAmount = _boundToReasonablePayoutAmount(_payoutAmount);
+
+    vm.startPrank(lstOwner);
+    vm.expectEmit();
+    emit UniLst.RewardParametersSet(_payoutAmount, _feeBips, _feeCollector);
+    lst.setRewardParameters(
+      UniLst.RewardParameters({payoutAmount: _payoutAmount, feeBips: _feeBips, feeCollector: _feeCollector})
+    );
+    vm.stopPrank();
+  }
+
+  function testFuzz_RevertIf_FeeBipsExceedMaximum(uint16 _invalidFeeBips, uint80 _payoutAmount, address _feeCollector)
+    public
+  {
+    vm.assume(_feeCollector != address(0));
+    _invalidFeeBips = uint16(bound(_invalidFeeBips, lst.MAX_FEE_BIPS() + 1, type(uint16).max));
+    _payoutAmount = _boundToReasonablePayoutAmount(_payoutAmount);
+
+    vm.startPrank(lstOwner);
+    vm.expectRevert(
+      abi.encodeWithSelector(UniLst.UniLst__FeeBipsExceedMaximum.selector, _invalidFeeBips, lst.MAX_FEE_BIPS())
+    );
+    lst.setRewardParameters(
+      UniLst.RewardParameters({payoutAmount: _payoutAmount, feeBips: _invalidFeeBips, feeCollector: _feeCollector})
+    );
     vm.stopPrank();
   }
 }
 
-contract SetFeeParameters is UniLstTest {
-  function testFuzz_UpdatesTheFeeParametersWhenCalledByTheOwner(uint256 _newFeeAmount, address _newFeeCollector) public {
-    vm.assume(_newFeeCollector != address(0));
-    _newFeeAmount = bound(_newFeeAmount, 0, lst.payoutAmount());
+contract FeeAmount is UniLstTest {
+  function testFuzz_ReturnsFeeAmount(uint80 _payoutAmount, uint16 _feeBips, address _feeCollector) public {
+    vm.assume(_feeCollector != address(0));
+    _feeBips = uint16(bound(_feeBips, 1, lst.MAX_FEE_BIPS()));
+    _payoutAmount = _boundToReasonablePayoutAmount(_payoutAmount);
 
-    vm.prank(lstOwner);
-    lst.setFeeParameters(_newFeeAmount, _newFeeCollector);
+    _setRewardParameters(_payoutAmount, _feeBips, _feeCollector);
 
-    assertEq(lst.feeAmount(), _newFeeAmount);
-    assertEq(lst.feeCollector(), _newFeeCollector);
+    uint256 expectedFeeAmount = (uint256(_payoutAmount) * uint256(_feeBips)) / 1e4;
+    assertEq(lst.feeAmount(), expectedFeeAmount);
   }
+}
 
-  function testFuzz_EmitsFeeParametersSetEvent(uint256 _newFeeAmount, address _newFeeCollector) public {
-    vm.assume(_newFeeCollector != address(0));
-    _newFeeAmount = bound(_newFeeAmount, 0, lst.payoutAmount());
+contract FeeCollector is UniLstTest {
+  function testFuzz_ReturnsFeeCollector(uint80 _payoutAmount, uint16 _feeBips, address _feeCollector) public {
+    vm.assume(_feeCollector != address(0));
+    _feeBips = uint16(bound(_feeBips, 1, lst.MAX_FEE_BIPS()));
+    _payoutAmount = _boundToReasonablePayoutAmount(_payoutAmount);
 
-    vm.prank(lstOwner);
-    vm.expectEmit();
-    emit UniLst.FeeParametersSet(0, _newFeeAmount, address(0), _newFeeCollector);
-    lst.setFeeParameters(_newFeeAmount, _newFeeCollector);
+    _setRewardParameters(_payoutAmount, _feeBips, _feeCollector);
+
+    assertEq(lst.feeCollector(), _feeCollector);
   }
+}
 
-  function testFuzz_RevertIf_TheFeeAmountIsGreaterThanThePayoutAmount(uint256 _newFeeAmount, address _newFeeCollector)
-    public
-  {
-    vm.assume(_newFeeCollector != address(0));
-    _newFeeAmount = bound(_newFeeAmount, lst.payoutAmount() + 1, type(uint256).max);
+contract PayoutAmount is UniLstTest {
+  function testFuzz_ReturnsPayoutAmount(uint80 _payoutAmount, uint16 _feeBips, address _feeCollector) public {
+    vm.assume(_feeCollector != address(0));
+    _feeBips = uint16(bound(_feeBips, 1, lst.MAX_FEE_BIPS()));
+    _payoutAmount = _boundToReasonablePayoutAmount(_payoutAmount);
 
-    vm.prank(lstOwner);
-    vm.expectRevert(UniLst.UniLst__InvalidFeeParameters.selector);
-    lst.setFeeParameters(_newFeeAmount, _newFeeCollector);
-  }
+    _setRewardParameters(_payoutAmount, _feeBips, _feeCollector);
 
-  function testFuzz_RevertIf_TheFeeCollectorIsTheZeroAddress(uint256 _newFeeAmount) public {
-    _newFeeAmount = bound(_newFeeAmount, 0, lst.payoutAmount());
-
-    vm.prank(lstOwner);
-    vm.expectRevert(UniLst.UniLst__InvalidFeeParameters.selector);
-    lst.setFeeParameters(_newFeeAmount, address(0));
-  }
-
-  function testFuzz_RevertIf_CalledByNonOwnerAccount(
-    address _notLstOwner,
-    uint256 _newFeeAmount,
-    address _newFeeCollector
-  ) public {
-    vm.assume(_notLstOwner != lstOwner);
-    vm.assume(_newFeeCollector != address(0));
-    _newFeeAmount = bound(_newFeeAmount, 0, lst.payoutAmount());
-
-    vm.prank(_notLstOwner);
-    vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, _notLstOwner));
-    lst.setFeeParameters(_newFeeAmount, _newFeeCollector);
+    assertEq(lst.payoutAmount(), _payoutAmount);
   }
 }
 
@@ -3479,7 +3555,7 @@ contract Multicall is UniLstTest {
 
     bytes[] memory _calls = new bytes[](4);
     _calls[0] = abi.encodeWithSelector(lst.stake.selector, _stakeAmount);
-    _calls[1] = abi.encodeWithSelector(lst.setPayoutAmount.selector, 100e18);
+    _calls[1] = abi.encodeWithSelector(lst.setRewardParameters.selector, 100e18, 100, address(0x1));
 
     vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, _actor));
     vm.prank(_actor);

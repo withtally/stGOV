@@ -33,7 +33,7 @@ contract UniLstGasReport is UniLstTest, GasReport {
     address _delegatee;
     uint256 _stakeAmount;
     IUniStaker.DepositIdentifier _depositId;
-    uint256 _rewardAmount;
+    uint80 _rewardAmount;
 
     //-------------------------------------------------------------------------------------------//
     // INITIALIZE SCENARIOS
@@ -1134,7 +1134,7 @@ contract UniLstGasReport is UniLstTest, GasReport {
       _stakeAmount = 100e18;
       _rewardAmount = 5000e18;
       uint256 _payoutAmount = lst.payoutAmount();
-      uint256 _feeAmount = 100e18;
+      uint16 _feeBips = 1e4;
       address _claimer = makeScenarioAddr("Claimer");
       address _recipient = makeScenarioAddr("Recipient");
       address _feeCollector = makeScenarioAddr("Fee Collector");
@@ -1147,7 +1147,7 @@ contract UniLstGasReport is UniLstTest, GasReport {
       // Give the fee collector a balance as well, again, to avoid writing empty slots.
       _mintAndStake(_feeCollector, _stakeAmount);
       // Configure the fee parameters.
-      _setFeeParameters(_feeAmount, _feeCollector);
+      _setRewardParameters(_rewardAmount, _feeBips, _feeCollector);
 
       vm.startPrank(_claimer);
       stakeToken.approve(address(lst), _payoutAmount);

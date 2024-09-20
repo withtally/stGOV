@@ -35,9 +35,8 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// `claimAndDistributeReward`.
   event PayoutAmountSet(uint256 oldPayoutAmount, uint256 newPayoutAmount);
 
-  /// @notice Emitted when the LST owner updates the fee amount and/or fee collector (fee assessed in
-  /// `claimAndDistributeReward`).
-  event FeeParametersSet(uint256 oldFeeAmount, uint256 newFeeAmount, address oldFeeCollector, address newFeeCollector);
+  /// @notice Emitted when the LST owner updates the reward parameters.
+  event RewardParametersSet(uint256 payoutAmount, uint256 feeBips, address feeCollector);
 
   /// @notice Emitted when the default delegatee is updated by the owner or guardian.
   event DefaultDelegateeSet(address oldDelegatee, address newDelegatee);
@@ -70,6 +69,19 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     address feeCollector
   );
 
+  /// @notice Struct to encapsulate reward-related parameters.
+  struct RewardParameters {
+    /// @notice The amount of stake token that an MEV searcher must provide in order to earn the right to claim the
+    /// UniStaker rewards earned by the LST. Can be set by the LST owner.
+    /// @dev Maximum payout amount (~1.2 Million UNI)
+    uint80 payoutAmount;
+    /// @notice The amount of stake token issued (as stUNI) to the fee collector, expressed in basis points.
+    /// @dev Fee in basis points (1 bips = 0.01%)
+    uint16 feeBips;
+    /// @notice The address that receives the fees (as stUNI) when rewards are distributed.
+    address feeCollector;
+  }
+
   /// @notice Emitted when a user stakes and attributes their staking action to a referrer address.
   event StakedWithAttribution(IUniStaker.DepositIdentifier _depositId, uint256 _amount, address indexed _referrer);
 
@@ -90,14 +102,17 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// @notice Thrown when the LST owner attempts to set invalid fee parameters.
   error UniLst__InvalidFeeParameters();
 
-  /// @notice Thrown when the LST owner attempts to set an invalid payout amount.
-  error UniLst__InvalidPayoutAmount();
-
   /// @notice Thrown by signature-based "onBehalf" methods when a signature is invalid.
   error UniLst__InvalidSignature();
 
   /// @notice Thrown by signature-based "onBehalf" methods when a signature is past its expiry date.
   error UniLst__SignatureExpired();
+
+  /// @notice Thrown when the fee bips exceed the maximum allowed value.
+  error UniLst__FeeBipsExceedMaximum(uint16 feeBips, uint16 maxFeeBips);
+
+  /// @notice Thrown when attempting to set the fee collector to the zero address.
+  error UniLst__FeeCollectorCannotBeZeroAddress();
 
   /// @notice The UniStaker instance in which staked tokens will be deposited to earn rewards.
   IUniStaker public immutable STAKER;
@@ -156,6 +171,9 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// @notice The symbol of the LST token.
   string private SYMBOL;
 
+  /// @notice Maximum allowable fee in basis points (20%).
+  uint16 public constant MAX_FEE_BIPS = 2000;
+
   /// @notice Type hash used when encoding data for `stakeOnBehalf` calls.
   bytes32 public constant STAKE_TYPEHASH =
     keccak256("Stake(address account,uint256 amount,uint256 nonce,uint256 deadline)");
@@ -188,15 +206,8 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// the default delegatee and the guardian address can only be changed by the guardian itself.
   bool public isGuardianControlled;
 
-  /// @notice The amount of stake token that an MEV searcher must provide in order to earn the right to claim the
-  /// UniStaker rewards earned by the LST. Can be set by the LST owner.
-  uint256 public payoutAmount;
-
-  /// @notice The amount of stake token issued (as stUNI) to the fee collector.
-  uint256 public feeAmount;
-
-  /// @notice The address that receives the fees (as stUNI) when rewards are distributed.
-  address public feeCollector;
+  /// @notice Struct to store reward-related parameters.
+  RewardParameters internal rewardParams;
 
   /// @notice Mapping of delegatee address to the delegate's UniLST-created UniStaker deposit identifier. The
   /// delegatee for a given deposit can not change. All LST holders who choose the same delegatee will have their
@@ -223,7 +234,7 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     IUniStaker _staker,
     address _initialDefaultDelegatee,
     address _initialOwner,
-    uint256 _initialPayoutAmount,
+    uint80 _initialPayoutAmount,
     address _initialDelegateeGuardian
   ) Ownable(_initialOwner) EIP712("UniLst", "1") {
     STAKER = _staker;
@@ -233,7 +244,7 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     SYMBOL = _symbol;
 
     _setDefaultDelegatee(_initialDefaultDelegatee);
-    _setPayoutAmount(_initialPayoutAmount);
+    _setRewardParams(_initialPayoutAmount, 0, _initialOwner);
     _setDelegateeGuardian(_initialDelegateeGuardian);
 
     // UNI reverts on failure so it's not necessary to check return value.
@@ -344,6 +355,21 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   function depositIdForHolder(address _holder) external view returns (IUniStaker.DepositIdentifier) {
     HolderState memory _holderState = holderStates[_holder];
     return _calcDepositId(_holderState);
+  }
+
+  /// @notice Returns the current fee amount based on feeBips and payoutAmount.
+  function feeAmount() external view returns (uint256) {
+    return _calcFeeAmount(rewardParams);
+  }
+
+  /// @notice Returns the current fee collector address.
+  function feeCollector() external view returns (address) {
+    return rewardParams.feeCollector;
+  }
+
+  /// @notice Returns the current payout amount.
+  function payoutAmount() external view returns (uint256) {
+    return uint256(rewardParams.payoutAmount);
   }
 
   /// @notice Get the current nonce for an owner
@@ -631,12 +657,15 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// than this, the transaction will revert. This parameter is a last line of defense against the MEV caller losing
   /// funds because they've been frontrun by another searcher.
   function claimAndDistributeReward(address _recipient, uint256 _minExpectedReward) external {
-    uint256 _feeAmount = feeAmount;
+    RewardParameters memory _rewardParams = rewardParams;
+
+    uint256 _feeAmount = _calcFeeAmount(_rewardParams);
+
     Totals memory _totals = totals;
 
     // By increasing the total supply by the amount of tokens that are distributed as part of the reward, the balance
     // of every holder increases proportional to the underlying shares which they hold.
-    uint96 _newTotalSupply = _totals.supply + uint96(payoutAmount); // payoutAmount is assumed safe
+    uint96 _newTotalSupply = _totals.supply + _rewardParams.payoutAmount; // payoutAmount is assumed safe
 
     uint160 _feeShares;
     if (_feeAmount > 0) {
@@ -649,15 +678,15 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
 
       // By issuing these new shares to the `feeCollector` we effectively give the it `feeAmount` of the reward by
       // slightly diluting all other LST holders.
-      holderStates[feeCollector].shares += uint128(_feeShares);
+      holderStates[rewardParams.feeCollector].shares += uint128(_feeShares);
     }
 
     totals = Totals({supply: _newTotalSupply, shares: _totals.shares + _feeShares});
 
     // Transfer stake token to the LST
-    STAKE_TOKEN.transferFrom(msg.sender, address(this), payoutAmount);
+    STAKE_TOKEN.transferFrom(msg.sender, address(this), _rewardParams.payoutAmount);
     // Stake the rewards with the default delegatee
-    STAKER.stakeMore(DEFAULT_DEPOSIT_ID, uint96(payoutAmount));
+    STAKER.stakeMore(DEFAULT_DEPOSIT_ID, _rewardParams.payoutAmount);
     // Claim the reward tokens earned by the LST
     uint256 _rewards = STAKER.claimReward();
     // Ensure rewards distributed meet the claimers expectations; provides protection from frontrunning resulting in
@@ -668,7 +697,9 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     // Transfer the reward tokens to the recipient
     REWARD_TOKEN.transfer(_recipient, _rewards);
 
-    emit RewardDistributed(msg.sender, _recipient, _rewards, payoutAmount, _feeAmount, feeCollector);
+    emit RewardDistributed(
+      msg.sender, _recipient, _rewards, rewardParams.payoutAmount, _feeAmount, rewardParams.feeCollector
+    );
   }
 
   /// @notice Open method which allows anyone to add funds to a UniStaker deposit owned by the LST. These funds are not
@@ -690,31 +721,29 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     emit DepositSubsidized(_depositId, _amount);
   }
 
-  /// @notice Update the payout amount. Must be called by owner.
-  /// @param _newPayoutAmount The value that will be the new payout amount. Must be greater than the fee amount.
-  function setPayoutAmount(uint256 _newPayoutAmount) external {
+  /// @notice Sets the reward parameters including payout amount, fee in bips, and fee collector.
+  /// @param _params The new reward parameters.
+  function setRewardParameters(RewardParameters memory _params) external {
     _checkOwner();
-    _setPayoutAmount(_newPayoutAmount);
+    _setRewardParams(_params.payoutAmount, _params.feeBips, _params.feeCollector);
   }
 
-  /// @notice Update the fee amount and/or the fee collector. Must be called by owner.
-  /// @param _newFeeAmount The amount of the payout amount that is taken as a fee each time
-  /// `claimAndDistributeReward` is called. Must be less than the payoutAmount. Denominated in the stake token.
-  /// @param _newFeeCollector The address that will receive the fees collected when a reward payout occurs. Fees are
-  /// issued in the LST token to this address.
-  function setFeeParameters(uint256 _newFeeAmount, address _newFeeCollector) external {
-    _checkOwner();
-    if (_newFeeAmount > payoutAmount) {
-      revert UniLst__InvalidFeeParameters();
-    }
-    if (_newFeeCollector == address(0)) {
-      revert UniLst__InvalidFeeParameters();
+  /// @notice Internal function to set reward parameters
+  /// @param _payoutAmount The new payout amount
+  /// @param _feeBips The new fee in basis points
+  /// @param _feeCollector The new fee collector address
+  function _setRewardParams(uint80 _payoutAmount, uint16 _feeBips, address _feeCollector) internal {
+    if (_feeBips > MAX_FEE_BIPS) {
+      revert UniLst__FeeBipsExceedMaximum(_feeBips, MAX_FEE_BIPS);
     }
 
-    emit FeeParametersSet(feeAmount, _newFeeAmount, feeCollector, _newFeeCollector);
+    if (_feeCollector == address(0)) {
+      revert UniLst__FeeCollectorCannotBeZeroAddress();
+    }
 
-    feeAmount = _newFeeAmount;
-    feeCollector = _newFeeCollector;
+    rewardParams = RewardParameters({payoutAmount: _payoutAmount, feeBips: _feeBips, feeCollector: _feeCollector});
+
+    emit RewardParametersSet(_payoutAmount, _feeBips, _feeCollector);
   }
 
   /// @notice Update the default delegatee. Can only be called by the delegatee guardian or by the LST owner. Once the
@@ -1073,15 +1102,6 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     return (_senderBalanceDecrease, _receiverBalanceIncrease);
   }
 
-  /// @notice Internal helper method that sets the payout amount and emits an event.
-  function _setPayoutAmount(uint256 _newPayoutAmount) internal {
-    if (_newPayoutAmount < feeAmount) {
-      revert UniLst__InvalidPayoutAmount();
-    }
-    emit PayoutAmountSet(payoutAmount, _newPayoutAmount);
-    payoutAmount = _newPayoutAmount;
-  }
-
   /// @notice Internal helper method that sets the delegatee and emits an event.
   function _setDefaultDelegatee(address _newDelegatee) internal {
     emit DefaultDelegateeSet(defaultDelegatee, _newDelegatee);
@@ -1146,6 +1166,13 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     if (msg.sender == delegateeGuardian && !isGuardianControlled) {
       isGuardianControlled = true;
     }
+  }
+
+  /// @notice Internal helper function to calculate the fee amount based on the payout amount and fee percentage.
+  /// @param _rewardParams The reward parameters containing payout amount and fee percentage.
+  /// @return The calculated fee amount.
+  function _calcFeeAmount(RewardParameters memory _rewardParams) internal pure returns (uint256) {
+    return (uint256(_rewardParams.payoutAmount) * uint256(_rewardParams.feeBips)) / 1e4;
   }
 
   /// @notice Internal convenience helper for comparing the equality of two UniStaker DepositIdentifiers.

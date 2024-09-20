@@ -100,12 +100,12 @@ contract Wrap is WrappedUniLstTest {
   function testFuzz_TransfersLstTokensFromHolderToWrapper(
     address _holder,
     uint256 _stakeAmount,
-    uint256 _rewardAmount,
+    uint80 _rewardAmount,
     uint256 _wrapAmount
   ) public {
     _assumeSafeWrapHolder(_holder);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
-    _rewardAmount = _boundToReasonableStakeTokenAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
     _mintAndStake(_holder, _stakeAmount);
     _distributeReward(_rewardAmount);
     // As the only staker, the holder's balance now includes all the rewards. They can wrap some amount up to their
@@ -126,12 +126,12 @@ contract Wrap is WrappedUniLstTest {
   function testFuzz_MintsNumberOfWrappedTokensEqualToUnderlyingLstShares(
     address _holder,
     uint256 _stakeAmount,
-    uint256 _rewardAmount,
+    uint80 _rewardAmount,
     uint256 _wrapAmount
   ) public {
     _assumeSafeWrapHolder(_holder);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
-    _rewardAmount = _boundToReasonableStakeTokenAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
     _mintAndStake(_holder, _stakeAmount);
     _distributeReward(_rewardAmount);
     _wrapAmount = bound(_wrapAmount, 1, _stakeAmount + _rewardAmount);
@@ -146,12 +146,12 @@ contract Wrap is WrappedUniLstTest {
   function testFuzz_ReturnsTheAmountOfTheWrappedTokenThatWasMinted(
     address _holder,
     uint256 _stakeAmount,
-    uint256 _rewardAmount,
+    uint80 _rewardAmount,
     uint256 _wrapAmount
   ) public {
     _assumeSafeWrapHolder(_holder);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
-    _rewardAmount = _boundToReasonableStakeTokenAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
     _mintAndStake(_holder, _stakeAmount);
     _distributeReward(_rewardAmount);
     _wrapAmount = bound(_wrapAmount, 1, _stakeAmount + _rewardAmount);
@@ -162,15 +162,12 @@ contract Wrap is WrappedUniLstTest {
     assertEq(_returnValue, wrappedLst.balanceOf(_holder));
   }
 
-  function testFuzz_EmitsAWrappedEvent(
-    address _holder,
-    uint256 _stakeAmount,
-    uint256 _rewardAmount,
-    uint256 _wrapAmount
-  ) public {
+  function testFuzz_EmitsAWrappedEvent(address _holder, uint256 _stakeAmount, uint80 _rewardAmount, uint256 _wrapAmount)
+    public
+  {
     _assumeSafeWrapHolder(_holder);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
-    _rewardAmount = _boundToReasonableStakeTokenAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
     _mintAndStake(_holder, _stakeAmount);
     _distributeReward(_rewardAmount);
     _wrapAmount = bound(_wrapAmount, 1, _stakeAmount + _rewardAmount);
@@ -182,10 +179,10 @@ contract Wrap is WrappedUniLstTest {
     _wrap(_holder, _wrapAmount);
   }
 
-  function testFuzz_RevertIf_TheAmountToWrapIsZero(address _holder, uint256 _stakeAmount, uint256 _rewardAmount) public {
+  function testFuzz_RevertIf_TheAmountToWrapIsZero(address _holder, uint256 _stakeAmount, uint80 _rewardAmount) public {
     _assumeSafeWrapHolder(_holder);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
-    _rewardAmount = _boundToReasonableStakeTokenAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
     _mintAndStake(_holder, _stakeAmount);
     _distributeReward(_rewardAmount);
     _approveWrapperToTransferLstToken(_holder);
@@ -199,13 +196,13 @@ contract Unwrap is WrappedUniLstTest {
   function testFuzz_TransfersLstTokensBackToTheHolder(
     address _holder,
     uint256 _stakeAmount,
-    uint256 _rewardAmount,
+    uint80 _rewardAmount,
     uint256 _wrapAmount,
     uint256 _unwrapAmount
   ) public {
     _assumeSafeWrapHolder(_holder);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
-    _rewardAmount = _boundToReasonableStakeTokenAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
     _mintAndStake(_holder, _stakeAmount);
     _distributeReward(_rewardAmount);
     _wrapAmount = bound(_wrapAmount, 0.0001e18, _stakeAmount + _rewardAmount);
@@ -228,13 +225,13 @@ contract Unwrap is WrappedUniLstTest {
   function testFuzz_BurnsUnwrappedTokensFromHoldersWrappedLstBalance(
     address _holder,
     uint256 _stakeAmount,
-    uint256 _rewardAmount,
+    uint80 _rewardAmount,
     uint256 _wrapAmount,
     uint256 _unwrapAmount
   ) public {
     _assumeSafeWrapHolder(_holder);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
-    _rewardAmount = _boundToReasonableStakeTokenAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
     _mintAndStake(_holder, _stakeAmount);
     _distributeReward(_rewardAmount);
     _wrapAmount = bound(_wrapAmount, 0.0001e18, _stakeAmount + _rewardAmount);
@@ -252,13 +249,13 @@ contract Unwrap is WrappedUniLstTest {
   function testFuzz_ReturnsTheAmountOfLstTokenThatWasUnwrapped(
     address _holder,
     uint256 _stakeAmount,
-    uint256 _rewardAmount,
+    uint80 _rewardAmount,
     uint256 _wrapAmount,
     uint256 _unwrapAmount
   ) public {
     _assumeSafeWrapHolder(_holder);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
-    _rewardAmount = _boundToReasonableStakeTokenAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
     _mintAndStake(_holder, _stakeAmount);
     _distributeReward(_rewardAmount);
     _wrapAmount = bound(_wrapAmount, 0.0001e18, _stakeAmount + _rewardAmount);
@@ -277,13 +274,13 @@ contract Unwrap is WrappedUniLstTest {
   function testFuzz_EmitsAnUnwrappedEvent(
     address _holder,
     uint256 _stakeAmount,
-    uint256 _rewardAmount,
+    uint80 _rewardAmount,
     uint256 _wrapAmount,
     uint256 _unwrapAmount
   ) public {
     _assumeSafeWrapHolder(_holder);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
-    _rewardAmount = _boundToReasonableStakeTokenAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
     _mintAndStake(_holder, _stakeAmount);
     _distributeReward(_rewardAmount);
     _wrapAmount = bound(_wrapAmount, 0.0001e18, _stakeAmount + _rewardAmount);
@@ -301,7 +298,7 @@ contract Unwrap is WrappedUniLstTest {
   function testFuzz_RevertIf_HolderHasInsufficientBalanceToUnwrap(
     address _holder,
     uint256 _stakeAmount,
-    uint256 _rewardAmount,
+    uint80 _rewardAmount,
     uint256 _wrapAmount,
     uint256 _unwrapAmount
   ) public {
@@ -309,7 +306,7 @@ contract Unwrap is WrappedUniLstTest {
     address _otherHolder = makeAddr("Other Holder");
     vm.assume(_holder != _otherHolder);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
-    _rewardAmount = _boundToReasonableStakeTokenAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
     _mintAndStake(_holder, _stakeAmount);
 
     // Another holder wraps a large number of tokens. This is to make sure the revert is because the revert we are
@@ -340,12 +337,12 @@ contract Unwrap is WrappedUniLstTest {
   function testFuzz_RevertIf_TheAmountToUnwrapIsZero(
     address _holder,
     uint256 _stakeAmount,
-    uint256 _rewardAmount,
+    uint80 _rewardAmount,
     uint256 _wrapAmount
   ) public {
     _assumeSafeWrapHolder(_holder);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
-    _rewardAmount = _boundToReasonableStakeTokenAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
     _mintAndStake(_holder, _stakeAmount);
     _distributeReward(_rewardAmount);
     _wrapAmount = bound(_wrapAmount, 0.0001e18, _stakeAmount + _rewardAmount);
