@@ -1134,7 +1134,7 @@ contract UniLstGasReport is UniLstTest, GasReport {
       _stakeAmount = 100e18;
       _rewardAmount = 5000e18;
       uint256 _payoutAmount = lst.payoutAmount();
-      uint16 _feeBips = 1e4;
+      uint16 _feeBips = 1e3;
       address _claimer = makeScenarioAddr("Claimer");
       address _recipient = makeScenarioAddr("Recipient");
       address _feeCollector = makeScenarioAddr("Fee Collector");

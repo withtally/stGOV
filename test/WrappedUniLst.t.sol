@@ -105,7 +105,7 @@ contract Wrap is WrappedUniLstTest {
   ) public {
     _assumeSafeWrapHolder(_holder);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
-    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableStakeTokenReward(_rewardAmount);
     _mintAndStake(_holder, _stakeAmount);
     _distributeReward(_rewardAmount);
     // As the only staker, the holder's balance now includes all the rewards. They can wrap some amount up to their
@@ -116,11 +116,11 @@ contract Wrap is WrappedUniLstTest {
     _wrap(_holder, _wrapAmount);
 
     uint256 _expectedHolderLstBalance = _stakeAmount + _rewardAmount - _wrapAmount;
-    // TODO: fix these tests when the wrapper TODOs are fixed
-    assertApproxEqAbs(lst.balanceOf(_holder), _expectedHolderLstBalance, ACCEPTABLE_DELTA);
-    assertGe(lst.balanceOf(_holder), _expectedHolderLstBalance);
-    assertApproxEqAbs(lst.balanceOf(address(wrappedLst)), _wrapAmount, ACCEPTABLE_DELTA);
-    assertLe(lst.balanceOf(address(wrappedLst)), _wrapAmount);
+
+    assertApproxEqAbs(lst.balanceOf(_holder), _expectedHolderLstBalance, 1);
+    assertLe(lst.balanceOf(_holder), _expectedHolderLstBalance);
+    assertApproxEqAbs(lst.balanceOf(address(wrappedLst)), _wrapAmount, 1);
+    assertGe(lst.balanceOf(address(wrappedLst)), _wrapAmount);
   }
 
   function testFuzz_MintsNumberOfWrappedTokensEqualToUnderlyingLstShares(
@@ -131,7 +131,7 @@ contract Wrap is WrappedUniLstTest {
   ) public {
     _assumeSafeWrapHolder(_holder);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
-    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableStakeTokenReward(_rewardAmount);
     _mintAndStake(_holder, _stakeAmount);
     _distributeReward(_rewardAmount);
     _wrapAmount = bound(_wrapAmount, 1, _stakeAmount + _rewardAmount);
@@ -151,7 +151,7 @@ contract Wrap is WrappedUniLstTest {
   ) public {
     _assumeSafeWrapHolder(_holder);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
-    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableStakeTokenReward(_rewardAmount);
     _mintAndStake(_holder, _stakeAmount);
     _distributeReward(_rewardAmount);
     _wrapAmount = bound(_wrapAmount, 1, _stakeAmount + _rewardAmount);
@@ -167,7 +167,7 @@ contract Wrap is WrappedUniLstTest {
   {
     _assumeSafeWrapHolder(_holder);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
-    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableStakeTokenReward(_rewardAmount);
     _mintAndStake(_holder, _stakeAmount);
     _distributeReward(_rewardAmount);
     _wrapAmount = bound(_wrapAmount, 1, _stakeAmount + _rewardAmount);
@@ -182,7 +182,7 @@ contract Wrap is WrappedUniLstTest {
   function testFuzz_RevertIf_TheAmountToWrapIsZero(address _holder, uint256 _stakeAmount, uint80 _rewardAmount) public {
     _assumeSafeWrapHolder(_holder);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
-    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableStakeTokenReward(_rewardAmount);
     _mintAndStake(_holder, _stakeAmount);
     _distributeReward(_rewardAmount);
     _approveWrapperToTransferLstToken(_holder);
@@ -202,7 +202,7 @@ contract Unwrap is WrappedUniLstTest {
   ) public {
     _assumeSafeWrapHolder(_holder);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
-    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableStakeTokenReward(_rewardAmount);
     _mintAndStake(_holder, _stakeAmount);
     _distributeReward(_rewardAmount);
     _wrapAmount = bound(_wrapAmount, 0.0001e18, _stakeAmount + _rewardAmount);
@@ -218,8 +218,8 @@ contract Unwrap is WrappedUniLstTest {
 
     _unwrap(_holder, _unwrapAmount);
 
-    assertLe(lst.balanceOf(_holder), _holderExpectedBalance);
-    assertApproxEqAbs(lst.balanceOf(_holder), _holderExpectedBalance, ACCEPTABLE_DELTA);
+    assertApproxEqAbs(lst.balanceOf(_holder), _holderExpectedBalance, 1);
+    assertGe(lst.balanceOf(_holder), _holderExpectedBalance);
   }
 
   function testFuzz_BurnsUnwrappedTokensFromHoldersWrappedLstBalance(
@@ -231,7 +231,7 @@ contract Unwrap is WrappedUniLstTest {
   ) public {
     _assumeSafeWrapHolder(_holder);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
-    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableStakeTokenReward(_rewardAmount);
     _mintAndStake(_holder, _stakeAmount);
     _distributeReward(_rewardAmount);
     _wrapAmount = bound(_wrapAmount, 0.0001e18, _stakeAmount + _rewardAmount);
@@ -255,7 +255,7 @@ contract Unwrap is WrappedUniLstTest {
   ) public {
     _assumeSafeWrapHolder(_holder);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
-    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableStakeTokenReward(_rewardAmount);
     _mintAndStake(_holder, _stakeAmount);
     _distributeReward(_rewardAmount);
     _wrapAmount = bound(_wrapAmount, 0.0001e18, _stakeAmount + _rewardAmount);
@@ -267,8 +267,8 @@ contract Unwrap is WrappedUniLstTest {
     uint256 _priorLstBalance = lst.balanceOf(_holder);
     uint256 _returnValue = _unwrap(_holder, _unwrapAmount);
 
-    assertApproxEqAbs(lst.balanceOf(_holder), _priorLstBalance + _returnValue, ACCEPTABLE_DELTA);
-    assertLe(lst.balanceOf(_holder), _priorLstBalance + _returnValue);
+    assertApproxEqAbs(lst.balanceOf(_holder), _priorLstBalance + _returnValue, 1);
+    assertGe(lst.balanceOf(_holder), _priorLstBalance + _returnValue);
   }
 
   function testFuzz_EmitsAnUnwrappedEvent(
@@ -280,7 +280,7 @@ contract Unwrap is WrappedUniLstTest {
   ) public {
     _assumeSafeWrapHolder(_holder);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
-    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableStakeTokenReward(_rewardAmount);
     _mintAndStake(_holder, _stakeAmount);
     _distributeReward(_rewardAmount);
     _wrapAmount = bound(_wrapAmount, 0.0001e18, _stakeAmount + _rewardAmount);
@@ -306,7 +306,7 @@ contract Unwrap is WrappedUniLstTest {
     address _otherHolder = makeAddr("Other Holder");
     vm.assume(_holder != _otherHolder);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
-    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableStakeTokenReward(_rewardAmount);
     _mintAndStake(_holder, _stakeAmount);
 
     // Another holder wraps a large number of tokens. This is to make sure the revert is because the revert we are
@@ -342,7 +342,7 @@ contract Unwrap is WrappedUniLstTest {
   ) public {
     _assumeSafeWrapHolder(_holder);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
-    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableStakeTokenReward(_rewardAmount);
     _mintAndStake(_holder, _stakeAmount);
     _distributeReward(_rewardAmount);
     _wrapAmount = bound(_wrapAmount, 0.0001e18, _stakeAmount + _rewardAmount);

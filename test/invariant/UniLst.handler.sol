@@ -10,6 +10,7 @@ import {DepositIdSet, LibDepositIdSet} from "./DepositIdSet.sol";
 import {UniLst} from "src/UniLst.sol";
 import {IUniStaker} from "src/interfaces/IUniStaker.sol";
 import {IERC20} from "openzeppelin/token/ERC20/IERC20.sol";
+import {IUni} from "src/interfaces/IUni.sol";
 
 contract UniLstHandler is CommonBase, StdCheats, StdUtils {
   using LibAddressSet for AddressSet;
@@ -18,7 +19,7 @@ contract UniLstHandler is CommonBase, StdCheats, StdUtils {
   // system setup
   UniLst public lst;
   IUniStaker public staker;
-  IERC20 public stakeToken;
+  IUni public stakeToken;
   IERC20 public rewardToken;
   address public admin;
   mapping(bytes32 => uint256) public calls;
@@ -45,7 +46,7 @@ contract UniLstHandler is CommonBase, StdCheats, StdUtils {
   constructor(UniLst _uniLst) {
     lst = _uniLst;
     staker = _uniLst.STAKER();
-    stakeToken = IERC20(address(staker.STAKE_TOKEN()));
+    stakeToken = IUni(address(staker.STAKE_TOKEN()));
     rewardToken = IERC20(address(staker.REWARD_TOKEN()));
     admin = staker.admin();
     depositIds.add(lst.DEFAULT_DEPOSIT_ID());
@@ -72,7 +73,7 @@ contract UniLstHandler is CommonBase, StdCheats, StdUtils {
     vm.assume(_depositor != address(lst.WITHDRAW_GATE()));
     holders.add(_depositor);
 
-    _amount = uint96(_bound(_amount, 0, 100_000_000e18));
+    _amount = uint96(_bound(_amount, 0.1e18, 100_000_000e18));
 
     // assume user has stake amount
     _mintStakeToken(_depositor, _amount);
@@ -119,14 +120,26 @@ contract UniLstHandler is CommonBase, StdCheats, StdUtils {
     vm.startPrank(_holder);
     lst.transfer(_to, _amount);
     vm.stopPrank();
-    uint256 _holderBalanceAfter = lst.balanceOf(_holder);
-    uint256 _toBalanceAfter = lst.balanceOf(_to);
-    if (
-      _holderBalance - _holderBalanceAfter // decrease in sender balance...
-        < _toBalanceAfter - _toBalance // is less than increase in receiver balance...
-    ) {
+
+    // Calculate the difference between the amount the receiver's balance increased and the
+    // sender's balance decreased. If not for truncation, this would be zero, because the
+    // receiver's balance would increase by exactly as much as the sender's decreased. Because of
+    // truncation, we know the difference may be up to 1 wei, assuming the total shares are greater
+    // than the total supply.
+    uint256 _holderBalanceDecrease = _holderBalance - lst.balanceOf(_holder);
+    uint256 _toBalanceIncrease = lst.balanceOf(_to) - _toBalance;
+    uint256 _balanceChangeDiff;
+    if (_holderBalanceDecrease > _toBalanceIncrease) {
+      _balanceChangeDiff = _holderBalanceDecrease - _toBalanceIncrease;
+    } else {
+      _balanceChangeDiff = _toBalanceIncrease - _holderBalanceDecrease;
+    }
+
+    // The difference between the sender's decrease and the receiver's increase should not be more than 1 wei
+    if (_balanceChangeDiff > 1) {
       transferInvariantBroken = true;
     }
+
     holders.add(_to);
   }
 
@@ -178,6 +191,19 @@ contract UniLstHandler is CommonBase, StdCheats, StdUtils {
     stakeToken.approve(address(lst), _payoutAmount);
     lst.claimAndDistributeReward(_recipient, _minExpectedAmount);
     vm.stopPrank();
+
+    // If distributing this reward would result in the raw total supply being greater than the raw
+    // total shares, then we don't allow it. Because the total shares has a scale factor applied,
+    // this scenario can only occur in extreme circumstances that are unlikely in the real world.
+    // For example, if only a fraction of a stake token is stake, while billions of reward tokens
+    // are distributed as rewards, raw supply may exceed raw shares. However, when this assumption
+    // holds, we can make stricter assumptions about the nature of rounding errors. In particular,
+    // we can be mathematically certain that errors introduced by truncation will be 1 wei or less.
+    // Given this, we apply this constraint here to make the rest of our invariant tests stricter.
+    // It might be worth considering if a different set of invariants, that don't apply this
+    // constraint, should also be developed.
+    vm.assume(lst.totalShares() > lst.totalSupply());
+
     ghost_rewardsClaimedAndDistributed += _payoutAmount;
   }
 

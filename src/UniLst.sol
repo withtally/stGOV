@@ -142,8 +142,7 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// @param shares The total shares that have been issued to all token holders, representing their proportional claim
   /// on the total supply.
   /// @dev The data types chosen for each parameter are meant to enable the data to pack into a single slot, while
-  /// ensuring
-  /// that real values occurring in the system are safe from overflow.
+  /// ensuring that real values occurring in the system are safe from overflow.
   struct Totals {
     uint96 supply;
     uint160 shares;
@@ -288,7 +287,7 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// @return The quantity of shares that is worth the requested quantity of stake token.
   function sharesForStake(uint256 _amount) external view returns (uint256) {
     Totals memory _totals = totals;
-    return _calcSharesForStake(_amount, _totals);
+    return _calcSharesForStakeUp(_amount, _totals);
   }
 
   /// @notice Returns the quantity of stake tokens that a given number of shares is valued at. In other words,
@@ -502,7 +501,7 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
 
   /// @notice Destroy liquid staked tokens, to receive the underlying token in exchange, on behalf of a user. Use a
   /// signature to validate the user's  intent. Tokens are removed first from the default deposit, if any are present,
-  // then from holder's specified deposit if any are needed.
+  /// then from holder's specified deposit if any are needed.
   /// @param _account The address on behalf of whom the unstaking is being performed.
   /// @param _amount The amount of tokens to unstake.
   /// @param _nonce The nonce being consumed by this operation.
@@ -646,7 +645,7 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   ///
   /// Note that `payoutAmount` may be changed by the admin (governance). Any proposal that changes this amount is
   /// expected to be subject to the governance process, including a timelocked execution, and so it's unlikely that a
-  // caller would be surprised by a change in this value. Still, callers should be aware of the edge case where:
+  /// caller would be surprised by a change in this value. Still, callers should be aware of the edge case where:
   /// 1. The caller grants a higher-than-necessary payout token approval to this LST.
   /// 2. Caller's claimAndDistributeReward transaction is in the mempool.
   /// 3. The payoutAmount is changed.
@@ -777,6 +776,23 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     return (_amount * _totals.shares) / _totals.supply;
   }
 
+  /// @notice Internal helper method that takes an amount of stake tokens and metadata representing the global state of
+  /// the LST and returns the quantity of shares that is worth the requested quantity of stake token, __rounded up__.
+  /// All data for the calculation is provided in memory and the calculation is performed there, making it a pure
+  /// function.
+  /// @param _amount The quantity of stake token that will be converted to a number of shares.
+  /// @param _totals The metadata representing current global conditions.
+  /// @return The quantity of shares that is worth the provided quantity of stake token, __rounded up__.
+  function _calcSharesForStakeUp(uint256 _amount, Totals memory _totals) internal pure returns (uint256) {
+    uint256 _result = _calcSharesForStake(_amount, _totals);
+
+    if (mulmod(_amount, _totals.shares, _totals.supply) > 0) {
+      _result += 1;
+    }
+
+    return _result;
+  }
+
   /// @notice Internal helper method that takes an amount of shares, and metadata representing the global state of
   /// the LST, and returns the quantity of stake tokens that the requested shares are worth. All data for the
   /// calculation is provided in memory and the calculation is performed there, making it a pure function.
@@ -839,9 +855,6 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     }
 
     uint256 _delegatedBalance = _holderState.balanceCheckpoint;
-    if (_delegatedBalance > _balanceOf) {
-      _delegatedBalance = _balanceOf;
-    }
     // This is the number of tokens in the default pool that the account has claim to
     uint256 _undelegatedBalance = _balanceOf - _delegatedBalance;
 
@@ -899,7 +912,8 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     _holderState.shares = _holderState.shares + uint128(_newShares);
     uint256 _balanceDiff = _calcBalanceOf(_holderState, _totals) - _initialBalance;
     if (!_isSameDepositId(_calcDepositId(_holderState), DEFAULT_DEPOSIT_ID)) {
-      _holderState.balanceCheckpoint = _holderState.balanceCheckpoint + uint96(_balanceDiff);
+      _holderState.balanceCheckpoint =
+        _min(_holderState.balanceCheckpoint + uint96(_amount), uint96(_calcBalanceOf(_holderState, _totals)));
     }
 
     // Write updated states back to storage.
@@ -926,13 +940,8 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     }
 
     // Decreases the holder's balance by the amount being withdrawn
-    uint256 _sharesDestroyed = _calcSharesForStake(_amount, _totals);
+    uint256 _sharesDestroyed = _calcSharesForStakeUp(_amount, _totals);
     _holderState.shares -= uint128(_sharesDestroyed);
-
-    // By re-calculating amount as the difference between the initial and current balance, we ensure the
-    // amount unstaked is reflective of the actual change in balance. This means the amount unstaked might end up being
-    // less than the user requested by a small amount.
-    _amount = _initialBalanceOf - _calcBalanceOf(_holderState, _totals);
 
     // cast is safe because we've validated user has sufficient balance
     _totals.supply = _totals.supply - uint96(_amount);
@@ -940,9 +949,6 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     _totals.shares = _totals.shares - uint160(_sharesDestroyed);
 
     uint256 _delegatedBalance = _holderState.balanceCheckpoint;
-    if (_delegatedBalance > _initialBalanceOf) {
-      _delegatedBalance = _initialBalanceOf;
-    }
     uint256 _undelegatedBalance = _initialBalanceOf - _delegatedBalance;
     uint256 _undelegatedBalanceToWithdraw;
 
@@ -962,6 +968,9 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     if (_undelegatedBalanceToWithdraw > 0) {
       STAKER.withdraw(DEFAULT_DEPOSIT_ID, uint96(_undelegatedBalanceToWithdraw));
     }
+
+    // Ensure the holder's balance checkpoint is updated if it has decreased due to truncation.
+    _holderState.balanceCheckpoint = _min(_holderState.balanceCheckpoint, uint96(_calcBalanceOf(_holderState, _totals)));
 
     // Write updated states back to storage.
     totals = _totals;
@@ -1004,9 +1013,6 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     uint256 _senderInitBalance = _calcBalanceOf(_senderState, _totals);
     uint256 _receiverInitBalance = _calcBalanceOf(_receiverState, _totals);
     uint256 _senderDelegatedBalance = _senderState.balanceCheckpoint;
-    if (_senderDelegatedBalance > _senderInitBalance) {
-      _senderDelegatedBalance = _senderInitBalance;
-    }
     uint256 _senderUndelegatedBalance = _senderInitBalance - _senderDelegatedBalance;
 
     if (_value > _senderInitBalance) {
@@ -1015,23 +1021,12 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
 
     // Move underlying shares.
     {
-      uint256 _shares = _calcSharesForStake(_value, _totals);
+      uint256 _shares = _calcSharesForStakeUp(_value, _totals);
       _senderState.shares -= uint128(_shares);
       _receiverState.shares += uint128(_shares);
     }
 
-    // Due to truncation, it is possible for the amount which the sender's balance decreases to be different from the
-    // amount by which the receiver's balance increases.
-    uint256 _senderBalanceDecrease = _senderInitBalance - _calcBalanceOf(_senderState, _totals);
     uint256 _receiverBalanceIncrease = _calcBalanceOf(_receiverState, _totals) - _receiverInitBalance;
-
-    // To protect the solvency of each underlying Staker deposit, we want to ensure that the sender's balance
-    // decreases by at least as much as the receiver's increases. Therefore, if this is not the case, we shave shares
-    // from the sender until such point as it is.
-    while (_receiverBalanceIncrease > _senderBalanceDecrease) {
-      _senderState.shares -= 1;
-      _senderBalanceDecrease = _senderInitBalance - _calcBalanceOf(_senderState, _totals);
-    }
 
     // Knowing the sender's balance has decreased by at least as much as the receiver's has increased, we now base the
     // calculation of how much to move between deposits on the greater number, i.e. the sender's decrease. However,
@@ -1041,7 +1036,7 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     // we've ensured the solvency of each underlying Staker deposit.
 
     if (!_isSameDepositId(_calcDepositId(_receiverState), DEFAULT_DEPOSIT_ID)) {
-      _receiverState.balanceCheckpoint += uint96(_receiverBalanceIncrease);
+      _receiverState.balanceCheckpoint += uint96(_value);
     }
     emit Transfer(_sender, _receiver, _value);
 
@@ -1058,17 +1053,17 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
       // Write data back to storage once.
       holderStates[_senderRescoped] = _senderState;
       holderStates[_receiverRescoped] = _receiverState;
-      return (_senderBalanceDecrease, _receiverBalanceIncrease);
+      return (_value, _receiverBalanceIncrease);
     }
 
     uint256 _undelegatedBalanceToWithdraw;
     uint256 _delegatedBalanceToWithdraw;
 
-    if (_senderBalanceDecrease > _senderUndelegatedBalance) {
+    if (_value > _senderUndelegatedBalance) {
       // Since the amount needed is more than the full undelegated balance, we'll withdraw all of it, plus some from
       // the delegated balance.
       _undelegatedBalanceToWithdraw = _senderUndelegatedBalance;
-      _delegatedBalanceToWithdraw = _senderBalanceDecrease - _undelegatedBalanceToWithdraw;
+      _delegatedBalanceToWithdraw = _value - _undelegatedBalanceToWithdraw;
       _senderState.balanceCheckpoint = uint96(_senderDelegatedBalance - _delegatedBalanceToWithdraw);
 
       if (_isSameDepositId(_calcDepositId(_receiverState), _calcDepositId(_senderState))) {
@@ -1080,8 +1075,11 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
       }
     } else {
       // Since the amount is less than or equal to the undelegated balance, we'll source all of it from said balance.
-      _undelegatedBalanceToWithdraw = _senderBalanceDecrease;
+      _undelegatedBalanceToWithdraw = _value;
     }
+
+    // Ensure the sender's balance checkpoint is updated if it has decreased due to truncation.
+    _senderState.balanceCheckpoint = _min(_senderState.balanceCheckpoint, uint96(_calcBalanceOf(_senderState, _totals)));
 
     // Write data back to storage once.
     holderStates[_senderRescoped] = _senderState;
@@ -1099,7 +1097,7 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
         _calcDepositId(_receiverState), uint96(_delegatedBalanceToWithdraw + _undelegatedBalanceToWithdraw)
       );
     }
-    return (_senderBalanceDecrease, _receiverBalanceIncrease);
+    return (_value, _receiverBalanceIncrease);
   }
 
   /// @notice Internal helper method that sets the delegatee and emits an event.
@@ -1192,5 +1190,10 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// @return The uint32 representation of the DepositIdentifier
   function _depositIdToUInt32(IUniStaker.DepositIdentifier _depositId) private pure returns (uint32) {
     return SafeCast.toUint32(IUniStaker.DepositIdentifier.unwrap(_depositId));
+  }
+
+  /// @notice Internal helper that returns the lesser of the two parameters passed.
+  function _min(uint96 _a, uint96 _b) internal pure returns (uint96) {
+    return (_a < _b) ? _a : _b;
   }
 }

@@ -29,12 +29,20 @@ contract UniLstTest is UnitTestBase, PercentAssertions, TestHelpers, Eip712Helpe
   string tokenName = "Staked Uni";
   string tokenSymbol = "stUni";
 
-  // The error tolerance caused by rounding acceptable in certain test cases, i.e. 1x10^-13 UNI,
-  // or 10 quadrillionths of a UNI.
-  uint256 constant ACCEPTABLE_DELTA = 0.00000000000001e18;
+  // The maximum single reward that should be distributed—denominated in the stake token—to the LST in various tests.
+  // For UNI, 1.2 Million UNI represents approx. $10 Million at current prices, and is thus well above realistic
+  // reward values.
+  uint256 constant MAX_STAKE_TOKEN_REWARD_DISTRIBUTION = 1_200_000e18;
+
+  // We cache this value in setUp() to avoid slowing down tests by fetching it in each call.
+  uint256 SHARE_SCALE_FACTOR;
 
   function setUp() public virtual override {
     super.setUp();
+    require(
+      MAX_STAKE_TOKEN_REWARD_DISTRIBUTION < type(uint80).max,
+      "Invalid constant selected for max stake token reward distribution"
+    );
     lstOwner = makeAddr("LST Owner");
 
     // UniStaker contracts from bytecode to avoid compiler conflicts.
@@ -56,6 +64,9 @@ contract UniLstTest is UnitTestBase, PercentAssertions, TestHelpers, Eip712Helpe
     withdrawGate = lst.WITHDRAW_GATE();
     vm.prank(lstOwner);
     withdrawGate.setDelay(1 hours);
+
+    // Cache for use throughout tests.
+    SHARE_SCALE_FACTOR = lst.SHARE_SCALE_FACTOR();
   }
 
   function __dumpGlobalState() public view {
@@ -110,19 +121,33 @@ contract UniLstTest is UnitTestBase, PercentAssertions, TestHelpers, Eip712Helpe
     vm.assume(_expiry > block.timestamp + 2);
   }
 
-  function _boundToReasonableRewardTokenAmount(uint256 _amount) internal pure returns (uint256 _boundedAmount) {
-    // Bound to within 1/1,000,000th of an ETH and >2 times the current total supply
-    _boundedAmount = bound(_amount, 0.000001e18, 250_000_000e18);
-  }
-
-  function _boundToReasonableRewardAmount(uint256 _amount) internal pure returns (uint80) {
+  // Bound to a reasonable value for the amount of the reward token that should be distributed in the underlying
+  // staker implementation. For UniStaker, this is a quantity of ETH.
+  function _boundToReasonableRewardTokenAmount(uint256 _amount) internal pure returns (uint80) {
     // Bound to within 1/1,000,000th of an ETH and the maximum value of uint80
     return uint80(bound(_amount, 0.000001e18, type(uint80).max));
   }
 
-  function _boundToReasonableStakeTokenAmount(uint256 _amount) internal pure returns (uint256 _boundedAmount) {
-    // Bound to within 1/10,000th of a UNI and 4 times the current total supply of UNI
-    _boundedAmount = uint256(bound(_amount, 0.0001e18, 2_000_000_000e18));
+  // Bound to a reasonable value for the amount of stake token. This could be used for a value to be staked,
+  // transferred, or withdrawn. For stake token rewards, use `_boundToReasonableStakeTokenReward` instead.
+  function _boundToReasonableStakeTokenAmount(uint256 _amount) internal view returns (uint256 _boundedAmount) {
+    // Our assumptions around the magnitude of errors caused by truncation assume that the raw total supply is
+    // always less than the raw total shares. Since the total shares has a large scale factor applied, it is virtually
+    // impossible for this not to be the case, unless huge rewards are distributed while a tiny amount of tokens
+    // have been staked. To avoid hitting these exceptionally unlikely cases in fuzz tests, we calculate the minimum
+    // amount of stake tokens here based on the upper bound of the stake token reward amount and the scale factor
+    // of the staker. We apply a fudge-factor of 3x to this value for tests that might include multiple stake, transfer
+    // and withdraw operations.
+    uint256 _minStakeAmount = 3 * (MAX_STAKE_TOKEN_REWARD_DISTRIBUTION / SHARE_SCALE_FACTOR);
+    // Upper bound is 4x the current total supply of UNI
+    _boundedAmount = uint256(bound(_amount, _minStakeAmount, 2_000_000_000e18));
+  }
+
+  // Bound to a reasonable value for the amount of stake token distributed to the LST as rewards. This should be used
+  // in tests for stake token denominated rewards.
+  function _boundToReasonableStakeTokenReward(uint256 _amount) internal pure returns (uint80 _boundedAmount) {
+    // Lower bound is 1/10,000th of a UNI
+    _boundedAmount = uint80(bound(_amount, 0.00001e18, MAX_STAKE_TOKEN_REWARD_DISTRIBUTION));
   }
 
   function _boundToValidPrivateKey(uint256 _privateKey) internal pure returns (uint256) {
@@ -207,9 +232,9 @@ contract UniLstTest is UnitTestBase, PercentAssertions, TestHelpers, Eip712Helpe
     _updateDelegateeAndStakeWithAttribution(_holder, _amount, _delegatee, _referrer);
   }
 
-  function _unstake(address _holder, uint256 _amount) internal {
+  function _unstake(address _holder, uint256 _amount) internal returns (uint256) {
     vm.prank(_holder);
-    lst.unstake(_amount);
+    return lst.unstake(_amount);
   }
 
   function _setRewardParameters(uint80 _payoutAmount, uint16 _feeBips, address _feeCollector) internal {
@@ -490,7 +515,7 @@ contract UpdateDeposit is UniLstTest {
     _assumeSafeDelegatee(_newDelegatee);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
     _mintUpdateDelegateeAndStake(_holder, _stakeAmount, _initialDelegatee);
-    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableStakeTokenReward(_rewardAmount);
     _distributeReward(_rewardAmount);
     IUniStaker.DepositIdentifier _newDepositId = lst.fetchOrInitializeDepositForDelegatee(_newDelegatee);
 
@@ -520,7 +545,7 @@ contract UpdateDeposit is UniLstTest {
     _assumeSafeDelegatee(_newDelegatee);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
     _mintAndStake(_holder, _stakeAmount);
-    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableStakeTokenReward(_rewardAmount);
     _distributeReward(_rewardAmount);
     IUniStaker.DepositIdentifier _newDepositId = lst.fetchOrInitializeDepositForDelegatee(_newDelegatee);
 
@@ -548,7 +573,7 @@ contract UpdateDeposit is UniLstTest {
     _assumeSafeDelegatee(_initialDelegatee);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
     _mintUpdateDelegateeAndStake(_holder, _stakeAmount, _initialDelegatee);
-    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableStakeTokenReward(_rewardAmount);
     _distributeReward(_rewardAmount);
     // Returns the default deposit ID.
     IUniStaker.DepositIdentifier _newDepositId = lst.depositForDelegatee(address(0));
@@ -605,7 +630,7 @@ contract UpdateDeposit is UniLstTest {
     _assumeSafeDelegatees(_delegatee1, _delegatee2);
     _stakeAmount1 = _boundToReasonableStakeTokenAmount(_stakeAmount1);
     _stakeAmount2 = _boundToReasonableStakeTokenAmount(_stakeAmount2);
-    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableStakeTokenReward(_rewardAmount);
     IUniStaker.DepositIdentifier _depositId2 = lst.fetchOrInitializeDepositForDelegatee(_delegatee2);
 
     // Two users stake to the same delegatee
@@ -631,56 +656,6 @@ contract UpdateDeposit is UniLstTest {
       abi.encodeWithSelector(IUniStaker.UniStaker__Unauthorized.selector, bytes32("not owner"), address(lst))
     );
     _updateDeposit(_holder, IUniStaker.DepositIdentifier.wrap(0));
-  }
-
-  function testFuzz_UsesTheLiveBalanceForAUserIfTheirBalanceBecomesLowerThanTheirBalanceCheckpointDueToTruncation(
-    address _holder1,
-    address _holder2,
-    address _delegatee1,
-    address _delegatee2,
-    address _delegatee3
-  ) public {
-    _assumeSafeHolders(_holder1, _holder2);
-    _assumeSafeDelegatees(_delegatee1, _delegatee2);
-    _assumeSafeDelegatee(_delegatee3);
-    vm.assume(_delegatee1 != _delegatee3 && _delegatee2 != _delegatee3);
-    // These specific values were discovered via fuzzing, and are tuned to represent a specific case that can occur
-    // where one user's live balance drops below their last delegated balance checkpoint due to the actions of
-    // another user.
-    uint256 _firstStakeAmount = 100_000_001;
-    uint80 _rewardAmount = 100_000_003;
-    uint256 _secondStakeAmount = 100_000_002;
-    uint256 _firstUnstakeAmount = 138_542_415;
-
-    // A holder stakes some tokens.
-    _mintUpdateDelegateeAndStake(_holder1, _firstStakeAmount, _delegatee1);
-    // A reward is distributed.
-    _distributeReward(_rewardAmount);
-    // Another user stakes some tokens, creating a delegated balance checkpoint.
-    _mintUpdateDelegateeAndStake(_holder2, _secondStakeAmount, _delegatee2);
-    // The first user unstakes, causing the second user's balance to drop slightly due to truncation.
-    _unstake(_holder1, _firstUnstakeAmount);
-    // The second user's live balance is now below the balance checkpoint that was created when they staked. We
-    // validate this with a require statement rather than an assert, because it's an assumption of the specific test
-    // values we've chosen, not a property of the system we are asserting.
-    require(
-      lst.balanceOf(_holder2) < lst.balanceCheckpoint(_holder2),
-      "The assumption of this test is that the numbers chosen produce a case where the user's"
-      "balance decreases below their checkpoint and this has been violated."
-    );
-    // Now the second user, whose balance is below their delegated balance checkpoint, updates their deposit.
-    IUniStaker.DepositIdentifier _newDepositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee3);
-    _updateDeposit(_holder2, _newDepositId);
-
-    // The second user's first delegatee should still have one stray wei. This indicates the extra
-    // wei has been left in their balance, as we intend.
-    assertEq(stakeToken.getCurrentVotes(_delegatee2), 1);
-    // Meanwhile, the second user's new delegatee is equal to their current balance, which dropped due to truncation.
-    assertEq(stakeToken.getCurrentVotes(_delegatee3), lst.balanceOf(_holder2));
-    assertEq(lst.balanceOf(_holder2), _secondStakeAmount - 1);
-    // Finally, we ensure the second user's new balance checkpoint, created when they unstaked, matches their updated
-    // live balance.
-    assertEq(lst.balanceOf(_holder2), lst.balanceCheckpoint(_holder2));
   }
 }
 
@@ -1048,7 +1023,7 @@ contract Stake is UniLstTest {
     _assumeSafeDelegatee(_delegatee);
     _amount1 = _boundToReasonableStakeTokenAmount(_amount1);
     _amount2 = _boundToReasonableStakeTokenAmount(_amount2);
-    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableStakeTokenReward(_rewardAmount);
 
     _mintUpdateDelegateeAndStake(_holder, _amount1, _delegatee);
     _distributeReward(_rewardAmount);
@@ -1195,7 +1170,7 @@ contract Unstake is UniLstTest {
     _assumeSafeHolder(_holder);
     _assumeSafeDelegatee(_delegatee);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
-    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableStakeTokenReward(_rewardAmount);
     _unstakeAmount = bound(_unstakeAmount, 0, _stakeAmount + _rewardAmount);
 
     // One holder stakes and earns the full reward amount
@@ -1203,9 +1178,7 @@ contract Unstake is UniLstTest {
     _distributeReward(_rewardAmount);
     _unstake(_holder, _unstakeAmount);
 
-    // The amount unstaked is less than or equal to the amount requested, within some acceptable truncation tolerance
-    assertApproxEqAbs(stakeToken.balanceOf(address(withdrawGate)), _unstakeAmount, ACCEPTABLE_DELTA);
-    assertLe(stakeToken.balanceOf(address(withdrawGate)), _unstakeAmount);
+    assertEq(stakeToken.balanceOf(address(withdrawGate)), _unstakeAmount);
   }
 
   function testFuzz_WithdrawsFromUndelegatedBalanceIfItCoversTheAmount(
@@ -1218,7 +1191,7 @@ contract Unstake is UniLstTest {
     _assumeSafeHolder(_holder);
     _assumeSafeDelegatee(_delegatee);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
-    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableStakeTokenReward(_rewardAmount);
     // The unstake amount is _less_ than the reward amount.
     _unstakeAmount = bound(_unstakeAmount, 0, _rewardAmount);
 
@@ -1227,15 +1200,12 @@ contract Unstake is UniLstTest {
     _distributeReward(_rewardAmount);
     _unstake(_holder, _unstakeAmount);
 
-    // Default delegatee has lost the unstake amount, within some acceptable delta to account for truncation.
-    assertApproxEqAbs(stakeToken.getCurrentVotes(defaultDelegatee), _rewardAmount - _unstakeAmount, ACCEPTABLE_DELTA);
-    assertGe(stakeToken.getCurrentVotes(defaultDelegatee), _rewardAmount - _unstakeAmount);
+    // Default delegatee has lost the unstake amount
+    assertEq(stakeToken.getCurrentVotes(defaultDelegatee), _rewardAmount - _unstakeAmount);
     // Delegatee balance is untouched and therefore still exactly the original amount
     assertEq(stakeToken.getCurrentVotes(_delegatee), _stakeAmount);
-    // The amount actually unstaked is less than or equal to the amount requested, within some acceptable amount due to
-    // truncation.
-    assertApproxEqAbs(stakeToken.balanceOf(address(withdrawGate)), _unstakeAmount, ACCEPTABLE_DELTA);
-    assertLe(stakeToken.balanceOf(address(withdrawGate)), _unstakeAmount);
+    // The amount actually equal to the amount requested
+    assertEq(stakeToken.balanceOf(address(withdrawGate)), _unstakeAmount);
   }
 
   function testFuzz_WithdrawsFromDelegatedBalanceAfterExhaustingUndelegatedBalance(
@@ -1248,7 +1218,7 @@ contract Unstake is UniLstTest {
     _assumeSafeHolder(_holder);
     _assumeSafeDelegatee(_delegatee);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
-    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableStakeTokenReward(_rewardAmount);
     // The unstake amount is _more_ than the reward amount.
     _unstakeAmount = bound(_unstakeAmount, _rewardAmount, _stakeAmount + _rewardAmount);
 
@@ -1257,12 +1227,10 @@ contract Unstake is UniLstTest {
     _distributeReward(_rewardAmount);
     _unstake(_holder, _unstakeAmount);
 
-    assertApproxEqAbs(stakeToken.getCurrentVotes(defaultDelegatee), 0, ACCEPTABLE_DELTA);
-    assertApproxEqAbs(
-      stakeToken.getCurrentVotes(_delegatee), _stakeAmount + _rewardAmount - _unstakeAmount, ACCEPTABLE_DELTA
-    );
+    assertApproxEqAbs(stakeToken.getCurrentVotes(defaultDelegatee), 0, 1);
+    assertApproxEqAbs(stakeToken.getCurrentVotes(_delegatee), _stakeAmount + _rewardAmount - _unstakeAmount, 1);
     assertGe(stakeToken.getCurrentVotes(_delegatee), _stakeAmount + _rewardAmount - _unstakeAmount);
-    assertApproxEqAbs(stakeToken.balanceOf(address(withdrawGate)), _unstakeAmount, ACCEPTABLE_DELTA);
+    assertApproxEqAbs(stakeToken.balanceOf(address(withdrawGate)), _unstakeAmount, 1);
     assertLe(stakeToken.balanceOf(address(withdrawGate)), _unstakeAmount);
   }
 
@@ -1275,8 +1243,8 @@ contract Unstake is UniLstTest {
   ) public {
     _assumeSafeHolder(_holder);
     _assumeSafeDelegatee(_delegatee);
+    _rewardAmount = _boundToReasonableStakeTokenReward(_rewardAmount);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
-    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
     _unstakeAmount = bound(_unstakeAmount, 0, _stakeAmount + _rewardAmount);
 
     _mintUpdateDelegateeAndStake(_holder, _stakeAmount, _delegatee);
@@ -1284,8 +1252,33 @@ contract Unstake is UniLstTest {
     _unstake(_holder, _unstakeAmount);
 
     // The holder's lst balance decreases by the amount unstaked, within some tolerance to allow for truncation.
-    assertApproxEqAbs(lst.balanceOf(_holder), _stakeAmount + _rewardAmount - _unstakeAmount, ACCEPTABLE_DELTA);
-    assertGe(lst.balanceOf(_holder), _stakeAmount + _rewardAmount - _unstakeAmount);
+    assertApproxEqAbs(lst.balanceOf(_holder), _stakeAmount + _rewardAmount - _unstakeAmount, 1);
+    assertLe(lst.balanceOf(_holder), _stakeAmount + _rewardAmount - _unstakeAmount);
+  }
+
+  function testFuzz_RemovesUnstakedAmountFromHoldersBalanceWithExpectedRoundingError(
+    uint256 _stakeAmount,
+    address _holder,
+    address _delegatee,
+    uint256 _unstakeAmount,
+    uint80 _rewardAmount
+  ) public {
+    _assumeSafeHolder(_holder);
+    _assumeSafeDelegatee(_delegatee);
+    // In this version of the test, we ensure that the amount staked is more than the rewards distributed. This
+    // establishes that the total supply divided by the total shares is less than 1, in which case, we can expect the
+    // difference due to rounding to be 1 or less.
+    _rewardAmount = _boundToReasonableStakeTokenReward(_rewardAmount);
+    _stakeAmount = bound(_stakeAmount, _rewardAmount, 2_000_000_000e18);
+    _unstakeAmount = bound(_unstakeAmount, 0, _stakeAmount + _rewardAmount);
+
+    _mintUpdateDelegateeAndStake(_holder, _stakeAmount, _delegatee);
+    _distributeReward(_rewardAmount);
+    _unstake(_holder, _unstakeAmount);
+
+    // Because we bound the reward to be less than the amount stake, we know the max rounding error is 1 wei.
+    assertApproxEqAbs(lst.balanceOf(_holder), _stakeAmount + _rewardAmount - _unstakeAmount, 1);
+    assertLe(lst.balanceOf(_holder), _stakeAmount + _rewardAmount - _unstakeAmount);
   }
 
   function testFuzz_SubtractsFromTheHoldersDelegatedBalanceCheckpointIfUndelegatedBalanceIsUnstaked(
@@ -1298,7 +1291,7 @@ contract Unstake is UniLstTest {
     _assumeSafeHolder(_holder);
     _assumeSafeDelegatee(_delegatee);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
-    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableStakeTokenReward(_rewardAmount);
     // The unstake amount is _more_ than the reward amount.
     _unstakeAmount = bound(_unstakeAmount, _rewardAmount, _stakeAmount + _rewardAmount);
 
@@ -1311,9 +1304,9 @@ contract Unstake is UniLstTest {
     // their delegated balance checkpoint. However, it's also possible that, because global shares are destroyed
     // after the user's shares are destroyed, truncation may cause the user's balance to go up slightly from the
     // calculated balance checkpoint. This is fine, as long as the system is remaining solvent, that is, the extra
-    // wei are actually being left in the default deposit as they should be. We also assert this here to ensure it
+    // 1 wei are actually being left in the default deposit as they should be. We also assert this here to ensure it
     // is the case.
-    assertApproxEqAbs(lst.balanceCheckpoint(_holder), lst.balanceOf(_holder), ACCEPTABLE_DELTA);
+    assertApproxEqAbs(lst.balanceCheckpoint(_holder), lst.balanceOf(_holder), 1);
     assertLe(lst.balanceCheckpoint(_holder), lst.balanceOf(_holder));
     (uint96 _defaultDepositBalance,,,) = staker.deposits(lst.DEFAULT_DEPOSIT_ID());
     assertEq(_defaultDepositBalance, lst.balanceOf(_holder) - lst.balanceCheckpoint(_holder));
@@ -1329,22 +1322,19 @@ contract Unstake is UniLstTest {
     _assumeSafeHolder(_holder);
     _assumeSafeDelegatee(_delegatee);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
-    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableStakeTokenReward(_rewardAmount);
     _unstakeAmount = bound(_unstakeAmount, 0, _stakeAmount + _rewardAmount);
 
     _mintUpdateDelegateeAndStake(_holder, _stakeAmount, _delegatee);
     _distributeReward(_rewardAmount);
 
-    // Record the holder's balance and the total supply before unstaking
-    uint256 _initialBalance = lst.balanceOf(_holder);
+    // Record the total supply before unstaking
     uint256 _initialTotalSupply = lst.totalSupply();
     // Perform the unstaking
-    _unstake(_holder, _unstakeAmount);
+    uint256 _amountUnstaked = _unstake(_holder, _unstakeAmount);
 
-    uint256 _balanceDiff = _initialBalance - lst.balanceOf(_holder);
     uint256 _totalSupplyDiff = _initialTotalSupply - lst.totalSupply();
-
-    assertEq(_totalSupplyDiff, _balanceDiff);
+    assertEq(_totalSupplyDiff, _amountUnstaked);
   }
 
   function testFuzz_SubtractsTheEquivalentSharesForTheAmountFromTheTotalShares(
@@ -1357,7 +1347,7 @@ contract Unstake is UniLstTest {
     _assumeSafeHolder(_holder);
     _assumeSafeDelegatee(_delegatee);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
-    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableStakeTokenReward(_rewardAmount);
     _unstakeAmount = bound(_unstakeAmount, 0, _stakeAmount + _rewardAmount);
 
     _mintUpdateDelegateeAndStake(_holder, _stakeAmount, _delegatee);
@@ -1393,59 +1383,6 @@ contract Unstake is UniLstTest {
     vm.prank(_holder1);
     vm.expectRevert(UniLst.UniLst__InsufficientBalance.selector);
     lst.unstake(_stakeAmount + 1);
-  }
-
-  function testFuzz_UsesTheLiveBalanceForAUserIfTheirBalanceBecomesLowerThanTheirBalanceCheckpointDueToTruncation(
-    address _holder1,
-    address _holder2,
-    address _delegatee1,
-    address _delegatee2,
-    uint256 _secondUnstakeAmount
-  ) public {
-    _assumeSafeHolders(_holder1, _holder2);
-    _assumeSafeDelegatees(_delegatee1, _delegatee2);
-    // These specific values were discovered via fuzzing, and are tuned to represent a specific case that can occur
-    // where one user's live balance drops below their last delegated balance checkpoint due to the actions of
-    // another user.
-    uint256 _firstStakeAmount = 100_000_001;
-    uint80 _rewardAmount = 100_000_003;
-    uint256 _secondStakeAmount = 100_000_002;
-    uint256 _firstUnstakeAmount = 138_542_415;
-    _secondUnstakeAmount = bound(_secondUnstakeAmount, 2, _secondStakeAmount - 1);
-
-    // A holder stakes some tokens.
-    _mintUpdateDelegateeAndStake(_holder1, _firstStakeAmount, _delegatee1);
-    // A reward is distributed.
-    _distributeReward(_rewardAmount);
-    // Another user stakes some tokens, creating a delegated balance checkpoint.
-    _mintUpdateDelegateeAndStake(_holder2, _secondStakeAmount, _delegatee2);
-    // The first user unstakes, causing the second user's balance to drop slightly due to truncation.
-    _unstake(_holder1, _firstUnstakeAmount);
-    uint256 _interimGateBalance = stakeToken.balanceOf(address(withdrawGate));
-    // The second user's live balance is now below the balance checkpoint that was created when they staked. We
-    // validate this with a require statement rather than an assert, because it's an assumption of the specific test
-    // values we've chosen, not a property of the system we are asserting.
-    require(
-      lst.balanceOf(_holder2) < lst.balanceCheckpoint(_holder2),
-      "The assumption of this test is that the numbers chosen produce a case where the user's"
-      "balance decreases below their checkpoint and this has been violated."
-    );
-    // Now the second user, whose balance is below their delegated balance checkpoint, unstakes.
-    _unstake(_holder2, _secondUnstakeAmount);
-    uint256 _finalGateBalance = stakeToken.balanceOf(address(withdrawGate));
-    // Tha actual amount unstaked by the second user (as opposed to the amount they requested) is calculated as the
-    // change in the withdrawal gate's balance.
-    uint256 _amountUnstaked = _finalGateBalance - _interimGateBalance;
-
-    // The second user's delegatee should still have all that user's remaining vote weight. This indicates the extra
-    // wei has been left in their balance, as we intend.
-    assertEq(stakeToken.getCurrentVotes(_delegatee2), _secondStakeAmount - _amountUnstaked);
-    // Meanwhile, the second user's balance has dropped one wei lower than the actual tokens in the balance in their
-    // actual deposit.
-    assertEq(lst.balanceOf(_holder2), _secondStakeAmount - _amountUnstaked - 1);
-    // Finally, we ensure the second user's new balance checkpoint, created when they unstaked, matches their updated
-    // live balance.
-    assertEq(lst.balanceOf(_holder2), lst.balanceCheckpoint(_holder2));
   }
 
   function testFuzz_EmitsUnstakedEvent(uint256 _stakeAmount, uint256 _unstakeAmount, address _holder) public {
@@ -1943,7 +1880,7 @@ contract BalanceOf is UniLstTest {
     _assumeSafeDelegatee(_delegatee);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
     _mintUpdateDelegateeAndStake(_holder, _stakeAmount, _delegatee);
-    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableStakeTokenReward(_rewardAmount);
     _distributeReward(_rewardAmount);
 
     // Since there is only one LST holder, they should own the whole balance of the LST, both the tokens they staked
@@ -1964,7 +1901,7 @@ contract BalanceOf is UniLstTest {
     _stakeAmount1 = _boundToReasonableStakeTokenAmount(_stakeAmount1);
     // The second user will stake 150% of the first user
     uint256 _stakeAmount2 = _percentOf(_stakeAmount1, 150);
-    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableStakeTokenReward(_rewardAmount);
 
     // Both users stake
     _mintUpdateDelegateeAndStake(_holder1, _stakeAmount1, _delegatee1);
@@ -1996,7 +1933,7 @@ contract BalanceOf is UniLstTest {
 
     _stakeAmount1 = _boundToReasonableStakeTokenAmount(_stakeAmount1);
     _stakeAmount2 = _boundToReasonableStakeTokenAmount(_stakeAmount2);
-    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableStakeTokenReward(_rewardAmount);
 
     // The first user stakes
     _mintUpdateDelegateeAndStake(_holder1, _stakeAmount1, _delegatee1);
@@ -2031,8 +1968,8 @@ contract BalanceOf is UniLstTest {
     // second user will stake 250% of first user
     _stakeAmount2 = _percentOf(_stakeAmount1, 250);
     // the first reward will be 25 percent of the first holders stake amount
-    _rewardAmount1 = _boundToReasonableRewardAmount(_percentOf(_stakeAmount1, 25));
-    _rewardAmount2 = _boundToReasonableRewardAmount(
+    _rewardAmount1 = _boundToReasonableStakeTokenReward(_percentOf(_stakeAmount1, 25));
+    _rewardAmount2 = _boundToReasonableStakeTokenReward(
       bound(_rewardAmount2, _percentOf(_stakeAmount1, 5), _percentOf(_stakeAmount1, 150))
     );
 
@@ -2086,7 +2023,7 @@ contract BalanceOf is UniLstTest {
     _assumeSafeHolder(_holder);
     _assumeSafeDelegatee(_delegatee);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
-    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableStakeTokenReward(_rewardAmount);
     _unstakeAmount = bound(_unstakeAmount, 0, _stakeAmount + _rewardAmount);
 
     _mintUpdateDelegateeAndStake(_holder, _stakeAmount, _delegatee);
@@ -2094,7 +2031,7 @@ contract BalanceOf is UniLstTest {
 
     _unstake(_holder, _unstakeAmount);
 
-    assertApproxEqAbs(lst.balanceOf(_holder), _stakeAmount + _rewardAmount - _unstakeAmount, ACCEPTABLE_DELTA);
+    assertApproxEqAbs(lst.balanceOf(_holder), _stakeAmount + _rewardAmount - _unstakeAmount, 1);
   }
 
   function testFuzz_CalculatesTheCorrectBalancesOfAHolderAndFeeCollectorWhenARewardDistributionIncludesAFee(
@@ -2112,8 +2049,8 @@ contract BalanceOf is UniLstTest {
     _assumeSafeHolder(_feeCollector);
     vm.assume(_feeCollector != address(0) && _feeCollector != _holder && _feeCollector != _claimer);
     _rewardTokenAmount = _boundToReasonableRewardTokenAmount(_rewardTokenAmount);
-    _rewardPayoutAmount = _boundToReasonablePayoutAmount(_rewardPayoutAmount);
     _feeBips = uint16(bound(_feeBips, 0, lst.MAX_FEE_BIPS()));
+    _rewardPayoutAmount = _boundToReasonableStakeTokenReward(_rewardPayoutAmount);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
     // Set up actors to enable reward distribution with fees.
     _setRewardParameters(_rewardPayoutAmount, _feeBips, _feeCollector);
@@ -2127,10 +2064,10 @@ contract BalanceOf is UniLstTest {
 
     // Fee collector should now have a balance less than or equal to, within a small delta to account for truncation,
     // the fee amount.
-    assertApproxEqAbs(lst.balanceOf(_feeCollector), _feeAmount, ACCEPTABLE_DELTA);
+    assertApproxEqAbs(lst.balanceOf(_feeCollector), _feeAmount, 1);
     assertTrue(lst.balanceOf(_feeCollector) <= _feeAmount);
     // The holder should have earned all the rewards except the fee amount, which went to the fee collector.
-    assertApproxEqAbs(lst.balanceOf(_holder), _stakeAmount + _rewardPayoutAmount - _feeAmount, ACCEPTABLE_DELTA);
+    assertApproxEqAbs(lst.balanceOf(_holder), _stakeAmount + _rewardPayoutAmount - _feeAmount, 1);
   }
 }
 
@@ -2282,7 +2219,7 @@ contract Transfer is UniLstTest {
   ) public {
     _assumeSafeHolders(_sender, _receiver);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
-    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableStakeTokenReward(_rewardAmount);
 
     _mintAndStake(_sender, _stakeAmount);
     _distributeReward(_rewardAmount);
@@ -2303,24 +2240,21 @@ contract Transfer is UniLstTest {
   ) public {
     _assumeSafeHolders(_sender, _receiver);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
-    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableStakeTokenReward(_rewardAmount);
     _sendAmount = bound(_sendAmount, 0, _stakeAmount + _rewardAmount);
 
     _mintAndStake(_sender, _stakeAmount);
     _distributeReward(_rewardAmount);
+
     vm.prank(_sender);
     lst.transfer(_receiver, _sendAmount);
 
     // The sender should have the full balance of his stake and the reward, minus what was sent.
     uint256 _expectedSenderBalance = _stakeAmount + _rewardAmount - _sendAmount;
 
-    // Truncation is expected to favor the sender, so the expected amount should be less than or equal to
-    // the sender's balance, while the receiver's balance should be less than or equal to the send amount.
-    // All within expected acceptable deltas to account for truncation.
-    assertApproxEqAbs(_expectedSenderBalance, lst.balanceOf(_sender), ACCEPTABLE_DELTA);
-    assertLe(_expectedSenderBalance, lst.balanceOf(_sender));
-    assertApproxEqAbs(lst.balanceOf(_receiver), _sendAmount, ACCEPTABLE_DELTA);
-    assertLe(lst.balanceOf(_receiver), _sendAmount);
+    assertApproxEqAbs(_expectedSenderBalance, lst.balanceOf(_sender), 1);
+    assertLe(lst.balanceOf(_sender), _expectedSenderBalance);
+    assertEq(lst.balanceOf(_receiver), _sendAmount);
   }
 
   function testFuzz_MovesVotingWeightToTheReceiversDelegatee(
@@ -2359,7 +2293,7 @@ contract Transfer is UniLstTest {
     _assumeSafeHolders(_sender, _receiver);
     _assumeSafeDelegatees(_senderDelegatee, _receiverDelegatee);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
-    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableStakeTokenReward(_rewardAmount);
 
     _mintUpdateDelegateeAndStake(_sender, _stakeAmount, _senderDelegatee);
     _updateDelegatee(_receiver, _receiverDelegatee);
@@ -2385,7 +2319,7 @@ contract Transfer is UniLstTest {
     _assumeSafeHolders(_sender, _receiver);
     _assumeSafeDelegatees(_senderDelegatee, _receiverDelegatee);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
-    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableStakeTokenReward(_rewardAmount);
     _sendAmount = bound(_sendAmount, 0, _stakeAmount + _rewardAmount);
 
     _mintUpdateDelegateeAndStake(_sender, _stakeAmount, _senderDelegatee);
@@ -2396,11 +2330,10 @@ contract Transfer is UniLstTest {
 
     uint256 _expectedSenderBalance = _stakeAmount + _rewardAmount - _sendAmount;
 
-    // Truncation should favor the sender within acceptable tolerance.
-    assertApproxEqAbs(_expectedSenderBalance, lst.balanceOf(_sender), ACCEPTABLE_DELTA);
-    assertLe(_expectedSenderBalance, lst.balanceOf(_sender));
-    assertApproxEqAbs(lst.balanceOf(_receiver), _sendAmount, ACCEPTABLE_DELTA);
-    assertLe(lst.balanceOf(_receiver), _sendAmount);
+    // Truncation may cause the sender's balance to decrease more than amount requested.
+    assertApproxEqAbs(_expectedSenderBalance, lst.balanceOf(_sender), 1);
+    assertLe(lst.balanceOf(_sender), _expectedSenderBalance);
+    assertEq(lst.balanceOf(_receiver), _sendAmount);
 
     // It's important the balances are less than the votes, since the votes represent the "real" underlying tokens,
     // and balances being below the real tokens available means the rounding favors the protocol, which is desired.
@@ -2423,7 +2356,7 @@ contract Transfer is UniLstTest {
     _assumeSafeHolders(_sender, _receiver);
     _assumeSafeDelegatees(_senderDelegatee, _receiverDelegatee);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
-    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableStakeTokenReward(_rewardAmount);
     // The amount sent will be less than or equal to the rewards the sender has earned
     _sendAmount = bound(_sendAmount, 0, _rewardAmount);
 
@@ -2433,10 +2366,11 @@ contract Transfer is UniLstTest {
     vm.prank(_sender);
     lst.transfer(_receiver, _sendAmount);
 
-    // The senders delegated balance checkpoint has not changed from the original staked amount.
-    assertEq(lst.balanceCheckpoint(_sender), _stakeAmount);
+    // The sender's delegated balance checkpoint may have dropped by, at most, 1 wei since the original staked amount.
+    assertApproxEqAbs(lst.balanceCheckpoint(_sender), _stakeAmount, 1);
+    assertLe(lst.balanceCheckpoint(_sender), _stakeAmount);
     // It's important the delegated checkpoint is less than the votes, since the votes represent the "real" tokens.
-    assertLteWithinOneBip(lst.balanceCheckpoint(_sender), stakeToken.getCurrentVotes(_senderDelegatee));
+    assertLe(lst.balanceCheckpoint(_sender), stakeToken.getCurrentVotes(_senderDelegatee));
   }
 
   function testFuzz_PullsFromTheSendersDelegatedBalanceAfterTheUndelegatedBalanceHasBeenExhausted(
@@ -2451,29 +2385,22 @@ contract Transfer is UniLstTest {
     _assumeSafeHolders(_sender, _receiver);
     _assumeSafeDelegatees(_senderDelegatee, _receiverDelegatee);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
-    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableStakeTokenReward(_rewardAmount);
     // The amount sent will be more than the original stake amount
     _sendAmount = bound(_sendAmount, _rewardAmount, _rewardAmount + _stakeAmount);
 
     _mintUpdateDelegateeAndStake(_sender, _stakeAmount, _senderDelegatee);
     _updateDelegatee(_receiver, _receiverDelegatee);
     _distributeReward(_rewardAmount);
-    uint256 _senderInitialBalance = lst.balanceOf(_sender);
     vm.prank(_sender);
     lst.transfer(_receiver, _sendAmount);
-
-    // Because the transfer method may end up sending slightly less than the user actually requested, we want to check
-    // if the conditions this test is meant to establish have actually occurred. Namely, we want to make sure the amount
-    // sent was greater than the sender's reward earnings. If they were not, we skip the assertions, as this is not
-    // testing what we intended.
-    uint256 _senderBalanceDecrease = _senderInitialBalance - lst.balanceOf(_sender);
-    vm.assume(_senderBalanceDecrease > _rewardAmount);
 
     // The sender's delegated balance is now equal to his balance, because his full undelegated balance (and then some)
     // has been used to complete the transfer.
     assertEq(lst.balanceCheckpoint(_sender), lst.balanceOf(_sender));
     // It's important the delegated checkpoint is less than the votes, since the votes represent the "real" tokens.
-    assertLteWithinOneBip(lst.balanceCheckpoint(_sender), stakeToken.getCurrentVotes(_senderDelegatee));
+    assertApproxEqAbs(lst.balanceCheckpoint(_sender), stakeToken.getCurrentVotes(_senderDelegatee), 1);
+    assertLe(lst.balanceCheckpoint(_sender), stakeToken.getCurrentVotes(_senderDelegatee));
   }
 
   function testFuzz_AddsToTheBalanceCheckpointOfTheReceiverAndVotingWeightOfReceiversDelegatee(
@@ -2490,7 +2417,7 @@ contract Transfer is UniLstTest {
     _stakeAmount1 = _boundToReasonableStakeTokenAmount(_stakeAmount1);
     // The second user will stake 150% of the first user
     uint256 _stakeAmount2 = _percentOf(_stakeAmount1, 150);
-    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableStakeTokenReward(_rewardAmount);
 
     // Both users stake
     _mintUpdateDelegateeAndStake(_sender, _stakeAmount1, _senderDelegatee);
@@ -2538,7 +2465,7 @@ contract Transfer is UniLstTest {
     _stakeAmount1 = _boundToReasonableStakeTokenAmount(_stakeAmount1);
     // The second user will stake 150% of the first user
     uint256 _stakeAmount2 = _percentOf(_stakeAmount1, 150);
-    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableStakeTokenReward(_rewardAmount);
 
     // Both users stake
     _mintUpdateDelegateeAndStake(_sender, _stakeAmount1, _senderDelegatee);
@@ -2554,11 +2481,9 @@ contract Transfer is UniLstTest {
     lst.transfer(_receiver, _sendAmount);
 
     // The receiver's checkpoint should be incremented by the amount sent.
-    assertApproxEqAbs(lst.balanceCheckpoint(_receiver), _stakeAmount2 + _sendAmount, ACCEPTABLE_DELTA);
+    assertApproxEqAbs(lst.balanceCheckpoint(_receiver), _stakeAmount2 + _sendAmount, 1);
     assertLe(lst.balanceCheckpoint(_receiver), _stakeAmount2 + _sendAmount);
-    assertApproxEqAbs(
-      lst.balanceCheckpoint(_receiver), stakeToken.getCurrentVotes(_receiverDelegatee), ACCEPTABLE_DELTA
-    );
+    assertApproxEqAbs(lst.balanceCheckpoint(_receiver), stakeToken.getCurrentVotes(_receiverDelegatee), 1);
     assertLe(lst.balanceCheckpoint(_receiver), stakeToken.getCurrentVotes(_receiverDelegatee));
   }
 
@@ -2580,7 +2505,7 @@ contract Transfer is UniLstTest {
     _assumeSafeDelegatees(_sender1Delegatee, _sender2Delegatee);
     _stakeAmount1 = _boundToReasonableStakeTokenAmount(_stakeAmount1);
     _stakeAmount2 = _boundToReasonableStakeTokenAmount(_stakeAmount2);
-    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableStakeTokenReward(_rewardAmount);
     _sendAmount1 = bound(_sendAmount1, 0.0001e18, _stakeAmount1);
     _sendAmount2 = bound(_sendAmount2, 0.0001e18, _stakeAmount2 + _sendAmount1);
 
@@ -2600,24 +2525,31 @@ contract Transfer is UniLstTest {
     vm.prank(_sender2);
     lst.transfer(_receiver, _sendAmount2);
 
+    // --------------------------------------------------------------------------------------------------------- //
     // The following assertions ensure balances have been updated correctly after the transfers
+    // --------------------------------------------------------------------------------------------------------- //
 
-    // The amount actually sent should be truncated down, so the sender's balance should be greater than the expected
-    assertApproxEqAbs(_balance1AfterReward - _sendAmount1, lst.balanceOf(_sender1), ACCEPTABLE_DELTA);
-    assertLe(_balance1AfterReward - _sendAmount1, lst.balanceOf(_sender1));
-    // This holder may have been short changed as a receiver, but kept up extra wei as a sender, so
-    // their balance and the expected should be within the acceptable delta in either direction.
-    assertApproxEqAbs(lst.balanceOf(_sender2), _balance2AfterReward + _sendAmount1 - _sendAmount2, ACCEPTABLE_DELTA);
-    // The amount sent could be truncated down, so the receiver's balance may be less than the expected.
-    assertApproxEqAbs(lst.balanceOf(_receiver), _sendAmount2, ACCEPTABLE_DELTA);
-    assertLe(lst.balanceOf(_receiver), _sendAmount2);
+    // Sender's balance increases by up to 1 wei more than requested
+    assertApproxEqAbs(_balance1AfterReward - _sendAmount1, lst.balanceOf(_sender1), 1);
+    assertLe(lst.balanceOf(_sender1), _balance1AfterReward - _sendAmount1);
+    // The second sender's balance may be off by 1 wei in either direction, because it may have received an extra wei
+    // or sent an extra wei.
+    assertApproxEqAbs(lst.balanceOf(_sender2), _balance2AfterReward + _sendAmount1 - _sendAmount2, 1);
+    // The second receiver should get exactly what the second sender requested to be sent
+    assertEq(lst.balanceOf(_receiver), _sendAmount2);
+
+    // --------------------------------------------------------------------------------------------------------- //
+    // The next assertions ensure the tokens have been managed correctly in the underlying deposits by observing
+    // the actual voting weights of the various sender/receiver delegatees.
+    // --------------------------------------------------------------------------------------------------------- //
 
     uint256 _expectedDefaultDelegateeWeight = (lst.balanceOf(_sender1) - lst.balanceCheckpoint(_sender1))
       + (lst.balanceOf(_sender2) - lst.balanceCheckpoint(_sender2)) + lst.balanceOf(_receiver);
 
     assertLteWithinOneUnit(lst.balanceCheckpoint(_sender1), stakeToken.getCurrentVotes(_sender1Delegatee));
     assertLteWithinOneUnit(lst.balanceCheckpoint(_sender2), stakeToken.getCurrentVotes(_sender2Delegatee));
-    assertApproxEqAbs(_expectedDefaultDelegateeWeight, stakeToken.getCurrentVotes(defaultDelegatee), ACCEPTABLE_DELTA);
+    // The default deposit may have accrued up to 2 wei of shortfall from the two actions
+    assertApproxEqAbs(_expectedDefaultDelegateeWeight, stakeToken.getCurrentVotes(defaultDelegatee), 2);
     assertLe(_expectedDefaultDelegateeWeight, stakeToken.getCurrentVotes(defaultDelegatee));
   }
 
@@ -2633,7 +2565,7 @@ contract Transfer is UniLstTest {
     _assumeSafeHolders(_sender, _receiver);
     _assumeSafeDelegatees(_senderDelegatee, _receiverDelegatee);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
-    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableStakeTokenReward(_rewardAmount);
     _sendAmount = bound(_sendAmount, 0, _stakeAmount + _rewardAmount);
 
     _mintUpdateDelegateeAndStake(_sender, _stakeAmount, _senderDelegatee);
@@ -2656,7 +2588,7 @@ contract Transfer is UniLstTest {
     _assumeSafeHolders(_sender, _receiver);
     _assumeSafeDelegatee(_senderDelegatee);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
-    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableStakeTokenReward(_rewardAmount);
     uint256 _totalAmount = _rewardAmount + _stakeAmount;
     // Send amount will be some value more than the sender's balance, up to 2x as much
     _sendAmount = bound(_sendAmount, _totalAmount + 1, 2 * _totalAmount);
@@ -2667,139 +2599,6 @@ contract Transfer is UniLstTest {
     vm.prank(_sender);
     vm.expectRevert(UniLst.UniLst__InsufficientBalance.selector);
     lst.transfer(_receiver, _sendAmount);
-  }
-
-  function testFuzz_UsesTheLiveBalanceForAUserIfTheirBalanceBecomesLowerThanTheirBalanceCheckpointDueToTruncation(
-    address _holder1,
-    address _holder2,
-    address _receiver,
-    address _delegatee1,
-    address _delegatee2,
-    address _receiverDelegatee,
-    uint256 _transferAmount
-  ) public {
-    _assumeSafeHolders(_holder1, _holder2);
-    _assumeSafeHolder(_receiver);
-    vm.assume(_holder1 != _receiver && _holder2 != _receiver);
-    _assumeSafeDelegatees(_delegatee1, _delegatee2);
-    _assumeSafeDelegatee(_receiverDelegatee);
-    vm.assume(_delegatee1 != _receiverDelegatee && _delegatee2 != _receiverDelegatee);
-    // These specific values were discovered via fuzzing, and are tuned to represent a specific case that can occur
-    // where one user's live balance drops below their last delegated balance checkpoint due to the actions of
-    // another user.
-    uint256 _firstStakeAmount = 100_000_001;
-    uint80 _rewardAmount = 100_000_003;
-    uint256 _secondStakeAmount = 100_000_002;
-    uint256 _firstUnstakeAmount = 138_542_415;
-    _transferAmount = bound(_transferAmount, 2, _secondStakeAmount - 1);
-    _updateDelegatee(_receiver, _receiverDelegatee);
-
-    // A holder stakes some tokens.
-    _mintUpdateDelegateeAndStake(_holder1, _firstStakeAmount, _delegatee1);
-    // A reward is distributed.
-    _distributeReward(_rewardAmount);
-    // Another user stakes some tokens, creating a delegated balance checkpoint.
-    _mintUpdateDelegateeAndStake(_holder2, _secondStakeAmount, _delegatee2);
-    // The first user unstakes, causing the second user's balance to drop slightly due to truncation.
-    _unstake(_holder1, _firstUnstakeAmount);
-    // The second user's live balance is now below the balance checkpoint that was created when they staked. We
-    // validate this with a require statement rather than an assert, because it's an assumption of the specific test
-    // values we've chosen, not a property of the system we are asserting.
-    require(
-      lst.balanceOf(_holder2) < lst.balanceCheckpoint(_holder2),
-      "The assumption of this test is that the numbers chosen produce a case where the user's"
-      "balance decreases below their checkpoint and this has been violated."
-    );
-    uint256 _senderPreTransferBalance = lst.balanceOf(_holder2);
-    // Now the second user, whose balance is below their delegated balance checkpoint, transfers some tokens.
-    vm.prank(_holder2);
-    lst.transfer(_receiver, _transferAmount);
-    // The actual amount of tokens moved is equal to the decrease in the sender's balance, which may not be the exact
-    // amount they requested to send.
-    uint256 _senderBalanceDecrease = _senderPreTransferBalance - lst.balanceOf(_holder2);
-
-    // The sender's delegatee should still have whatever is left of the initial amount staked by the sender.
-    // This indicates the extra wei has been left in their balance, as we intend.
-    assertEq(stakeToken.getCurrentVotes(_delegatee2), _secondStakeAmount - _senderBalanceDecrease);
-    // Meanwhile, the sender's balance is one less than this value due to the truncation
-    assertEq(lst.balanceOf(_holder2), _secondStakeAmount - _senderBalanceDecrease - 1);
-    // The receiver's delegatee has the voting weight of the tokens that have been transferred to him.
-    assertEq(stakeToken.getCurrentVotes(_receiverDelegatee), _senderBalanceDecrease);
-    // Finally, we ensure the second user's new balance checkpoint, created when they transferred, matches their
-    // updated live balance.
-    assertEq(lst.balanceOf(_holder2), lst.balanceCheckpoint(_holder2));
-  }
-
-  // TODO: figure out wtf is going on here
-  function test_ShavesTheSendersSharesIfTruncationWouldFavorTheSender() public {
-    uint256[2] memory _stakeAmounts;
-    uint256[2] memory _rewardAmounts;
-    uint256[2] memory _firstTransferAmounts;
-    uint256[2] memory _secondTransferAmounts;
-
-    _stakeAmounts[0] = 2_000_000_000_000_000_000_000_000_000;
-    _rewardAmounts[0] = 250_000_000_000_000_000_000_000_000;
-    _firstTransferAmounts[0] = 51_159_322_140_703;
-    _secondTransferAmounts[0] = 7;
-
-    _stakeAmounts[1] = 100_000_000_000_000;
-    _rewardAmounts[1] = 100_000_000_000_002;
-    _firstTransferAmounts[1] = 100_000_000_000_003;
-    _secondTransferAmounts[1] = 2;
-
-    // Remember chain state before executing any tests.
-    uint256 _snapshotId = vm.snapshot();
-
-    for (uint256 _index; _index < _stakeAmounts.length; _index++) {
-      _executeSenderShaveTest(
-        _stakeAmounts[_index],
-        uint80(_rewardAmounts[_index]),
-        _firstTransferAmounts[_index],
-        _secondTransferAmounts[_index]
-      );
-      // Reset the chain state after executing last test.
-      vm.revertTo(_snapshotId);
-    }
-  }
-
-  function _executeSenderShaveTest(
-    uint256 _stakeAmount,
-    uint80 _rewardAmount,
-    uint256 _firstTransferAmount,
-    uint256 _secondTransferAmount
-  ) public {
-    address _holder1 = makeAddr("Holder 1");
-    address _delegatee1 = makeAddr("Delegatee 1");
-    address _holder2 = makeAddr("Holder 2");
-    address _delegatee2 = makeAddr("Delegatee 2");
-
-    // First holder stakes.
-    _mintUpdateDelegateeAndStake(_holder1, _stakeAmount, _delegatee1);
-    // A reward is distributed.
-    _distributeReward(_rewardAmount);
-    // Second holder sets a custom delegatee.
-    _updateDelegatee(_holder2, _delegatee2);
-    // First holder transfers to the second holder.
-    vm.prank(_holder1);
-    lst.transfer(_holder2, _firstTransferAmount);
-
-    // We record balances at this point
-    uint256 _holder1InitBalance = lst.balanceOf(_holder1);
-    uint256 _holder2InitBalance = lst.balanceOf(_holder2);
-
-    // Second holder transfer some back to the first holder. Because of the specific values we've set up, the transfer
-    // method must shave the shares of the sender to prevent the receiver's balance from increasing by less than the
-    // the sender's balance decreases.
-    vm.prank(_holder2);
-    lst.transfer(_holder1, _secondTransferAmount);
-
-    assertEq(lst.balanceOf(_holder1), _holder1InitBalance + _secondTransferAmount);
-    assertEq(lst.balanceOf(_holder2), _holder2InitBalance - _secondTransferAmount);
-    assertEq(lst.balanceCheckpoint(_holder1), stakeToken.getCurrentVotes(_delegatee1));
-    // Because this holder's shares were shaved as part of the transfer, they may have lost control of 1 wei of
-    // of their stake token, which is now "stuck" in the Staker deposit assigned to their delegatee. This is ok, and
-    // means the system is performing truncations in a way that ensures each deposit will remain solvent.
-    assertLteWithinOneUnit(lst.balanceOf(_holder2), stakeToken.getCurrentVotes(_delegatee2));
   }
 
   function testFuzz_DoesNotChangeBalanceWhenSenderAndReceiverAreTheSame(address _holder, uint256 _amount) public {
@@ -2919,7 +2718,7 @@ contract TransferAndReturnBalanceDiffs is UniLstTest {
   ) public {
     _assumeSafeHolders(_sender, _receiver);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
-    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
+    _rewardAmount = _boundToReasonableStakeTokenReward(_rewardAmount);
 
     _mintAndStake(_sender, _stakeAmount);
     _distributeReward(_rewardAmount);
@@ -2973,9 +2772,9 @@ contract ClaimAndDistributeReward is UniLstTest {
     address _feeCollector
   ) public {
     _assumeSafeHolders(_holder, _claimer);
-    vm.assume(_feeCollector != address(0) && _feeCollector != _claimer && _feeCollector != _holder);
-    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
-    _payoutAmount = _boundToReasonablePayoutAmount(_payoutAmount);
+    vm.assume(_feeCollector != address(0));
+    _rewardAmount = _boundToReasonableRewardTokenAmount(_rewardAmount);
+    _payoutAmount = _boundToReasonableStakeTokenReward(_payoutAmount);
     _extraBalance = _boundToReasonableStakeTokenAmount(_extraBalance);
     _feeBips = uint16(bound(_feeBips, 0, lst.MAX_FEE_BIPS()));
     _setRewardParameters(uint80(_payoutAmount), _feeBips, _feeCollector);
@@ -2996,7 +2795,7 @@ contract ClaimAndDistributeReward is UniLstTest {
 
     // Check that the fee collector received the correct fee amount
     if (_feeAmount > 0) {
-      assertApproxEqAbs(lst.balanceOf(_feeCollector), _feeAmount, ACCEPTABLE_DELTA);
+      assertApproxEqAbs(lst.balanceOf(_feeCollector), _feeAmount, 1);
     }
   }
 
@@ -3012,8 +2811,8 @@ contract ClaimAndDistributeReward is UniLstTest {
   ) public {
     _assumeSafeHolders(_holder, _claimer);
     vm.assume(_feeCollector != address(0) && _feeCollector != _claimer && _feeCollector != _holder);
-    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
-    _payoutAmount = _boundToReasonablePayoutAmount(_payoutAmount);
+    _rewardAmount = _boundToReasonableRewardTokenAmount(_rewardAmount);
+    _payoutAmount = _boundToReasonableStakeTokenReward(_payoutAmount);
     _feeBips = uint16(bound(_feeBips, 0, lst.MAX_FEE_BIPS()));
     _setRewardParameters(uint80(_payoutAmount), _feeBips, _feeCollector);
     _mintStakeToken(_claimer, _payoutAmount);
@@ -3039,8 +2838,8 @@ contract ClaimAndDistributeReward is UniLstTest {
   ) public {
     _assumeSafeHolders(_holder, _claimer);
     vm.assume(_feeCollector != address(0) && _feeCollector != _claimer && _feeCollector != _holder);
-    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
-    _payoutAmount = _boundToReasonablePayoutAmount(_payoutAmount);
+    _rewardAmount = _boundToReasonableRewardTokenAmount(_rewardAmount);
+    _payoutAmount = _boundToReasonableStakeTokenReward(_payoutAmount);
     _feeBips = uint16(bound(_feeBips, 0, lst.MAX_FEE_BIPS()));
     _setRewardParameters(uint80(_payoutAmount), _feeBips, _feeCollector);
     _mintStakeToken(_claimer, _payoutAmount);
@@ -3065,8 +2864,8 @@ contract ClaimAndDistributeReward is UniLstTest {
   ) public {
     _assumeSafeHolders(_holder, _claimer);
     vm.assume(_feeCollector != address(0) && _feeCollector != _claimer && _feeCollector != _holder);
-    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
-    _payoutAmount = _boundToReasonablePayoutAmount(_payoutAmount);
+    _rewardAmount = _boundToReasonableRewardTokenAmount(_rewardAmount);
+    _payoutAmount = _boundToReasonableStakeTokenReward(_payoutAmount);
     _feeBips = uint16(bound(_feeBips, 0, lst.MAX_FEE_BIPS()));
     _setRewardParameters(uint80(_payoutAmount), _feeBips, _feeCollector);
     _mintStakeToken(_claimer, _payoutAmount);
@@ -3093,8 +2892,8 @@ contract ClaimAndDistributeReward is UniLstTest {
     _assumeSafeHolders(_holder, _claimer);
     _assumeSafeHolder(_feeCollector);
     vm.assume(_feeCollector != address(0) && _feeCollector != _holder && _feeCollector != _claimer);
-    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
-    _payoutAmount = _boundToReasonablePayoutAmount(_payoutAmount);
+    _rewardAmount = _boundToReasonableRewardTokenAmount(_rewardAmount);
+    _payoutAmount = _boundToReasonableStakeTokenReward(_payoutAmount);
     _feeBips = uint16(bound(_feeBips, 0, lst.MAX_FEE_BIPS()));
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
     // Set up actors to enable reward distribution with fees.
@@ -3108,7 +2907,7 @@ contract ClaimAndDistributeReward is UniLstTest {
     uint256 _feeAmount = (_payoutAmount * _feeBips) / 10_000;
     // The fee collector should now have a balance less than or equal to the fee amount, within some tolerable delta
     // to account for truncation issues.
-    assertApproxEqAbs(lst.balanceOf(_feeCollector), _feeAmount, ACCEPTABLE_DELTA);
+    assertApproxEqAbs(lst.balanceOf(_feeCollector), _feeAmount, 1);
     assertTrue(lst.balanceOf(_feeCollector) <= _feeAmount);
   }
 
@@ -3123,8 +2922,8 @@ contract ClaimAndDistributeReward is UniLstTest {
   ) public {
     _assumeSafeHolder(_claimer);
     vm.assume(_feeCollector != address(0) && _feeCollector != _claimer);
-    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
-    _payoutAmount = _boundToReasonablePayoutAmount(_payoutAmount);
+    _rewardAmount = _boundToReasonableRewardTokenAmount(_rewardAmount);
+    _payoutAmount = _boundToReasonableStakeTokenReward(_payoutAmount);
     _feeBips = uint16(bound(_feeBips, 0, lst.MAX_FEE_BIPS()));
     _setRewardParameters(uint80(_payoutAmount), _feeBips, _feeCollector);
     // The claimer will request a minimum reward amount greater than the actual reward.
@@ -3152,8 +2951,8 @@ contract ClaimAndDistributeReward is UniLstTest {
     _assumeSafeHolders(_holder, _claimer);
     _assumeSafeHolder(_feeCollector);
     vm.assume(_feeCollector != address(0) && _feeCollector != _holder && _feeCollector != _claimer);
-    _rewardAmount = _boundToReasonableRewardAmount(_rewardAmount);
-    _payoutAmount = _boundToReasonablePayoutAmount(_payoutAmount);
+    _rewardAmount = _boundToReasonableRewardTokenAmount(_rewardAmount);
+    _payoutAmount = _boundToReasonableStakeTokenReward(_payoutAmount);
     _extraBalance = _boundToReasonableStakeTokenAmount(_extraBalance);
     _feeBips = uint16(bound(_feeBips, 0, lst.MAX_FEE_BIPS()));
     _setRewardParameters(uint80(_payoutAmount), _feeBips, _feeCollector);
@@ -3536,11 +3335,11 @@ contract Multicall is UniLstTest {
     vm.prank(_actor);
     lst.multicall(_calls);
 
-    assertApproxEqAbs(_stakeAmount - _transferAmount, lst.balanceOf(_actor), ACCEPTABLE_DELTA);
+    assertApproxEqAbs(_stakeAmount - _transferAmount, lst.balanceOf(_actor), 1);
     assertLe(_stakeAmount - _transferAmount, lst.balanceOf(_actor));
-    assertApproxEqAbs(lst.balanceOf(_receiver), _transferAmount, ACCEPTABLE_DELTA);
+    assertApproxEqAbs(lst.balanceOf(_receiver), _transferAmount, 1);
     assertLe(lst.balanceOf(_receiver), _transferAmount);
-    assertApproxEqAbs(lst.balanceOf(_actor), stakeToken.getCurrentVotes(_delegatee), ACCEPTABLE_DELTA);
+    assertApproxEqAbs(lst.balanceOf(_actor), stakeToken.getCurrentVotes(_delegatee), 1);
     assertLe(lst.balanceOf(_actor), stakeToken.getCurrentVotes(_delegatee));
   }
 

@@ -124,11 +124,10 @@ contract UniStakerInvariants is Test, UnitTestBase {
     // as they are always accruing to the default deposit. However, it's also important that we not miss a flagrant
     // error that causes dramatic shortfalls, as opposed to tiny shortfalls accruing due to truncation. The problem
     // with defining the assertion as "within some acceptable range" is that if the depth of the invariant tests are
-    // increased, one would expect the "invariant" here to eventually be broken. At some point, we ought to better
-    // understand the nature of the shortfalls that can accrue, and how we might more thoroughly mitigate them. For
-    // now, we leave this somewhat hacky "invariant" in place to make sure we're avoiding an actual, unexpected bug.
-    // 1x10^-6 UNI or 1 millionth of a UNI
-    uint256 ACCEPTABLE_DEFAULT_DEPOSIT_SHORTFALL = 0.000001e18;
+    // increased, one would expect the "invariant" here to eventually be broken. For now, we leave this somewhat hacky
+    // "invariant" in place to make sure we're avoiding an actual, unexpected bug.
+    uint256 ACCEPTABLE_DEFAULT_DEPOSIT_SHORTFALL = 1000; // 1x10^-15 UNI
+
     // first, get the balance of the default deposit -- very easy!
     IUniStaker.DepositIdentifier defaultDepositId = lst.depositForDelegatee(defaultDelegatee);
     (uint256 _defaultDepositBalance,,,) = staker.deposits(defaultDepositId);
@@ -162,7 +161,7 @@ contract UniStakerInvariants is Test, UnitTestBase {
   /// @notice When transferring, the sum of the balance changes across the sender & receiver should be less than or
   /// equal to 0 (i.e. the sender's balance should decrease by an amount greater than or equal to the receiver's balance
   /// increase).
-  function invariant_transferShouldNotIncreaseReceiverBalanceMoreThanDecreasesSenderBalance() public view {
+  function invariant_transferShouldNotCauseANetBalanceDifferentialOfMoreThanOneWei() public view {
     assertFalse(handler.transferInvariantBroken());
   }
 
