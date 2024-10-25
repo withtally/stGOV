@@ -17,6 +17,42 @@ Holders can redeem their `stUNI` 1:1 for the underlying `UNI` at any time.
 
 For further documentation, see [Tally's docs](https://docs.tally.xyz/knowledge-base/staking-on-tally).
 
+```mermaid
+
+
+stateDiagram-v2
+    direction TB
+
+    state "LST Contract" as LST {
+        state "Core Methods" as CoreMethods {
+            direction LR
+            stake: "stake()"
+            transfer: "transfer()"
+            unstake: "unstake()"
+        }
+        state "Owner Methods" as OwnerMethods {
+            direction LR
+            setPayoutAmount: "setPayoutAmount()"
+            setFeeParameters: "setFeeParameters()"
+        }
+        state "Strategy Admin Methods" as StrategyMethods {
+            direction LR
+            setDefaultDelegatee: "setDefaultDelegatee()"
+            setDelegateeGuardian: "setDelegateeGuardian()"
+        }
+        state "Searcher Methods" as SearcherMethods {
+            claimRewards: "claimAndDistributeReward()"
+        }
+    }
+
+    Stakers --> CoreMethods
+    Owner --> OwnerMethods
+    DelegateAdmin --> StrategyMethods
+    Searchers --> SearcherMethods: "Distribute rewards"
+    LST --> GovernanceStaking
+
+```
+
 ## Gas Reports
 
 To generate gas reports run the following command.
