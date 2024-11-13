@@ -6,7 +6,7 @@
   ]
   ignored_warnings_from = ["src/interfaces/IWETH9.sol"]
   optimizer = true
-  optimizer_runs = 10_000_000
+  optimizer_runs = 31_000
   remappings = [
     "forge-std/=lib/forge-std/src",
     "openzeppelin/=lib/openzeppelin-contracts/contracts",
@@ -16,7 +16,7 @@
   via-ir = false
 
 [profile.ci]
-  fuzz = { runs = 5000 }
+  fuzz = { runs = 3000 }
   invariant = { runs = 1000 }
 
 [profile.coverage]

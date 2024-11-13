@@ -8,6 +8,8 @@ import {IUniStaker} from "src/interfaces/IUniStaker.sol";
 import {IUni} from "src/interfaces/IUni.sol";
 import {IWETH9} from "src/interfaces/IWETH9.sol";
 import {WithdrawGate} from "src/WithdrawGate.sol";
+import {FixedUniLst} from "src/FixedUniLst.sol";
+import {FixedLstAddressAlias} from "src/FixedLstAddressAlias.sol";
 import {Ownable} from "openzeppelin/access/Ownable.sol";
 import {EIP712} from "openzeppelin/utils/cryptography/EIP712.sol";
 import {SignatureChecker} from "openzeppelin/utils/cryptography/SignatureChecker.sol";
@@ -31,6 +33,8 @@ import {SafeCast} from "openzeppelin/utils/math/SafeCast.sol";
 /// deposits remain solvent. Where a deposit might be left short due to truncation, we aim to accumulate these
 /// shortfalls in the default deposit, which can be subsidized to remain solvent.
 contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP712, Nonces {
+  using FixedLstAddressAlias for address;
+
   /// @notice Emitted when the LST owner updates the payout amount required for the MEV reward game in
   /// `claimAndDistributeReward`.
   event PayoutAmountSet(uint256 oldPayoutAmount, uint256 newPayoutAmount);
@@ -125,9 +129,14 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
 
   /// @notice A coupled contract used by the LST to enforce an optional delay when withdrawing staked tokens from the
   /// LST. Can be used to prevent users from frontrunning rewards by staking and withdrawing repeatedly at opportune
-  /// times.
-  /// Said strategy would likely be unprofitable due to gas fees, but we eliminate the possibility via a delay.
+  /// times. Said strategy would likely be unprofitable due to gas fees, but we eliminate the possibility via a delay.
   WithdrawGate public immutable WITHDRAW_GATE;
+
+  /// @notice A coupled ERC20 contract that represents a fixed balance version of the LST. Whereas this  LST has
+  /// dynamic, rebasing balances, the Fixed LST is deployed alongside of it but has balances that remain fixed. To
+  /// achieve this, the Fixed LST contract is privileged to make special calls on behalf if its holders, allowing the
+  /// Fixed LST to use the same accounting system as this rebasing LST.
+  FixedUniLst public immutable FIXED_LST;
 
   /// @notice The deposit identifier of the default deposit.
   IUniStaker.DepositIdentifier public immutable DEFAULT_DEPOSIT_ID;
@@ -253,6 +262,13 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
 
     // Deploy the WithdrawGate
     WITHDRAW_GATE = new WithdrawGate(_initialOwner, address(this), address(STAKE_TOKEN), 0);
+    FIXED_LST = new FixedUniLst(
+      string.concat("Fixed ", _name),
+      string.concat("f", _symbol),
+      this,
+      IERC20(_staker.STAKE_TOKEN()),
+      SHARE_SCALE_FACTOR
+    );
   }
 
   /// @notice The name of the liquid stake token.
@@ -294,7 +310,7 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// ownership of a given number of shares translates to a claim on the quantity of stake tokens returned.
   /// @param _amount The quantity of shares that will be converted to stake tokens.
   /// @return The quantity of stake tokens which backs the provided quantity of shares.
-  function stakeForShares(uint256 _amount) external view returns (uint256) {
+  function stakeForShares(uint256 _amount) public view returns (uint256) {
     Totals memory _totals = totals;
     return _calcStakeForShares(_amount, _totals);
   }
@@ -447,6 +463,8 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// @dev The increase in the holder's balance after staking may be slightly less than the amount staked due to
   /// rounding.
   function stake(uint256 _amount) external returns (uint256) {
+    // UNI reverts on failure so it's not necessary to check return value.
+    STAKE_TOKEN.transferFrom(msg.sender, address(this), _amount);
     return _stake(msg.sender, _amount);
   }
 
@@ -460,6 +478,8 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   function stakeWithAttribution(uint256 _amount, address _referrer) external returns (uint256) {
     IUniStaker.DepositIdentifier _depositId = _calcDepositId(holderStates[msg.sender]);
     emit StakedWithAttribution(_depositId, _amount, _referrer);
+    // UNI reverts on failure so it's not necessary to check return value.
+    STAKE_TOKEN.transferFrom(msg.sender, address(this), _amount);
     return _stake(msg.sender, _amount);
   }
 
@@ -476,6 +496,8 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     external
   {
     _validateSignature(_account, _amount, _nonce, _deadline, _signature, STAKE_TYPEHASH);
+    // UNI reverts on failure so it's not necessary to check return value.
+    STAKE_TOKEN.transferFrom(_account, address(this), _amount);
     _stake(_account, _amount);
   }
 
@@ -488,6 +510,8 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// @param _s ECDSA signature component: `s` value of the signature
   function permitAndStake(uint256 _amount, uint256 _deadline, uint8 _v, bytes32 _r, bytes32 _s) external {
     try STAKE_TOKEN.permit(msg.sender, address(this), _amount, _deadline, _v, _r, _s) {} catch {}
+    // UNI reverts on failure so it's not necessary to check return value.
+    STAKE_TOKEN.transferFrom(msg.sender, address(this), _amount);
     _stake(msg.sender, _amount);
   }
 
@@ -727,24 +751,6 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     _setRewardParams(_params.payoutAmount, _params.feeBips, _params.feeCollector);
   }
 
-  /// @notice Internal function to set reward parameters
-  /// @param _payoutAmount The new payout amount
-  /// @param _feeBips The new fee in basis points
-  /// @param _feeCollector The new fee collector address
-  function _setRewardParams(uint80 _payoutAmount, uint16 _feeBips, address _feeCollector) internal {
-    if (_feeBips > MAX_FEE_BIPS) {
-      revert UniLst__FeeBipsExceedMaximum(_feeBips, MAX_FEE_BIPS);
-    }
-
-    if (_feeCollector == address(0)) {
-      revert UniLst__FeeCollectorCannotBeZeroAddress();
-    }
-
-    rewardParams = RewardParameters({payoutAmount: _payoutAmount, feeBips: _feeBips, feeCollector: _feeCollector});
-
-    emit RewardParametersSet(_payoutAmount, _feeBips, _feeCollector);
-  }
-
   /// @notice Update the default delegatee. Can only be called by the delegatee guardian or by the LST owner. Once the
   /// guardian takes an action on the LST, the owner can no longer override it.
   /// @param _newDelegatee The address which will be assigned as the delegatee for the default UniStaker deposit.
@@ -761,6 +767,93 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     _checkAndToggleGuardianControlOrOwner();
     _setDelegateeGuardian(_newDelegateeGuardian);
   }
+
+  //---------------------------------------- Begin Fixed LST Helper Methods ------------------------------------------/
+
+  /// @notice Permissioned fixed LST helper method which updates the deposit of the holder's fixed LST alias address.
+  /// @param _account The holder setting their deposit in the fixed LST.
+  /// @param _newDepositId The UniStaker deposit identifier to which this holder's fixed LST staked tokens will be
+  /// moved to and kept in henceforth.
+  function updateFixedDeposit(address _account, IUniStaker.DepositIdentifier _newDepositId) external {
+    _revertIfNotFixedLst();
+    _updateDeposit(_account.fixedAlias(), _newDepositId);
+  }
+
+  /// @notice Permissioned fixed LST helper method which performs the staking operation on behalf of the holder's fixed
+  /// LST alias address, allowing the holder to stake in the fixed LST directly.
+  /// @param _account The holder staking in the fixed LST.
+  /// @param _amount The quantity of tokens that will be staked in the fixed LST.
+  /// @return The number of _shares_ received by the holder's fixed alias address.
+  function stakeAndConvertToFixed(address _account, uint256 _amount) external returns (uint256) {
+    _revertIfNotFixedLst();
+    uint256 _initialShares = holderStates[_account.fixedAlias()].shares;
+    // We assume that the stake tokens have already been transferred to this contract by the FixedLst.
+    _stake(_account.fixedAlias(), _amount);
+    return holderStates[_account.fixedAlias()].shares - _initialShares;
+  }
+
+  /// @notice Permissioned fixed LST helper method which moves a holder's rebasing LST tokens into its fixed alias
+  /// address, effectively converting rebasing LST tokens to fixed LST tokens.
+  /// @param _account The holder converting rebasing LST tokens into fixed LST tokens.
+  /// @param _amount The number of rebasing LST tokens to convert.
+  /// @return The number of _shares_ received by the holder's fixed alias address.
+  function convertToFixed(address _account, uint256 _amount) external returns (uint256) {
+    _revertIfNotFixedLst();
+    uint256 _initialShares = holderStates[_account.fixedAlias()].shares;
+    _transfer(_account, _account.fixedAlias(), _amount);
+    return holderStates[_account.fixedAlias()].shares - _initialShares;
+  }
+
+  /// @notice Permissioned fixed LST helper method which transfers tokens between fixed alias addresses.
+  /// @param _sender The address of the fixed LST holder sending fixed LST tokens.
+  /// @param _receiver The address receiving fixed LST tokens.
+  /// @param _shares The number of rebasing LST _shares_ to move between sender and receiver aliases.
+  /// @return _senderSharesDecrease The decrease in the sender alias address' shares.
+  /// @return _receiverSharesIncrease The increase in the receiver alias address' shares.
+  function transferFixed(address _sender, address _receiver, uint256 _shares)
+    external
+    returns (uint256 _senderSharesDecrease, uint256 _receiverSharesIncrease)
+  {
+    _revertIfNotFixedLst();
+    uint256 _senderInitialShares = holderStates[_sender.fixedAlias()].shares;
+    uint256 _receiverInitialShares = holderStates[_receiver.fixedAlias()].shares;
+    uint256 _amount = stakeForShares(_shares);
+    _transfer(_sender.fixedAlias(), _receiver.fixedAlias(), _amount);
+    uint256 _senderFinalShares = holderStates[_sender.fixedAlias()].shares;
+    uint256 _receiverFinalShares = holderStates[_receiver.fixedAlias()].shares;
+    return (_senderInitialShares - _senderFinalShares, _receiverFinalShares - _receiverInitialShares);
+  }
+
+  /// @notice Permissioned fixed LST helper method which moves rebasing LST tokens from a holder's alias back to his
+  /// standard address, effectively converting fixed LST tokens back to rebasing LST tokens.
+  /// @param _account The holder converting fixed LST tokens into rebasing LST tokens.
+  /// @param _shares The number of _shares_ worth of rebasing LST tokens to be moved from the holder's fixed alias
+  /// to their standard address.
+  /// @return The number of rebasing LST tokens moved back into the holder's address.
+  function convertToRebasing(address _account, uint256 _shares) external returns (uint256) {
+    _revertIfNotFixedLst();
+    uint256 _amount = stakeForShares(_shares);
+    uint256 _amountUnfixed;
+    (, _amountUnfixed) = _transfer(_account.fixedAlias(), _account, _amount);
+    return _amountUnfixed;
+  }
+
+  /// @notice Permissioned fixed LST helper method which transfers rebasing LST tokens from the holder's fixed alias
+  /// address then unstakes them on his behalf, allowing the holder to unstake from the fixed LST directly.
+  /// @param _account The holder unstaking his fixed LST tokens.
+  /// @param _shares The number of _shares_ worth of rebasing LST tokens to be unstaked.
+  /// @return The number of governance tokens unstaked.
+  /// @dev If their is a withdrawal delay being enforced, the tokens will be moved into the withdrawal gate on behalf
+  /// of the holder's account, not his alias.
+  function convertToRebasingAndUnstake(address _account, uint256 _shares) external returns (uint256) {
+    _revertIfNotFixedLst();
+    uint256 _amount = stakeForShares(_shares);
+    uint256 _amountUnfixed;
+    (, _amountUnfixed) = _transfer(_account.fixedAlias(), _account, _amount);
+    return _unstake(_account, _amountUnfixed);
+  }
+
+  //------------------------------------------ End Fixed LST Helper Methods ------------------------------------------/
 
   /// @notice Internal helper method that takes an amount of stake tokens and metadata representing the global state of
   /// the LST and returns the quantity of shares that is worth the requested quantity of stake token. All data for the
@@ -894,9 +987,6 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// @dev This method must only be called after proper authorization has been completed.
   /// @dev See public stake methods for additional documentation.
   function _stake(address _account, uint256 _amount) internal returns (uint256) {
-    // UNI reverts on failure so it's not necessary to check return value.
-    STAKE_TOKEN.transferFrom(_account, address(this), _amount);
-
     // Read required state from storage once.
     Totals memory _totals = totals;
     HolderState memory _holderState = holderStates[_account];
@@ -1112,6 +1202,24 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     return (_senderBalanceDecrease, _receiverBalanceIncrease);
   }
 
+  /// @notice Internal function to set reward parameters
+  /// @param _payoutAmount The new payout amount
+  /// @param _feeBips The new fee in basis points
+  /// @param _feeCollector The new fee collector address
+  function _setRewardParams(uint80 _payoutAmount, uint16 _feeBips, address _feeCollector) internal {
+    if (_feeBips > MAX_FEE_BIPS) {
+      revert UniLst__FeeBipsExceedMaximum(_feeBips, MAX_FEE_BIPS);
+    }
+
+    if (_feeCollector == address(0)) {
+      revert UniLst__FeeCollectorCannotBeZeroAddress();
+    }
+
+    rewardParams = RewardParameters({payoutAmount: _payoutAmount, feeBips: _feeBips, feeCollector: _feeCollector});
+
+    emit RewardParametersSet(_payoutAmount, _feeBips, _feeCollector);
+  }
+
   /// @notice Internal helper method that sets the delegatee and emits an event.
   function _setDefaultDelegatee(address _newDelegatee) internal {
     emit DefaultDelegateeSet(defaultDelegatee, _newDelegatee);
@@ -1175,6 +1283,13 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     }
     if (msg.sender == delegateeGuardian && !isGuardianControlled) {
       isGuardianControlled = true;
+    }
+  }
+
+  /// @notice Internal helper which reverts if the caller is not the fixed lst contract.
+  function _revertIfNotFixedLst() internal view {
+    if (msg.sender != address(FIXED_LST)) {
+      revert UniLst__Unauthorized();
     }
   }
 

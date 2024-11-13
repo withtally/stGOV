@@ -2772,7 +2772,7 @@ contract ClaimAndDistributeReward is UniLstTest {
     address _feeCollector
   ) public {
     _assumeSafeHolders(_holder, _claimer);
-    vm.assume(_feeCollector != address(0));
+    vm.assume(_feeCollector != address(0) && _feeCollector != _holder);
     _rewardAmount = _boundToReasonableRewardTokenAmount(_rewardAmount);
     _payoutAmount = _boundToReasonableStakeTokenReward(_payoutAmount);
     _extraBalance = _boundToReasonableStakeTokenAmount(_extraBalance);
@@ -2787,6 +2787,8 @@ contract ClaimAndDistributeReward is UniLstTest {
     // There must be some stake in the LST for it to earn the underlying staker rewards
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
     _mintAndStake(_holder, _stakeAmount);
+    // Remember the fee collector's initial balance
+    uint256 _feeCollectorInitialBalance = lst.balanceOf(_feeCollector);
 
     _approveLstAndClaimAndDistributeReward(_claimer, _rewardAmount, _recipient);
 
@@ -2795,7 +2797,7 @@ contract ClaimAndDistributeReward is UniLstTest {
 
     // Check that the fee collector received the correct fee amount
     if (_feeAmount > 0) {
-      assertApproxEqAbs(lst.balanceOf(_feeCollector), _feeAmount, 1);
+      assertApproxEqAbs(lst.balanceOf(_feeCollector) - _feeCollectorInitialBalance, _feeAmount, 1);
     }
   }
 
@@ -3491,5 +3493,73 @@ contract SetDelegateeGuardian is UniLstTest {
     vm.expectRevert(UniLst.UniLst__Unauthorized.selector);
     vm.prank(lstOwner);
     lst.setDelegateeGuardian(_newDelegateeGuardian2);
+  }
+}
+
+// The tests below for all the Fixed LST related methods only test that they are properly restricted to being called by
+// the Fixed LST contract. The actual functionality of the methods is exercised and tests adequately in the Fixed LST
+// test suite. Given that these two contracts are tightly coupled and deployed together, it seems reasonable to allow
+// the unit tests for one to cover functionality of another.
+
+contract StakeAndConvertToFixed is UniLstTest {
+  function testFuzz_RevertIf_CallerIsNotTheFixedLstContract(address _caller, address _account, uint256 _amount) public {
+    vm.assume(_caller != address(lst.FIXED_LST()));
+    vm.expectRevert(UniLst.UniLst__Unauthorized.selector);
+    vm.prank(_caller);
+    lst.stakeAndConvertToFixed(_account, _amount);
+  }
+}
+
+contract UpdateFixedDeposit is UniLstTest {
+  function testFuzz_RevertIf_CallerIsNotTheFixedLstContract(
+    address _caller,
+    address _account,
+    IUniStaker.DepositIdentifier _newDepositId
+  ) public {
+    vm.assume(_caller != address(lst.FIXED_LST()));
+    vm.expectRevert(UniLst.UniLst__Unauthorized.selector);
+    vm.prank(_caller);
+    lst.updateFixedDeposit(_account, _newDepositId);
+  }
+}
+
+contract ConvertToFixed is UniLstTest {
+  function testFuzz_RevertIf_CallerIsNotTheFixedLstContract(address _caller, address _account, uint256 _amount) public {
+    vm.assume(_caller != address(lst.FIXED_LST()));
+    vm.expectRevert(UniLst.UniLst__Unauthorized.selector);
+    vm.prank(_caller);
+    lst.convertToFixed(_account, _amount);
+  }
+}
+
+contract TransferFixed is UniLstTest {
+  function testFuzz_RevertIf_CallerIsNotTheFixedLstContract(
+    address _caller,
+    address _sender,
+    address _receiver,
+    uint256 _shares
+  ) public {
+    vm.assume(_caller != address(lst.FIXED_LST()));
+    vm.expectRevert(UniLst.UniLst__Unauthorized.selector);
+    vm.prank(_caller);
+    lst.transferFixed(_sender, _receiver, _shares);
+  }
+}
+
+contract ConvertToRebasing is UniLstTest {
+  function testFuzz_RevertIf_CallerIsNotTheFixedLstContract(address _caller, address _account, uint256 _shares) public {
+    vm.assume(_caller != address(lst.FIXED_LST()));
+    vm.expectRevert(UniLst.UniLst__Unauthorized.selector);
+    vm.prank(_caller);
+    lst.convertToRebasing(_account, _shares);
+  }
+}
+
+contract ConvertToRebasingAndUnstake is UniLstTest {
+  function testFuzz_RevertIf_CallerIsNotTheFixedLstContract(address _caller, address _account, uint256 _shares) public {
+    vm.assume(_caller != address(lst.FIXED_LST()));
+    vm.expectRevert(UniLst.UniLst__Unauthorized.selector);
+    vm.prank(_caller);
+    lst.convertToRebasingAndUnstake(_account, _shares);
   }
 }
