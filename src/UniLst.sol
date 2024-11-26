@@ -1027,6 +1027,7 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     }
 
     uint256 _receiverBalanceIncrease = _calcBalanceOf(_receiverState, _totals) - _receiverInitBalance;
+    uint256 _senderBalanceDecrease = _senderInitBalance - _calcBalanceOf(_senderState, _totals);
 
     // Knowing the sender's balance has decreased by at least as much as the receiver's has increased, we now base the
     // calculation of how much to move between deposits on the greater number, i.e. the sender's decrease. However,
@@ -1053,51 +1054,62 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
       // Write data back to storage once.
       holderStates[_senderRescoped] = _senderState;
       holderStates[_receiverRescoped] = _receiverState;
-      return (_value, _receiverBalanceIncrease);
+      return (_senderBalanceDecrease, _receiverBalanceIncrease);
     }
 
-    uint256 _undelegatedBalanceToWithdraw;
-    uint256 _delegatedBalanceToWithdraw;
+    // Create a new scope for this series of operations to avoid stack to deep.
+    {
+      // Rescoping these vars to avoid stack too deep.
+      uint256 _valueRescoped = _value;
+      Totals memory _totalsRescoped = _totals;
+      HolderState memory _senderStateRescoped = _senderState;
+      HolderState memory _receiverStateRescoped = _receiverState;
 
-    if (_value > _senderUndelegatedBalance) {
-      // Since the amount needed is more than the full undelegated balance, we'll withdraw all of it, plus some from
-      // the delegated balance.
-      _undelegatedBalanceToWithdraw = _senderUndelegatedBalance;
-      _delegatedBalanceToWithdraw = _value - _undelegatedBalanceToWithdraw;
-      _senderState.balanceCheckpoint = uint96(_senderDelegatedBalance - _delegatedBalanceToWithdraw);
+      uint256 _undelegatedBalanceToWithdraw;
+      uint256 _delegatedBalanceToWithdraw;
 
-      if (_isSameDepositId(_calcDepositId(_receiverState), _calcDepositId(_senderState))) {
-        // If the sender and receiver are using the same deposit, we don't need to move these tokens, so we skip the
-        // Staker withdraw and zero out this value so we don't try to "stakeMore" with it later.
-        _delegatedBalanceToWithdraw = 0;
+      if (_valueRescoped > _senderUndelegatedBalance) {
+        // Since the amount needed is more than the full undelegated balance, we'll withdraw all of it, plus some from
+        // the delegated balance.
+        _undelegatedBalanceToWithdraw = _senderUndelegatedBalance;
+        _delegatedBalanceToWithdraw = _valueRescoped - _undelegatedBalanceToWithdraw;
+        _senderStateRescoped.balanceCheckpoint = uint96(_senderDelegatedBalance - _delegatedBalanceToWithdraw);
+
+        if (_isSameDepositId(_calcDepositId(_receiverStateRescoped), _calcDepositId(_senderStateRescoped))) {
+          // If the sender and receiver are using the same deposit, we don't need to move these tokens, so we skip the
+          // Staker withdraw and zero out this value so we don't try to "stakeMore" with it later.
+          _delegatedBalanceToWithdraw = 0;
+        } else {
+          STAKER.withdraw(_calcDepositId(_senderStateRescoped), uint96(_delegatedBalanceToWithdraw));
+        }
       } else {
-        STAKER.withdraw(_calcDepositId(_senderState), uint96(_delegatedBalanceToWithdraw));
+        // Since the amount is less than or equal to the undelegated balance, we'll source all of it from said balance.
+        _undelegatedBalanceToWithdraw = _valueRescoped;
       }
-    } else {
-      // Since the amount is less than or equal to the undelegated balance, we'll source all of it from said balance.
-      _undelegatedBalanceToWithdraw = _value;
+
+      // Ensure the sender's balance checkpoint is updated if it has decreased due to truncation.
+      _senderStateRescoped.balanceCheckpoint =
+        _min(_senderStateRescoped.balanceCheckpoint, uint96(_calcBalanceOf(_senderStateRescoped, _totalsRescoped)));
+
+      // Write data back to storage once.
+      holderStates[_senderRescoped] = _senderStateRescoped;
+      holderStates[_receiverRescoped] = _receiverStateRescoped;
+
+      // If the staker had zero undelegated balance, we won't waste gas executing the withdraw call.
+      if (_undelegatedBalanceToWithdraw > 0) {
+        STAKER.withdraw(DEFAULT_DEPOSIT_ID, uint96(_undelegatedBalanceToWithdraw));
+      }
+
+      // If both the delegated balance to withdraw and the undelegated balance to withdraw were zero, then we didn't
+      // have to move any tokens out of Staker deposits, and none need to be put back into the receiver's deposit now.
+      if ((_delegatedBalanceToWithdraw + _undelegatedBalanceToWithdraw) > 0) {
+        STAKER.stakeMore(
+          _calcDepositId(_receiverStateRescoped), uint96(_delegatedBalanceToWithdraw + _undelegatedBalanceToWithdraw)
+        );
+      }
     }
 
-    // Ensure the sender's balance checkpoint is updated if it has decreased due to truncation.
-    _senderState.balanceCheckpoint = _min(_senderState.balanceCheckpoint, uint96(_calcBalanceOf(_senderState, _totals)));
-
-    // Write data back to storage once.
-    holderStates[_senderRescoped] = _senderState;
-    holderStates[_receiverRescoped] = _receiverState;
-
-    // If the staker had zero undelegated balance, we won't waste gas executing the withdraw call.
-    if (_undelegatedBalanceToWithdraw > 0) {
-      STAKER.withdraw(DEFAULT_DEPOSIT_ID, uint96(_undelegatedBalanceToWithdraw));
-    }
-
-    // If both the delegated balance to withdraw and the undelegated balance to withdraw were zero, then we didn't
-    // have to move any tokens out of Staker deposits, and none need to be put back into the receiver's deposit now.
-    if ((_delegatedBalanceToWithdraw + _undelegatedBalanceToWithdraw) > 0) {
-      STAKER.stakeMore(
-        _calcDepositId(_receiverState), uint96(_delegatedBalanceToWithdraw + _undelegatedBalanceToWithdraw)
-      );
-    }
-    return (_value, _receiverBalanceIncrease);
+    return (_senderBalanceDecrease, _receiverBalanceIncrease);
   }
 
   /// @notice Internal helper method that sets the delegatee and emits an event.
