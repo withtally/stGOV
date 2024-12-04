@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.26;
+pragma solidity 0.8.28;
 
 import {Test, console2} from "forge-std/Test.sol";
 import {IWETH9} from "src/interfaces/IWETH9.sol";

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.26;
+pragma solidity 0.8.28;
 
 import {console2, stdStorage, StdStorage, stdError} from "forge-std/Test.sol";
 import {UniLstTest, UniLst} from "test/UniLst.t.sol";

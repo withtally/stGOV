@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.26;
+pragma solidity 0.8.28;
 
 import {console2} from "forge-std/Test.sol";
 import {WithdrawGate} from "src/WithdrawGate.sol";

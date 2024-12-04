@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.26;
+pragma solidity 0.8.28;
 
 import {UniLst} from "src/UniLst.sol";
 import {FixedLstAddressAlias} from "src/FixedLstAddressAlias.sol";
