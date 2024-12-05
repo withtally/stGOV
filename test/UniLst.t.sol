@@ -387,6 +387,37 @@ contract DelegateeForHolder is UniLstTest {
   }
 }
 
+contract Delegate is UniLstTest {
+  function testFuzz_UpdatesCallersDepositToExistingDelegatee(address _holder, address _delegatee, uint256 _amount)
+    public
+  {
+    _assumeSafeHolder(_holder);
+    _assumeSafeDelegatee(_delegatee);
+    IUniStaker.DepositIdentifier _depositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+
+    _amount = _boundToReasonableStakeTokenAmount(_amount);
+    _mintAndStake(_holder, _amount);
+
+    vm.prank(_holder);
+    lst.delegate(_delegatee);
+
+    assertEq(lst.delegateeForHolder(_holder), _delegatee);
+  }
+
+  function testFuzz_UpdatesCallersDepositToANewDelegatee(address _holder, address _delegatee, uint256 _amount) public {
+    _assumeSafeHolder(_holder);
+    _assumeSafeDelegatee(_delegatee);
+
+    _amount = _boundToReasonableStakeTokenAmount(_amount);
+    _mintAndStake(_holder, _amount);
+
+    vm.prank(_holder);
+    lst.delegate(_delegatee);
+
+    assertEq(lst.delegateeForHolder(_holder), _delegatee);
+  }
+}
+
 contract DepositForDelegatee is UniLstTest {
   function test_ReturnsTheDefaultDepositIdForTheZeroAddress() public view {
     IUniStaker.DepositIdentifier _depositId = lst.depositForDelegatee(address(0));

@@ -1049,6 +1049,39 @@ contract Unstake is FixedUniLstTest {
   }
 }
 
+contract Delegate is FixedUniLstTest {
+  function testFuzz_UpdatesCallersDepositToExistingDelegatee(address _holder, address _delegatee, uint256 _amount)
+    public
+  {
+    _assumeSafeHolder(_holder);
+    _assumeSafeDelegatee(_delegatee);
+    IUniStaker.DepositIdentifier _depositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+
+    _amount = _boundToReasonableStakeTokenAmount(_amount);
+    _mintStakeToken(_holder, _amount);
+    _stakeFixed(_holder, _amount);
+
+    vm.prank(_holder);
+    fixedLst.delegate(_delegatee);
+
+    assertEq(fixedLst.delegates(_holder), _delegatee);
+  }
+
+  function testFuzz_UpdatesCallersDepositToANewDelegatee(address _holder, address _delegatee, uint256 _amount) public {
+    _assumeSafeHolder(_holder);
+    _assumeSafeDelegatee(_delegatee);
+
+    _amount = _boundToReasonableStakeTokenAmount(_amount);
+    _mintStakeToken(_holder, _amount);
+    _stakeFixed(_holder, _amount);
+
+    vm.prank(_holder);
+    fixedLst.delegate(_delegatee);
+
+    assertEq(fixedLst.delegates(_holder), _delegatee);
+  }
+}
+
 contract Rescue is FixedUniLstTest {
   function testFuzz_AddsLstTokensMistakenlySentToTheAliasAddressOfAHolderToFixedLstBalance(
     address _holder,

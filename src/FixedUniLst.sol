@@ -100,7 +100,7 @@ contract FixedUniLst is IERC20, IERC20Metadata {
   /// by specifying the deposit identifier associated with that delegatee.
   /// @param _newDepositId The identifier of a deposit which must be one owned by the rebasing LST. Underlying tokens
   /// staked in the fixed LST will be moved into this deposit.
-  function updateDeposit(IUniStaker.DepositIdentifier _newDepositId) external {
+  function updateDeposit(IUniStaker.DepositIdentifier _newDepositId) public {
     LST.updateFixedDeposit(msg.sender, _newDepositId);
   }
 
@@ -179,6 +179,17 @@ contract FixedUniLst is IERC20, IERC20Metadata {
     totalShares -= _shares;
     emit IERC20.Transfer(msg.sender, address(0), _fixedTokens);
     return LST.convertToRebasingAndUnstake(msg.sender, _shares);
+  }
+
+  /// @notice Allow a depositor to change the address they are delegating their staked tokens.
+  /// @param _delegatee The address where voting is delegated.
+  function delegate(address _delegatee) public virtual {
+    IUniStaker.DepositIdentifier _depositId = LST.fetchOrInitializeDepositForDelegatee(_delegatee);
+    updateDeposit(_depositId);
+  }
+
+  function delegates(address _holder) external virtual returns (address) {
+    return LST.delegateeForHolder(_holder.fixedAlias());
   }
 
   /// @notice Save rebasing LST tokens that were mistakenly sent to the fixed holder alias address. Each fixed LST

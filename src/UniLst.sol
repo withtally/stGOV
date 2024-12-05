@@ -405,7 +405,7 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// previously initialized.
   /// @param _delegatee The address of the delegatee.
   /// @return The deposit identifier of the existing, or newly created, UniStaker deposit for this delegatee.
-  function fetchOrInitializeDepositForDelegatee(address _delegatee) external returns (IUniStaker.DepositIdentifier) {
+  function fetchOrInitializeDepositForDelegatee(address _delegatee) public returns (IUniStaker.DepositIdentifier) {
     IUniStaker.DepositIdentifier _depositId = depositForDelegatee(_delegatee);
 
     if (IUniStaker.DepositIdentifier.unwrap(_depositId) != 0) {
@@ -427,7 +427,7 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// calling this method again, even with their existing deposit identifier.
   /// @param _newDepositId The UniStaker deposit identifier to which this holder's staked tokens will be moved to and
   /// kept in henceforth.
-  function updateDeposit(IUniStaker.DepositIdentifier _newDepositId) external {
+  function updateDeposit(IUniStaker.DepositIdentifier _newDepositId) public {
     _updateDeposit(msg.sender, _newDepositId);
   }
 
@@ -723,6 +723,13 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     emit RewardDistributed(
       msg.sender, _recipient, _rewards, rewardParams.payoutAmount, _feeAmount, rewardParams.feeCollector
     );
+  }
+
+  /// @notice Allow a depositor to change the address they are delegating their staked tokens.
+  /// @param _delegatee The address where voting is delegated.
+  function delegate(address _delegatee) public virtual {
+    IUniStaker.DepositIdentifier _depositId = fetchOrInitializeDepositForDelegatee(_delegatee);
+    updateDeposit(_depositId);
   }
 
   /// @notice Open method which allows anyone to add funds to a UniStaker deposit owned by the LST. These funds are not
