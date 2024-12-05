@@ -1111,6 +1111,22 @@ contract StakeWithAttribution is UniLstTest {
 
     assertEq(stakeToken.getCurrentVotes(defaultDelegatee), _amount);
   }
+
+  function testFuzz_EmitsAStakedEvent(uint256 _amount, address _holder, address _referrer) public {
+    _assumeSafeHolder(_holder);
+    _amount = _boundToReasonableStakeTokenAmount(_amount);
+
+    _mintStakeToken(_holder, _amount);
+
+    vm.startPrank(_holder);
+    stakeToken.approve(address(lst), _amount);
+    vm.expectEmit();
+    emit UniLst.Staked(_holder, _amount);
+    lst.stakeWithAttribution(_amount, _referrer);
+    vm.stopPrank();
+
+    assertEq(stakeToken.getCurrentVotes(defaultDelegatee), _amount);
+  }
 }
 
 contract Unstake is UniLstTest {
@@ -1497,6 +1513,35 @@ contract PermitAndStake is UniLstTest {
     assertEq(lst.balanceOf(_depositor), _stakeAmount);
   }
 
+  function testFuzz_EmitsAStakedEvent(
+    uint256 _depositorPrivateKey,
+    uint256 _stakeAmount,
+    uint256 _deadline,
+    uint256 _currentNonce
+  ) public {
+    _deadline = bound(_deadline, block.timestamp, type(uint256).max);
+    _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
+    _depositorPrivateKey = bound(_depositorPrivateKey, 1, 100e18);
+    address _depositor = vm.addr(_depositorPrivateKey);
+    _mintStakeToken(_depositor, _stakeAmount);
+
+    _setNonce(address(stakeToken), _depositor, _currentNonce);
+    bytes32 _message = keccak256(
+      abi.encode(
+        stakeToken.PERMIT_TYPEHASH(), _depositor, address(lst), _stakeAmount, stakeToken.nonces(_depositor), _deadline
+      )
+    );
+
+    bytes32 _messageHash =
+      _hashTypedDataV4(DOMAIN_TYPEHASH, _message, bytes(stakeToken.name()), "1", address(stakeToken));
+    (uint8 _v, bytes32 _r, bytes32 _s) = vm.sign(_depositorPrivateKey, _messageHash);
+
+    vm.prank(_depositor);
+    vm.expectEmit();
+    emit UniLst.Staked(_depositor, _stakeAmount);
+    lst.permitAndStake(_stakeAmount, _deadline, _v, _r, _s);
+  }
+
   function testFuzz_RevertIf_ThePermitSignatureIsInvalidAndTheApprovalIsInsufficient(
     address _notDepositor,
     uint256 _depositorPrivateKey,
@@ -1568,6 +1613,36 @@ contract StakeOnBehalf is UniLstTest {
 
     // Check balances
     assertEq(lst.balanceOf(_staker), _amount);
+  }
+
+  function testFuzz_EmitsAStakedEvent(
+    uint256 _amount,
+    uint256 _nonce,
+    uint256 _expiry,
+    uint256 _stakerPrivateKey,
+    address _sender
+  ) public {
+    _amount = _boundToReasonableStakeTokenAmount(_amount);
+    _stakerPrivateKey = _boundToValidPrivateKey(_stakerPrivateKey);
+    _assumeFutureExpiry(_expiry);
+
+    // Mint and approve tokens to the staker
+    address _staker = vm.addr(_stakerPrivateKey);
+    _mintStakeToken(_staker, _amount);
+    vm.startPrank(_staker);
+    stakeToken.approve(address(lst), _amount);
+    vm.stopPrank();
+
+    // Sign the message
+    _setNonce(address(lst), _staker, _nonce);
+    bytes memory signature =
+      _signMessage(lst.STAKE_TYPEHASH(), _staker, _amount, lst.nonces(_staker), _expiry, _stakerPrivateKey);
+
+    // Perform the stake on behalf
+    vm.prank(_sender);
+    vm.expectEmit();
+    emit UniLst.Staked(_staker, _amount);
+    lst.stakeOnBehalf(_staker, _amount, _nonce, _expiry, signature);
   }
 
   function testFuzz_RevertIf_InvalidSignature(
@@ -1730,6 +1805,34 @@ contract UnstakeOnBehalf is UniLstTest {
     // Check balances
     assertEq(lst.balanceOf(_staker), 0);
     assertEq(stakeToken.balanceOf(address(withdrawGate)), _amount);
+  }
+
+  function testFuzz_EmitsAnUnstakedEvent(
+    uint256 _amount,
+    uint256 _nonce,
+    uint256 _expiry,
+    uint256 _stakerPrivateKey,
+    address _sender
+  ) public {
+    _assumeFutureExpiry(_expiry);
+    _amount = _boundToReasonableStakeTokenAmount(_amount);
+    _stakerPrivateKey = _boundToValidPrivateKey(_stakerPrivateKey);
+    address _staker = vm.addr(_stakerPrivateKey);
+
+    // Mint and stake tokens for the holder
+    _mintStakeToken(_staker, _amount);
+    _stake(_staker, _amount);
+
+    // Sign the message
+    _setNonce(address(lst), _staker, _nonce);
+    bytes memory signature =
+      _signMessage(lst.UNSTAKE_TYPEHASH(), _staker, _amount, lst.nonces(_staker), _expiry, _stakerPrivateKey);
+
+    // Perform the unstake on behalf
+    vm.prank(_sender);
+    vm.expectEmit();
+    emit UniLst.Unstaked(_staker, _amount);
+    lst.unstakeOnBehalf(_staker, _amount, lst.nonces(_staker), _expiry, signature);
   }
 
   function testFuzz_RevertIf_InvalidSignature(
@@ -2186,6 +2289,21 @@ contract TransferFrom is UniLstTest {
     lst.transferFrom(_sender, _receiver, _sendAmount);
 
     assertEq(lst.allowance(_sender, _caller), type(uint256).max);
+  }
+
+  function testFuzz_EmitsATransferEvent(uint256 _amount, address _caller, address _sender, address _receiver) public {
+    _assumeSafeHolders(_sender, _receiver);
+    _amount = _boundToReasonableStakeTokenAmount(_amount);
+
+    _mintAndStake(_sender, _amount);
+
+    vm.prank(_sender);
+    lst.approve(_caller, _amount);
+
+    vm.prank(_caller);
+    vm.expectEmit();
+    emit IERC20.Transfer(_sender, _receiver, _amount);
+    lst.transferFrom(_sender, _receiver, _amount);
   }
 
   function testFuzz_RevertIf_NotEnoughAllowanceGiven(
@@ -2778,6 +2896,56 @@ contract TransferAndReturnBalanceDiffs is UniLstTest {
 
     assertEq(senderBalanceDecrease, 0, "Sender balance decrease should be zero for self-transfer");
     assertEq(receiverBalanceIncrease, 0, "Receiver balance increase should be zero for self-transfer");
+  }
+
+  function testFuzz_EmitsATransferEvent(uint256 _amount, address _sender, address _receiver) public {
+    _assumeSafeHolders(_sender, _receiver);
+    _amount = _boundToReasonableStakeTokenAmount(_amount);
+
+    _mintAndStake(_sender, _amount);
+
+    vm.prank(_sender);
+    vm.expectEmit();
+    emit IERC20.Transfer(_sender, _receiver, _amount);
+    lst.transferAndReturnBalanceDiffs(_receiver, _amount);
+  }
+}
+
+contract TransferFromAndReturnBalanceDiffs is UniLstTest {
+  function testFuzz_MovesFullBalanceToAReceiver(uint256 _amount, address _caller, address _sender, address _receiver)
+    public
+  {
+    _assumeSafeHolders(_sender, _receiver);
+    _amount = _boundToReasonableStakeTokenAmount(_amount);
+
+    _mintAndStake(_sender, _amount);
+    uint256 _originalSenderBalance = lst.balanceOf(_sender);
+    uint256 _originalReceiverBalance = lst.balanceOf(_receiver);
+
+    vm.prank(_sender);
+    lst.approve(_caller, _amount);
+
+    vm.prank(_caller);
+    (uint256 _senderBalanceDecrease, uint256 _receiverBalanceIncrease) =
+      lst.transferFromAndReturnBalanceDiffs(_sender, _receiver, _amount);
+
+    assertEq(lst.balanceOf(_sender), _originalSenderBalance - _senderBalanceDecrease);
+    assertEq(lst.balanceOf(_receiver), _originalReceiverBalance + _receiverBalanceIncrease);
+  }
+
+  function testFuzz_EmitsATransferEvent(uint256 _amount, address _caller, address _sender, address _receiver) public {
+    _assumeSafeHolders(_sender, _receiver);
+    _amount = _boundToReasonableStakeTokenAmount(_amount);
+
+    _mintAndStake(_sender, _amount);
+
+    vm.prank(_sender);
+    lst.approve(_caller, _amount);
+
+    vm.prank(_caller);
+    vm.expectEmit();
+    emit IERC20.Transfer(_sender, _receiver, _amount);
+    lst.transferFromAndReturnBalanceDiffs(_sender, _receiver, _amount);
   }
 }
 
@@ -3533,6 +3701,21 @@ contract SetDelegateeGuardian is UniLstTest {
 // the unit tests for one to cover functionality of another.
 
 contract StakeAndConvertToFixed is UniLstTest {
+  function testFuzz_EmitsAStakedEventToTheFixedLstContract(address _holder, uint256 _amount) public {
+    _assumeSafeHolder(_holder);
+    _amount = _boundToReasonableStakeTokenAmount(_amount);
+    address _fixedLst = address(lst.FIXED_LST());
+    _mintStakeToken(_fixedLst, _amount);
+
+    vm.startPrank(_fixedLst);
+    // simulates the fixed lst contract transferring the user's tokens to the rebasing lst.
+    stakeToken.transfer(address(lst), _amount);
+    vm.expectEmit();
+    emit UniLst.Staked(_fixedLst, _amount);
+    lst.stakeAndConvertToFixed(_holder, _amount);
+    vm.stopPrank();
+  }
+
   function testFuzz_RevertIf_CallerIsNotTheFixedLstContract(address _caller, address _account, uint256 _amount) public {
     vm.assume(_caller != address(lst.FIXED_LST()));
     vm.expectRevert(UniLst.UniLst__Unauthorized.selector);
@@ -3555,6 +3738,19 @@ contract UpdateFixedDeposit is UniLstTest {
 }
 
 contract ConvertToFixed is UniLstTest {
+  function testFuzz_EmitsATransferEventToTheFixedLstContract(address _holder, uint256 _amount) public {
+    _assumeSafeHolder(_holder);
+    _amount = _boundToReasonableStakeTokenAmount(_amount);
+    address _fixedLst = address(lst.FIXED_LST());
+    _mintAndStake(_holder, _amount);
+
+    vm.startPrank(_fixedLst);
+    vm.expectEmit();
+    emit IERC20.Transfer(_holder, _fixedLst, _amount);
+    lst.convertToFixed(_holder, _amount);
+    vm.stopPrank();
+  }
+
   function testFuzz_RevertIf_CallerIsNotTheFixedLstContract(address _caller, address _account, uint256 _amount) public {
     vm.assume(_caller != address(lst.FIXED_LST()));
     vm.expectRevert(UniLst.UniLst__Unauthorized.selector);
@@ -3578,6 +3774,21 @@ contract TransferFixed is UniLstTest {
 }
 
 contract ConvertToRebasing is UniLstTest {
+  function testFuzz_EmitsATransferEventFromTheFixedLstContract(address _holder, uint256 _amount) public {
+    _assumeSafeHolder(_holder);
+    _amount = _boundToReasonableStakeTokenAmount(_amount);
+    address _fixedLst = address(lst.FIXED_LST());
+    _mintAndStake(_holder, _amount);
+
+    vm.startPrank(_fixedLst);
+    uint256 _shares = lst.convertToFixed(_holder, _amount);
+    vm.expectEmit();
+    // amount should be the same since no rewards were distributed
+    emit IERC20.Transfer(_fixedLst, _holder, _amount);
+    lst.convertToRebasing(_holder, _shares);
+    vm.stopPrank();
+  }
+
   function testFuzz_RevertIf_CallerIsNotTheFixedLstContract(address _caller, address _account, uint256 _shares) public {
     vm.assume(_caller != address(lst.FIXED_LST()));
     vm.expectRevert(UniLst.UniLst__Unauthorized.selector);
@@ -3587,6 +3798,23 @@ contract ConvertToRebasing is UniLstTest {
 }
 
 contract ConvertToRebasingAndUnstake is UniLstTest {
+  function testFuzz_EmitsAnUnstakeEventFromTheLstContract(address _holder, uint256 _amount) public {
+    _assumeSafeHolder(_holder);
+    _amount = _boundToReasonableStakeTokenAmount(_amount);
+    address _fixedLst = address(lst.FIXED_LST());
+    _mintStakeToken(_fixedLst, _amount);
+
+    vm.startPrank(_fixedLst);
+    // simulates the fixed lst contract transferring user tokens to the rebasing lst
+    stakeToken.transfer(address(lst), _amount);
+    uint256 _shares = lst.stakeAndConvertToFixed(_holder, _amount);
+    vm.expectEmit();
+    // amount should be the same since no rewards were distributed
+    emit UniLst.Unstaked(_fixedLst, _amount);
+    lst.convertToRebasingAndUnstake(_holder, _shares);
+    vm.stopPrank();
+  }
+
   function testFuzz_RevertIf_CallerIsNotTheFixedLstContract(address _caller, address _account, uint256 _shares) public {
     vm.assume(_caller != address(lst.FIXED_LST()));
     vm.expectRevert(UniLst.UniLst__Unauthorized.selector);
