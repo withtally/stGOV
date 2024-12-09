@@ -8,6 +8,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/interfaces/IERC20Metadata.sol";
 import {EIP712} from "openzeppelin/utils/cryptography/EIP712.sol";
 import {Nonces} from "openzeppelin/utils/Nonces.sol";
+import {IUni} from "src/interfaces/IUni.sol";
 
 /// @title FixedUniLst
 /// @author [ScopeLift](https://scopelift.co)
@@ -46,7 +47,7 @@ contract FixedUniLst is IERC20, IERC20Metadata, EIP712, Nonces {
   UniLst public immutable LST;
 
   /// @notice The underlying governance token which is staked.
-  IERC20 public immutable STAKE_TOKEN;
+  IUni public immutable STAKE_TOKEN;
 
   /// @notice The factor by which scales are multiplied in the underlying rebasing LST.
   uint256 public immutable SHARE_SCALE_FACTOR;
@@ -79,7 +80,7 @@ contract FixedUniLst is IERC20, IERC20Metadata, EIP712, Nonces {
   /// @param _name The name for the fixed balance liquid stake token.
   /// @param _symbol The symbol for the fixed balance liquid stake token.
   /// @param _lst The rebasing LST for which this contract will serve as the fixed balance counterpart.
-  constructor(string memory _name, string memory _symbol, UniLst _lst, IERC20 _stakeToken, uint256 _shareScaleFactor)
+  constructor(string memory _name, string memory _symbol, UniLst _lst, IUni _stakeToken, uint256 _shareScaleFactor)
     EIP712("FixedUniLst", "1")
   {
     name = _name;
@@ -125,7 +126,7 @@ contract FixedUniLst is IERC20, IERC20Metadata, EIP712, Nonces {
   /// @dev The caller must approve *the rebasing LST contract* to transfer at least the number of stake tokens being
   /// staked before calling this method. This is different from a typical experience, where one would expect to approve
   /// the address on which the `stake` method was being called.
-  function stake(uint256 _stakeTokens) external returns (uint256 _fixedTokens) {
+  function stake(uint256 _stakeTokens) public returns (uint256 _fixedTokens) {
     // Send the stake tokens to the LST.
     STAKE_TOKEN.transferFrom(msg.sender, address(LST), _stakeTokens);
     uint256 _shares = LST.stakeAndConvertToFixed(msg.sender, _stakeTokens);
@@ -239,8 +240,8 @@ contract FixedUniLst is IERC20, IERC20Metadata, EIP712, Nonces {
     return true;
   }
 
-  /// @notice Grant an allowance to the spender to transfer up to a certain amount of fixed LST tokens on behalf of a user
-  /// who has signed a message testifying to their intent to grant this allowance.
+  /// @notice Grant an allowance to the spender to transfer up to a certain amount of fixed LST tokens on behalf of a
+  /// user who has signed a message testifying to their intent to grant this allowance.
   /// @param _owner The account which is granting the allowance.
   /// @param _spender The address which is granted the allowance to transfer from the holder.
   /// @param _value The total amount of fixed LST tokens the spender will be permitted to transfer from the holder.
@@ -274,6 +275,18 @@ contract FixedUniLst is IERC20, IERC20Metadata, EIP712, Nonces {
     allowance[_recoveredAddress][_spender] = _value;
 
     emit Approval(_owner, _spender, _value);
+  }
+
+  /// @notice Stake tokens to receive fixed liquid stake tokens. Before the staking operation occurs, a signature is
+  /// passed to the token contract's permit method to spend the would-be staked amount of the token.
+  /// @param _amount The quantity of fixed tokens that will be staked.
+  /// @param _deadline The timestamp after which the signature should expire.
+  /// @param _v ECDSA signature component: Parity of the `y` coordinate of point `R`
+  /// @param _r ECDSA signature component: x-coordinate of `R`
+  /// @param _s ECDSA signature component: `s` value of the signature
+  function permitAndStake(uint256 _amount, uint256 _deadline, uint8 _v, bytes32 _r, bytes32 _s) public {
+    try STAKE_TOKEN.permit(msg.sender, address(this), _amount, _deadline, _v, _r, _s) {} catch {}
+    stake(_amount);
   }
 
   /// @notice Internal convenience method which performs transfer operations.

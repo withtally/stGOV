@@ -371,6 +371,125 @@ contract Permit is FixedUniLstTest {
   }
 }
 
+contract PermitAndStake is FixedUniLstTest {
+  using stdStorage for StdStorage;
+
+  function testFuzz_PerformsTheApprovalByCallingPermitThenPerformsStake(
+    uint256 _depositorPrivateKey,
+    uint256 _stakeAmount,
+    uint256 _deadline,
+    uint256 _currentNonce
+  ) public {
+    _deadline = bound(_deadline, block.timestamp, type(uint256).max);
+    _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
+    _depositorPrivateKey = bound(_depositorPrivateKey, 1, 100e18);
+    address _depositor = vm.addr(_depositorPrivateKey);
+    _mintStakeToken(_depositor, _stakeAmount);
+
+    _setNonce(address(stakeToken), _depositor, _currentNonce);
+    bytes32 _message = keccak256(
+      abi.encode(
+        stakeToken.PERMIT_TYPEHASH(),
+        _depositor,
+        address(fixedLst),
+        _stakeAmount,
+        stakeToken.nonces(_depositor),
+        _deadline
+      )
+    );
+
+    bytes32 _messageHash =
+      _hashTypedDataV4(DOMAIN_TYPEHASH, _message, bytes(stakeToken.name()), "1", address(stakeToken));
+    (uint8 _v, bytes32 _r, bytes32 _s) = vm.sign(_depositorPrivateKey, _messageHash);
+
+    vm.prank(_depositor);
+    fixedLst.permitAndStake(_stakeAmount, _deadline, _v, _r, _s);
+
+    assertEq(lst.balanceOf(_depositor.fixedAlias()), _stakeAmount);
+    assertEq(lst.sharesOf(_depositor.fixedAlias()) / SHARE_SCALE_FACTOR, fixedLst.balanceOf(_depositor));
+  }
+
+  function testFuzz_SuccessfullyStakeWhenApprovalExistsAndPermitSignatureIsInvalid(
+    uint256 _depositorPrivateKey,
+    uint256 _stakeAmount,
+    uint256 _approvalAmount,
+    uint256 _deadline,
+    uint256 _currentNonce
+  ) public {
+    _depositorPrivateKey = _boundToValidPrivateKey(_depositorPrivateKey);
+    address _depositor = vm.addr(_depositorPrivateKey);
+    _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
+    _approvalAmount = bound(_approvalAmount, _stakeAmount, type(uint96).max);
+    _deadline = bound(_deadline, 0, block.timestamp);
+    _mintStakeToken(_depositor, _stakeAmount);
+    vm.startPrank(_depositor);
+    stakeToken.approve(address(fixedLst), _approvalAmount);
+    vm.stopPrank();
+
+    _setNonce(address(stakeToken), _depositor, _currentNonce);
+    bytes32 _message = keccak256(
+      abi.encode(
+        stakeToken.PERMIT_TYPEHASH(),
+        _depositor,
+        address(fixedLst),
+        _stakeAmount,
+        stakeToken.nonces(_depositor),
+        _deadline
+      )
+    );
+
+    bytes32 _messageHash =
+      _hashTypedDataV4(DOMAIN_TYPEHASH, _message, bytes(stakeToken.name()), "1", address(stakeToken));
+    (uint8 _v, bytes32 _r, bytes32 _s) = vm.sign(_depositorPrivateKey, _messageHash);
+
+    vm.prank(_depositor);
+    fixedLst.permitAndStake(_stakeAmount, _deadline, _v, _r, _s);
+
+    assertEq(lst.balanceOf(_depositor.fixedAlias()), _stakeAmount);
+    assertEq(lst.sharesOf(_depositor.fixedAlias()) / SHARE_SCALE_FACTOR, fixedLst.balanceOf(_depositor));
+  }
+
+  function testFuzz_RevertIf_ThePermitSignatureIsInvalidAndTheApprovalIsInsufficient(
+    address _notDepositor,
+    uint256 _depositorPrivateKey,
+    uint256 _stakeAmount,
+    uint256 _approvalAmount,
+    uint256 _deadline,
+    uint256 _currentNonce
+  ) public {
+    _deadline = bound(_deadline, block.timestamp, type(uint256).max);
+    _depositorPrivateKey = _boundToValidPrivateKey(_depositorPrivateKey);
+    address _depositor = vm.addr(_depositorPrivateKey);
+    vm.assume(_notDepositor != _depositor);
+    _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
+    _approvalAmount = bound(_approvalAmount, 0, _stakeAmount - 1);
+    _mintStakeToken(_depositor, _stakeAmount);
+    vm.startPrank(_depositor);
+    stakeToken.approve(address(fixedLst), _approvalAmount);
+    vm.stopPrank();
+
+    _setNonce(address(stakeToken), _notDepositor, _currentNonce);
+    bytes32 _message = keccak256(
+      abi.encode(
+        stakeToken.PERMIT_TYPEHASH(),
+        _notDepositor,
+        address(fixedLst),
+        _stakeAmount,
+        stakeToken.nonces(_depositor),
+        _deadline
+      )
+    );
+
+    bytes32 _messageHash =
+      _hashTypedDataV4(DOMAIN_TYPEHASH, _message, bytes(stakeToken.name()), "1", address(stakeToken));
+    (uint8 _v, bytes32 _r, bytes32 _s) = vm.sign(_depositorPrivateKey, _messageHash);
+
+    vm.prank(_depositor);
+    vm.expectRevert("Uni::transferFrom: transfer amount exceeds spender allowance");
+    fixedLst.permitAndStake(_stakeAmount, _deadline, _v, _r, _s);
+  }
+}
+
 contract ConvertToFixed is FixedUniLstTest {
   function testFuzz_MintsFixedTokensEqualToScaledDownShares(address _holder, uint256 _lstAmount, uint256 _fixedAmount)
     public

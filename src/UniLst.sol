@@ -263,11 +263,7 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     // Deploy the WithdrawGate
     WITHDRAW_GATE = new WithdrawGate(_initialOwner, address(this), address(STAKE_TOKEN), 0);
     FIXED_LST = new FixedUniLst(
-      string.concat("Fixed ", _name),
-      string.concat("f", _symbol),
-      this,
-      IERC20(_staker.STAKE_TOKEN()),
-      SHARE_SCALE_FACTOR
+      string.concat("Fixed ", _name), string.concat("f", _symbol), this, STAKE_TOKEN, SHARE_SCALE_FACTOR
     );
   }
 
