@@ -223,6 +223,154 @@ contract Stake is FixedUniLstTest {
   }
 }
 
+contract Permit is FixedUniLstTest {
+  function _buildPermitStructHash(address _owner, address _spender, uint256 _value, uint256 _nonce, uint256 _deadline)
+    internal
+    view
+    returns (bytes32)
+  {
+    return keccak256(abi.encode(lst.PERMIT_TYPEHASH(), _owner, _spender, _value, _nonce, _deadline));
+  }
+
+  function testFuzz_AllowsApprovalViaSignature(
+    uint256 _ownerPrivateKey,
+    address _spender,
+    address _sender,
+    uint256 _value,
+    uint256 _deadline
+  ) public {
+    _ownerPrivateKey = _boundToValidPrivateKey(_ownerPrivateKey);
+    address _owner = vm.addr(_ownerPrivateKey);
+    _assumeSafeHolders(_owner, _spender);
+    _assumeFutureExpiry(_deadline);
+    _value = _boundToReasonableStakeTokenAmount(_value);
+
+    uint256 _nonce = fixedLst.nonces(_owner);
+    bytes32 structHash = _buildPermitStructHash(_owner, _spender, _value, _nonce, _deadline);
+    (uint8 v, bytes32 r, bytes32 s) = vm.sign(
+      _ownerPrivateKey, _hashTypedDataV4(EIP712_DOMAIN_TYPEHASH, structHash, "FixedUniLst", "1", address(fixedLst))
+    );
+
+    assertEq(fixedLst.allowance(_owner, _spender), 0);
+
+    vm.prank(_sender);
+    fixedLst.permit(_owner, _spender, _value, _deadline, v, r, s);
+
+    assertEq(fixedLst.allowance(_owner, _spender), _value);
+    assertEq(fixedLst.nonces(_owner), _nonce + 1);
+  }
+
+  function testFuzz_EmitsApprovalEvent(
+    uint256 _ownerPrivateKey,
+    address _spender,
+    address _sender,
+    uint256 _value,
+    uint256 _deadline
+  ) public {
+    _ownerPrivateKey = _boundToValidPrivateKey(_ownerPrivateKey);
+    address _owner = vm.addr(_ownerPrivateKey);
+    _assumeSafeHolders(_owner, _spender);
+    _assumeFutureExpiry(_deadline);
+    _value = _boundToReasonableStakeTokenAmount(_value);
+
+    uint256 _nonce = fixedLst.nonces(_owner);
+    bytes32 structHash = _buildPermitStructHash(_owner, _spender, _value, _nonce, _deadline);
+    (uint8 v, bytes32 r, bytes32 s) = vm.sign(
+      _ownerPrivateKey, _hashTypedDataV4(EIP712_DOMAIN_TYPEHASH, structHash, "FixedUniLst", "1", address(fixedLst))
+    );
+
+    vm.prank(_sender);
+    vm.expectEmit();
+    emit IERC20.Approval(_owner, _spender, _value);
+    fixedLst.permit(_owner, _spender, _value, _deadline, v, r, s);
+  }
+
+  function testFuzz_RevertIf_DeadlineExpired(
+    uint256 _ownerPrivateKey,
+    address _spender,
+    address _sender,
+    uint256 _value,
+    uint256 _deadline,
+    uint256 _futureTimestamp
+  ) public {
+    _ownerPrivateKey = _boundToValidPrivateKey(_ownerPrivateKey);
+    address _owner = vm.addr(_ownerPrivateKey);
+    _assumeSafeHolders(_owner, _spender);
+    _value = _boundToReasonableStakeTokenAmount(_value);
+
+    // Bound _deadline to be in the past relative to _futureTimestamp
+    _futureTimestamp = bound(_futureTimestamp, block.timestamp + 1, type(uint256).max);
+    _deadline = bound(_deadline, 0, _futureTimestamp - 1);
+
+    // Warp to the future timestamp
+    vm.warp(_futureTimestamp);
+
+    uint256 _nonce = fixedLst.nonces(_owner);
+    bytes32 structHash = _buildPermitStructHash(_owner, _spender, _value, _nonce, _deadline);
+    (uint8 v, bytes32 r, bytes32 s) = vm.sign(
+      _ownerPrivateKey, _hashTypedDataV4(EIP712_DOMAIN_TYPEHASH, structHash, "FixedUniLst", "1", address(fixedLst))
+    );
+
+    vm.prank(_sender);
+    vm.expectRevert(FixedUniLst.FixedUniLst__SignatureExpired.selector);
+    fixedLst.permit(_owner, _spender, _value, _deadline, v, r, s);
+  }
+
+  function testFuzz_RevertIf_SignatureInvalid(
+    uint256 _ownerPrivateKey,
+    uint256 _wrongPrivateKey,
+    address _spender,
+    address _sender,
+    uint256 _value,
+    uint256 _deadline
+  ) public {
+    _ownerPrivateKey = _boundToValidPrivateKey(_ownerPrivateKey);
+    _wrongPrivateKey = _boundToValidPrivateKey(_wrongPrivateKey);
+    vm.assume(_ownerPrivateKey != _wrongPrivateKey);
+    address _owner = vm.addr(_ownerPrivateKey);
+    _assumeSafeHolders(_owner, _spender);
+    _assumeFutureExpiry(_deadline);
+    _value = _boundToReasonableStakeTokenAmount(_value);
+
+    uint256 _nonce = fixedLst.nonces(_owner);
+    bytes32 structHash = _buildPermitStructHash(_owner, _spender, _value, _nonce, _deadline);
+    (uint8 v, bytes32 r, bytes32 s) = vm.sign(
+      _wrongPrivateKey, _hashTypedDataV4(EIP712_DOMAIN_TYPEHASH, structHash, "FixedUniLst", "1", address(fixedLst))
+    );
+
+    vm.prank(_sender);
+    vm.expectRevert(FixedUniLst.FixedUniLst__InvalidSignature.selector);
+    fixedLst.permit(_owner, _spender, _value, _deadline, v, r, s);
+  }
+
+  function testFuzz_RevertIf_SignatureReused(
+    uint256 _ownerPrivateKey,
+    address _spender,
+    address _sender,
+    uint256 _value,
+    uint256 _deadline
+  ) public {
+    _ownerPrivateKey = _boundToValidPrivateKey(_ownerPrivateKey);
+    address _owner = vm.addr(_ownerPrivateKey);
+    _assumeSafeHolders(_owner, _spender);
+    _assumeFutureExpiry(_deadline);
+    _value = _boundToReasonableStakeTokenAmount(_value);
+
+    uint256 _nonce = fixedLst.nonces(_owner);
+    bytes32 structHash = _buildPermitStructHash(_owner, _spender, _value, _nonce, _deadline);
+    (uint8 v, bytes32 r, bytes32 s) = vm.sign(
+      _ownerPrivateKey, _hashTypedDataV4(EIP712_DOMAIN_TYPEHASH, structHash, "FixedUniLst", "1", address(fixedLst))
+    );
+
+    vm.prank(_sender);
+    fixedLst.permit(_owner, _spender, _value, _deadline, v, r, s);
+
+    vm.prank(_sender);
+    vm.expectRevert(FixedUniLst.FixedUniLst__InvalidSignature.selector);
+    fixedLst.permit(_owner, _spender, _value, _deadline, v, r, s);
+  }
+}
+
 contract ConvertToFixed is FixedUniLstTest {
   function testFuzz_MintsFixedTokensEqualToScaledDownShares(address _holder, uint256 _lstAmount, uint256 _fixedAmount)
     public

@@ -6,6 +6,8 @@ import {FixedLstAddressAlias} from "src/FixedLstAddressAlias.sol";
 import {IUniStaker} from "src/interfaces/IUniStaker.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/interfaces/IERC20Metadata.sol";
+import {EIP712} from "openzeppelin/utils/cryptography/EIP712.sol";
+import {Nonces} from "openzeppelin/utils/Nonces.sol";
 
 /// @title FixedUniLst
 /// @author [ScopeLift](https://scopelift.co)
@@ -28,11 +30,17 @@ import {IERC20Metadata} from "@openzeppelin/contracts/interfaces/IERC20Metadata.
 /// regards to delegation. Holders of a wrapped LST tokens are not able to specify their own delegatee, instead all
 /// tokens are delegated to the default. Holders of the fixed LST do not have to make this tradeoff. They are able to
 /// specify a delegate in the same way as holders of the rebasing LST.
-contract FixedUniLst is IERC20, IERC20Metadata {
+contract FixedUniLst is IERC20, IERC20Metadata, EIP712, Nonces {
   using FixedLstAddressAlias for address;
 
   /// @notice Thrown when a holder attempts to transfer more tokens than they hold.
   error FixedUniLst__InsufficientBalance();
+
+  /// @notice Thrown by signature-based "onBehalf" methods when a signature is past its expiry date.
+  error FixedUniLst__SignatureExpired();
+
+  /// @notice Thrown by signature-based "onBehalf" methods when a signature is invalid.
+  error FixedUniLst__InvalidSignature();
 
   /// @notice The corresponding rebasing LST token for which this contract serves as a fixed balance counterpart.
   UniLst public immutable LST;
@@ -60,6 +68,10 @@ contract FixedUniLst is IERC20, IERC20Metadata {
   /// @notice The ERC20 Metadata compliant symbol of the fixed LST token.
   string public symbol;
 
+  /// @notice Type hash used when encoding data for `permit` calls.
+  bytes32 public constant PERMIT_TYPEHASH =
+    keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
+
   /// @notice Mapping used to determine the amount of Fixed LST tokens the spender has been approved to transfer on
   /// the holder's behalf.
   mapping(address holder => mapping(address spender => uint256 amount)) public allowance;
@@ -67,7 +79,9 @@ contract FixedUniLst is IERC20, IERC20Metadata {
   /// @param _name The name for the fixed balance liquid stake token.
   /// @param _symbol The symbol for the fixed balance liquid stake token.
   /// @param _lst The rebasing LST for which this contract will serve as the fixed balance counterpart.
-  constructor(string memory _name, string memory _symbol, UniLst _lst, IERC20 _stakeToken, uint256 _shareScaleFactor) {
+  constructor(string memory _name, string memory _symbol, UniLst _lst, IERC20 _stakeToken, uint256 _shareScaleFactor)
+    EIP712("FixedUniLst", "1")
+  {
     name = _name;
     symbol = _symbol;
     LST = _lst;
@@ -223,6 +237,43 @@ contract FixedUniLst is IERC20, IERC20Metadata {
     allowance[msg.sender][_spender] = _amount;
     emit Approval(msg.sender, _spender, _amount);
     return true;
+  }
+
+  /// @notice Grant an allowance to the spender to transfer up to a certain amount of fixed LST tokens on behalf of a user
+  /// who has signed a message testifying to their intent to grant this allowance.
+  /// @param _owner The account which is granting the allowance.
+  /// @param _spender The address which is granted the allowance to transfer from the holder.
+  /// @param _value The total amount of fixed LST tokens the spender will be permitted to transfer from the holder.
+  /// @param _deadline The timestamp after which the signature should expire.
+  /// @param _v ECDSA signature component: Parity of the `y` coordinate of point `R`
+  /// @param _r ECDSA signature component: x-coordinate of `R`
+  /// @param _s ECDSA signature component: `s` value of the signature
+  function permit(address _owner, address _spender, uint256 _value, uint256 _deadline, uint8 _v, bytes32 _r, bytes32 _s)
+    external
+    virtual
+  {
+    if (block.timestamp > _deadline) {
+      revert FixedUniLst__SignatureExpired();
+    }
+
+    bytes32 _structHash;
+    // Unchecked because the only math done is incrementing
+    // the owner's nonce which cannot realistically overflow.
+    unchecked {
+      _structHash = keccak256(abi.encode(PERMIT_TYPEHASH, _owner, _spender, _value, _useNonce(_owner), _deadline));
+    }
+
+    bytes32 _hash = _hashTypedDataV4(_structHash);
+
+    address _recoveredAddress = ecrecover(_hash, _v, _r, _s);
+
+    if (_recoveredAddress == address(0) || _recoveredAddress != _owner) {
+      revert FixedUniLst__InvalidSignature();
+    }
+
+    allowance[_recoveredAddress][_spender] = _value;
+
+    emit Approval(_owner, _spender, _value);
   }
 
   /// @notice Internal convenience method which performs transfer operations.
