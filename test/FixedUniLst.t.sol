@@ -490,6 +490,59 @@ contract PermitAndStake is FixedUniLstTest {
   }
 }
 
+contract Multicall is FixedUniLstTest {
+  function testFuzz_CallsMultipleFunctionsInOneTransaction(
+    address _actor,
+    uint256 _stakeAmount,
+    address _delegatee,
+    address _receiver,
+    uint256 _transferAmount
+  ) public {
+    _assumeSafeHolders(_actor, _receiver);
+    _assumeSafeDelegatee(_delegatee);
+    _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
+    _mintStakeToken(_actor, _stakeAmount);
+    _transferAmount = bound(_transferAmount, 0, _stakeAmount);
+
+    vm.prank(_actor);
+    stakeToken.approve(address(fixedLst), _stakeAmount);
+
+    IUniStaker.DepositIdentifier _depositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+    bytes[] memory _calls = new bytes[](3);
+    _calls[0] = abi.encodeWithSelector(fixedLst.stake.selector, _stakeAmount);
+    _calls[1] = abi.encodeWithSelector(fixedLst.updateDeposit.selector, IUniStaker.DepositIdentifier.unwrap(_depositId));
+    _calls[2] = abi.encodeWithSelector(fixedLst.transfer.selector, _receiver, _transferAmount);
+
+    vm.prank(_actor);
+    fixedLst.multicall(_calls);
+
+    assertApproxEqAbs(lst.balanceOf(_actor.fixedAlias()), _stakeAmount - _transferAmount, 1);
+    assertLe(lst.balanceOf(_actor.fixedAlias()), _stakeAmount - _transferAmount);
+    assertApproxEqAbs(lst.balanceOf(_receiver.fixedAlias()), _transferAmount, 1);
+    assertLe(lst.balanceOf(_receiver.fixedAlias()), _transferAmount);
+    assertApproxEqAbs(lst.balanceOf(_actor.fixedAlias()), stakeToken.getCurrentVotes(_delegatee), 1);
+    assertLe(lst.balanceOf(_actor.fixedAlias()), stakeToken.getCurrentVotes(_delegatee));
+    assertEq(lst.sharesOf(_actor.fixedAlias()) / SHARE_SCALE_FACTOR, fixedLst.balanceOf(_actor));
+  }
+
+  function testFuzz_RevertIf_AFunctionCallFails(address _actor, address _receiver) public {
+    _assumeSafeHolder(_actor);
+    uint256 _stakeAmount = 1000e18;
+    _mintStakeToken(_actor, _stakeAmount);
+
+    vm.prank(_actor);
+    stakeToken.approve(address(fixedLst), _stakeAmount + 1);
+
+    bytes[] memory _calls = new bytes[](2);
+    _calls[0] = abi.encodeWithSelector(fixedLst.stake.selector, _stakeAmount);
+    _calls[1] = abi.encodeWithSelector(fixedLst.transfer.selector, _receiver, _stakeAmount + 1);
+
+    vm.expectRevert(FixedUniLst.FixedUniLst__InsufficientBalance.selector);
+    vm.prank(_actor);
+    fixedLst.multicall(_calls);
+  }
+}
+
 contract ConvertToFixed is FixedUniLstTest {
   function testFuzz_MintsFixedTokensEqualToScaledDownShares(address _holder, uint256 _lstAmount, uint256 _fixedAmount)
     public

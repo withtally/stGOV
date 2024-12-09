@@ -9,6 +9,7 @@ import {IERC20Metadata} from "@openzeppelin/contracts/interfaces/IERC20Metadata.
 import {EIP712} from "openzeppelin/utils/cryptography/EIP712.sol";
 import {Nonces} from "openzeppelin/utils/Nonces.sol";
 import {IUni} from "src/interfaces/IUni.sol";
+import {Multicall} from "openzeppelin/utils/Multicall.sol";
 
 /// @title FixedUniLst
 /// @author [ScopeLift](https://scopelift.co)
@@ -31,7 +32,7 @@ import {IUni} from "src/interfaces/IUni.sol";
 /// regards to delegation. Holders of a wrapped LST tokens are not able to specify their own delegatee, instead all
 /// tokens are delegated to the default. Holders of the fixed LST do not have to make this tradeoff. They are able to
 /// specify a delegate in the same way as holders of the rebasing LST.
-contract FixedUniLst is IERC20, IERC20Metadata, EIP712, Nonces {
+contract FixedUniLst is IERC20, IERC20Metadata, Multicall, EIP712, Nonces {
   using FixedLstAddressAlias for address;
 
   /// @notice Thrown when a holder attempts to transfer more tokens than they hold.
