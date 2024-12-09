@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {console2, stdStorage, StdStorage, stdError} from "forge-std/Test.sol";
+import {console2, stdStorage, StdStorage, stdError, Vm} from "forge-std/Test.sol";
 import {UniLstTest, UniLst} from "test/UniLst.t.sol";
 import {IUniStaker} from "src/interfaces/IUniStaker.sol";
 import {FixedUniLst, IUniStaker} from "src/FixedUniLst.sol";
@@ -130,7 +130,7 @@ contract Approve is FixedUniLstTest {
 }
 
 contract UpdateDeposit is FixedUniLstTest {
-  function test_SetsTheDelegateeForTheHolderAliasOnTheLst(address _holder, address _delegatee) public {
+  function testFuzz_SetsTheDelegateeForTheHolderAliasOnTheLst(address _holder, address _delegatee) public {
     _assumeSafeHolder(_holder);
     _assumeSafeDelegatee(_delegatee);
 
@@ -138,6 +138,19 @@ contract UpdateDeposit is FixedUniLstTest {
 
     address _aliasDelegatee = lst.delegateeForHolder(_holder.fixedAlias());
     assertEq(_aliasDelegatee, _delegatee);
+  }
+
+  function test_EmitsEventWhenTheDelegateeForTheHolderAliasOnTheLstIsUpdated(address _holder, address _delegatee)
+    public
+  {
+    _assumeSafeHolder(_holder);
+    _assumeSafeDelegatee(_delegatee);
+    IUniStaker.DepositIdentifier _depositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+
+    vm.expectEmit();
+    emit FixedUniLst.DepositUpdated(_holder, _depositId);
+    vm.prank(_holder);
+    fixedLst.updateDeposit(_depositId);
   }
 }
 
@@ -150,6 +163,19 @@ contract Stake is FixedUniLstTest {
     _stakeFixed(_holder, _amount);
 
     assertEq(lst.sharesOf(_holder.fixedAlias()) / SHARE_SCALE_FACTOR, fixedLst.balanceOf(_holder));
+  }
+
+  function testFuzz_EmitsStakedEvent(address _holder, uint256 _amount) public {
+    _assumeSafeHolder(_holder);
+    _amount = _boundToReasonableStakeTokenAmount(_amount);
+    _mintStakeToken(_holder, _amount);
+    vm.prank(_holder);
+    stakeToken.approve(address(fixedLst), _amount);
+
+    vm.expectEmit();
+    emit FixedUniLst.Staked(_holder, _amount);
+    vm.prank(_holder);
+    fixedLst.stake(_amount);
   }
 
   function testFuzz_MintsLstTokensToAliasOfHolder(address _holder, uint256 _amount) public {
@@ -560,6 +586,21 @@ contract ConvertToFixed is FixedUniLstTest {
     assertEq(lst.sharesOf(_holder.fixedAlias()) / SHARE_SCALE_FACTOR, fixedLst.balanceOf(_holder));
   }
 
+  function testFuzz_EmitsFixedEvent(address _holder, uint256 _lstAmount, uint256 _fixedAmount) public {
+    _assumeSafeHolder(_holder);
+    _lstAmount = _boundToReasonableStakeTokenAmount(_lstAmount);
+    // Amount converted to fixed is less than or equal to the amount staked.
+    _fixedAmount = bound(_fixedAmount, 0, _lstAmount);
+
+    // User stakes in the rebasing lst contract.
+    _mintAndStake(_holder, _lstAmount);
+
+    vm.expectEmit();
+    emit FixedUniLst.Fixed(_holder, _lstAmount);
+    vm.prank(_holder);
+    fixedLst.convertToFixed(_lstAmount);
+  }
+
   function testFuzz_MovesLstTokensToAliasOfHolder(address _holder, uint256 _lstAmount, uint256 _fixedAmount) public {
     _assumeSafeHolder(_holder);
     _lstAmount = _boundToReasonableStakeTokenAmount(_lstAmount);
@@ -957,6 +998,27 @@ contract ConvertToRebasing is FixedUniLstTest {
     assertEq(fixedLst.balanceOf(_holder), _initialBalance - _unfixAmount);
   }
 
+  function testFuzz_EmitsUnfixedEvent(address _holder, uint256 _stakeAmount, address _delegatee) public {
+    _assumeSafeHolder(_holder);
+    _assumeSafeDelegatee(_delegatee);
+    _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
+
+    // Stake tokens in the fixed LST.
+    _mintStakeTokenUpdateFixedDelegateeAndStakeFixed(_holder, _stakeAmount, _delegatee);
+    uint256 _initialBalance = fixedLst.balanceOf(_holder);
+    // Unfix one third of the tokens staked.
+    uint256 _unfixAmount = _initialBalance / 3;
+    vm.recordLogs();
+    vm.prank(_holder);
+    uint256 _lstTokens = fixedLst.convertToRebasing(_unfixAmount);
+
+    Vm.Log[] memory _entries = vm.getRecordedLogs();
+    uint256 _index = _entries.length - 1;
+    assertEq(_entries[_index].topics[0], keccak256("Unfixed(address,uint256)"));
+    assertEq(_entries[_index].topics[1], bytes32(uint256(uint160(_holder))));
+    assertEq(abi.decode(_entries[_index].data, (uint256)), _lstTokens);
+  }
+
   function testFuzz_MovesLstTokensFromHolderAliasToHolderAddress(
     address _holder,
     uint256 _stakeAmount,
@@ -1149,6 +1211,31 @@ contract Unstake is FixedUniLstTest {
     assertEq(stakeToken.balanceOf(_holder), _stakeAmount / 4);
     // The holder still has the remaining fixed tokens.
     assertEq(fixedLst.balanceOf(_holder), _initialBalance - _unstakeAmount);
+  }
+
+  function testFuzz_EmitsUnstakedEvent(address _holder, uint256 _stakeAmount, address _delegatee) public {
+    _assumeSafeHolder(_holder);
+    _assumeSafeDelegatee(_delegatee);
+    _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
+
+    // There is no delay on the withdraw gate, so tokens go straight to the holder on unstake.
+    vm.prank(lstOwner);
+    withdrawGate.setDelay(0);
+
+    // Stake tokens in the fixed LST.
+    _mintStakeTokenUpdateFixedDelegateeAndStakeFixed(_holder, _stakeAmount, _delegatee);
+    // Unstake one quarter of the tokens staked.
+    uint256 _unstakeAmount = fixedLst.balanceOf(_holder) / 4;
+
+    vm.recordLogs();
+    vm.prank(_holder);
+    uint256 _stakeTokens = fixedLst.unstake(_unstakeAmount);
+
+    Vm.Log[] memory _entries = vm.getRecordedLogs();
+    uint256 _index = _entries.length - 1;
+    assertEq(_entries[_index].topics[0], keccak256("Unstaked(address,uint256)"));
+    assertEq(_entries[_index].topics[1], bytes32(uint256(uint160(_holder))));
+    assertEq(abi.decode(_entries[_index].data, (uint256)), _stakeTokens);
   }
 
   function testFuzz_MovesStakeTokensIntoTheWithdrawGateWhenThereIsAWithdrawDelay(
@@ -1423,6 +1510,28 @@ contract Rescue is FixedUniLstTest {
 
     uint256 _expectedBalance = lst.sharesForStake(_initialStakeAmount + _rescueAmount) / SHARE_SCALE_FACTOR;
     assertEq(fixedLst.balanceOf(_holder), _expectedBalance);
+  }
+
+  function testFuzz_EmitsRescuedEvent(
+    address _holder,
+    uint256 _initialStakeAmount,
+    uint256 _rescueAmount,
+    address _delegatee
+  ) public {
+    _assumeSafeHolder(_holder);
+    _initialStakeAmount = _boundToReasonableStakeTokenAmount(_initialStakeAmount);
+    _rescueAmount = _boundToReasonableStakeTokenAmount(_rescueAmount);
+
+    // Holder stakes in fixed lst.
+    _mintStakeTokenUpdateFixedDelegateeAndStakeFixed(_holder, _initialStakeAmount, _delegatee);
+    // Someone mistakenly sends lst tokens directly to the holder alias.
+    _sendLstTokensDirectlyToAlias(_holder, _rescueAmount);
+    uint256 _expectedAmount = lst.sharesForStake(_rescueAmount) / SHARE_SCALE_FACTOR;
+
+    vm.expectEmit();
+    emit FixedUniLst.Rescued(_holder, _expectedAmount);
+    vm.prank(_holder);
+    fixedLst.rescue();
   }
 
   function testFuzz_AddsLstTokensMistakenlySentToTheAliasAddressOfAHolderToFixedLstTotalSupply(

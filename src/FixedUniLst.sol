@@ -35,6 +35,37 @@ import {Multicall} from "openzeppelin/utils/Multicall.sol";
 contract FixedUniLst is IERC20, IERC20Metadata, Multicall, EIP712, Nonces {
   using FixedLstAddressAlias for address;
 
+  /// @notice Emitted when a holder updates their deposit identifier, which determines the delegatee of their voting
+  /// weight.
+  /// @param holder The address of the account updating their deposit.
+  /// @param depositId The new deposit identifier that will receive the holder's voting weight.
+  event DepositUpdated(address indexed holder, IUniStaker.DepositIdentifier depositId);
+
+  /// @notice Emitted when governance tokens are staked to receive fixed LST tokens.
+  /// @param account The address of the account staking tokens.
+  /// @param amount The number of governance tokens staked.
+  event Staked(address indexed account, uint256 amount);
+
+  /// @notice Emitted when rebasing LST tokens are converted to fixed LST tokens.
+  /// @param account The address of the account converting their tokens.
+  /// @param amount The number of rebasing LST tokens converted to fixed LST tokens.
+  event Fixed(address indexed account, uint256 amount);
+
+  /// @notice Emitted when fixed LST tokens are converted to rebasing LST tokens.
+  /// @param account The address of the account converting their tokens.
+  /// @param amount The number of rebasing LST tokens received.
+  event Unfixed(address indexed account, uint256 amount);
+
+  /// @notice Emitted when fixed LST tokens are unstaked to receive governance tokens.
+  /// @param account The address of the account unstaking tokens.
+  /// @param amount The number of governance tokens received.
+  event Unstaked(address indexed account, uint256 amount);
+
+  /// @notice Emitted when rebasing LST tokens mistakenly sent to a fixed holder alias address are rescued.
+  /// @param account The address of the account rescuing their tokens.
+  /// @param amount The number of fixed LST tokens received from the rescue.
+  event Rescued(address indexed account, uint256 amount);
+
   /// @notice Thrown when a holder attempts to transfer more tokens than they hold.
   error FixedUniLst__InsufficientBalance();
 
@@ -118,6 +149,7 @@ contract FixedUniLst is IERC20, IERC20Metadata, Multicall, EIP712, Nonces {
   /// staked in the fixed LST will be moved into this deposit.
   function updateDeposit(IUniStaker.DepositIdentifier _newDepositId) public {
     LST.updateFixedDeposit(msg.sender, _newDepositId);
+    emit DepositUpdated(msg.sender, _newDepositId);
   }
 
   /// @notice Stake tokens and receive fixed balance LST tokens directly.
@@ -135,6 +167,7 @@ contract FixedUniLst is IERC20, IERC20Metadata, Multicall, EIP712, Nonces {
     totalShares += _shares;
     _fixedTokens = _scaleDown(_shares);
     emit IERC20.Transfer(address(0), msg.sender, _fixedTokens);
+    emit Staked(msg.sender, _stakeTokens);
   }
 
   /// @notice Convert existing rebasing LST tokens to fixed balance LST tokens.
@@ -147,6 +180,7 @@ contract FixedUniLst is IERC20, IERC20Metadata, Multicall, EIP712, Nonces {
     totalShares += _shares;
     _fixedTokens = _scaleDown(_shares);
     emit IERC20.Transfer(address(0), msg.sender, _fixedTokens);
+    emit Fixed(msg.sender, _lstTokens);
   }
 
   /// @notice Move fixed LST tokens held by the caller to another account.
@@ -181,7 +215,8 @@ contract FixedUniLst is IERC20, IERC20Metadata, Multicall, EIP712, Nonces {
     shareBalances[msg.sender] -= _shares;
     totalShares -= _shares;
     emit IERC20.Transfer(msg.sender, address(0), _fixedTokens);
-    return LST.convertToRebasing(msg.sender, _shares);
+    _lstTokens = LST.convertToRebasing(msg.sender, _shares);
+    emit Unfixed(msg.sender, _lstTokens);
   }
 
   /// @notice Unstake fixed LST tokens and receive underlying staked tokens back. If a withdrawal delay is being
@@ -194,7 +229,8 @@ contract FixedUniLst is IERC20, IERC20Metadata, Multicall, EIP712, Nonces {
     shareBalances[msg.sender] -= _shares;
     totalShares -= _shares;
     emit IERC20.Transfer(msg.sender, address(0), _fixedTokens);
-    return LST.convertToRebasingAndUnstake(msg.sender, _shares);
+    _stakeTokens = LST.convertToRebasingAndUnstake(msg.sender, _shares);
+    emit Unstaked(msg.sender, _stakeTokens);
   }
 
   /// @notice Allow a depositor to change the address they are delegating their staked tokens.
@@ -228,6 +264,7 @@ contract FixedUniLst is IERC20, IERC20Metadata, Multicall, EIP712, Nonces {
     shareBalances[msg.sender] += _sharesToRescue;
     totalShares += _sharesToRescue;
     emit IERC20.Transfer(address(0), msg.sender, _fixedTokens);
+    emit Rescued(msg.sender, _fixedTokens);
   }
 
   /// @notice Grant an allowance to the spender to transfer up to a certain amount of fixed LST tokens on behalf of the
