@@ -436,13 +436,14 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// @param _nonce The nonce being consumed by this operation.
   /// @param _deadline The timestamp after which the signature should expire.
   /// @param _signature Signature of the user authorizing this stake.
+  /// @return _oldDepositId The UniStaker deposit identifier which was previously assigned to this holder's staked.
   function updateDepositOnBehalf(
     address _account,
     IUniStaker.DepositIdentifier _newDepositId,
     uint256 _nonce,
     uint256 _deadline,
     bytes memory _signature
-  ) external {
+  ) external returns (IUniStaker.DepositIdentifier _oldDepositId) {
     _validateSignature(
       _account,
       IUniStaker.DepositIdentifier.unwrap(_newDepositId),
@@ -451,7 +452,7 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
       _signature,
       UPDATE_DEPOSIT_TYPEHASH
     );
-    IUniStaker.DepositIdentifier _oldDepositId = _updateDeposit(_account, _newDepositId);
+    _oldDepositId = _updateDeposit(_account, _newDepositId);
     _emitDepositUpdatedEvent(_account, _oldDepositId, _newDepositId);
   }
 
@@ -492,14 +493,16 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// @param _signature Signature of the user authorizing this stake.
   /// @dev The increase in the holder's balance after staking may be slightly less than the amount staked due to
   /// rounding.
+  /// @return The difference in LST token balance of the account after the stake operation.
   function stakeOnBehalf(address _account, uint256 _amount, uint256 _nonce, uint256 _deadline, bytes memory _signature)
     external
+    returns (uint256)
   {
     _validateSignature(_account, _amount, _nonce, _deadline, _signature, STAKE_TYPEHASH);
     // UNI reverts on failure so it's not necessary to check return value.
     STAKE_TOKEN.transferFrom(_account, address(this), _amount);
     _emitStakedEvent(_account, _amount);
-    _stake(_account, _amount);
+    return _stake(_account, _amount);
   }
 
   /// @notice Stake tokens to receive liquid stake tokens. Before the staking operation occurs, a signature is passed
@@ -509,12 +512,16 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// @param _v ECDSA signature component: Parity of the `y` coordinate of point `R`
   /// @param _r ECDSA signature component: x-coordinate of `R`
   /// @param _s ECDSA signature component: `s` value of the signature
-  function permitAndStake(uint256 _amount, uint256 _deadline, uint8 _v, bytes32 _r, bytes32 _s) external {
+  /// @return The difference in LST token balance of the msg.sender.
+  function permitAndStake(uint256 _amount, uint256 _deadline, uint8 _v, bytes32 _r, bytes32 _s)
+    external
+    returns (uint256)
+  {
     try STAKE_TOKEN.permit(msg.sender, address(this), _amount, _deadline, _v, _r, _s) {} catch {}
     // UNI reverts on failure so it's not necessary to check return value.
     STAKE_TOKEN.transferFrom(msg.sender, address(this), _amount);
     _emitStakedEvent(msg.sender, _amount);
-    _stake(msg.sender, _amount);
+    return _stake(msg.sender, _amount);
   }
 
   /// @notice Destroy liquid staked tokens to receive the underlying token in exchange. Tokens are removed first from
@@ -534,16 +541,17 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// @param _nonce The nonce being consumed by this operation.
   /// @param _deadline The timestamp after which the signature should expire.
   /// @param _signature Signature of the user authorizing this stake.
+  /// @return The amount of tokens that were withdrawn from the staking contract.
   function unstakeOnBehalf(
     address _account,
     uint256 _amount,
     uint256 _nonce,
     uint256 _deadline,
     bytes memory _signature
-  ) external {
+  ) external returns (uint256) {
     _validateSignature(_account, _amount, _nonce, _deadline, _signature, UNSTAKE_TYPEHASH);
     _emitUnstakedEvent(_account, _amount);
-    _unstake(_account, _amount);
+    return _unstake(_account, _amount);
   }
 
   /// @notice Grant an allowance to the spender to transfer up to a certain amount of LST tokens on behalf of the
@@ -735,8 +743,9 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
 
   /// @notice Allow a depositor to change the address they are delegating their staked tokens.
   /// @param _delegatee The address where voting is delegated.
-  function delegate(address _delegatee) public virtual {
-    IUniStaker.DepositIdentifier _depositId = fetchOrInitializeDepositForDelegatee(_delegatee);
+  /// @return _depositId The deposit identifier for the delegatee.
+  function delegate(address _delegatee) public virtual returns (IUniStaker.DepositIdentifier _depositId) {
+    _depositId = fetchOrInitializeDepositForDelegatee(_delegatee);
     updateDeposit(_depositId);
   }
 
@@ -789,9 +798,14 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// @param _account The holder setting their deposit in the fixed LST.
   /// @param _newDepositId The UniStaker deposit identifier to which this holder's fixed LST staked tokens will be
   /// moved to and kept in henceforth.
-  function updateFixedDeposit(address _account, IUniStaker.DepositIdentifier _newDepositId) external {
+  /// @return _oldDepositId The UniStaker deposit identifier from which this holder's fixed LST staked tokens were
+  /// moved.
+  function updateFixedDeposit(address _account, IUniStaker.DepositIdentifier _newDepositId)
+    external
+    returns (IUniStaker.DepositIdentifier _oldDepositId)
+  {
     _revertIfNotFixedLst();
-    _updateDeposit(_account.fixedAlias(), _newDepositId);
+    _oldDepositId = _updateDeposit(_account.fixedAlias(), _newDepositId);
   }
 
   /// @notice Permissioned fixed LST helper method which performs the staking operation on behalf of the holder's fixed
@@ -1031,6 +1045,7 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// @notice Internal convenience method which performs staking operations.
   /// @dev This method must only be called after proper authorization has been completed.
   /// @dev See public stake methods for additional documentation.
+  /// @return The difference in LST token balance of the account after the stake operation.
   function _stake(address _account, uint256 _amount) internal returns (uint256) {
     // Read required state from storage once.
     Totals memory _totals = totals;
@@ -1068,6 +1083,8 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// @notice Internal convenience method which performs unstaking operations.
   /// @dev This method must only be called after proper authorization has been completed.
   /// @dev See public unstake methods for additional documentation.
+  /// @return The amount of LST tokens unstaked and either transferred to the user directly or placed in the withdrawal
+  /// gate.
   function _unstake(address _account, uint256 _amount) internal returns (uint256) {
     // Read required state from storage once.
     Totals memory _totals = totals;
