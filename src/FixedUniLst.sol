@@ -63,7 +63,7 @@ contract FixedUniLst is IERC20, IERC20Metadata, Multicall, EIP712, Nonces {
 
   /// @notice Emitted when rebasing LST tokens mistakenly sent to a fixed holder alias address are rescued.
   /// @param account The address of the account rescuing their tokens.
-  /// @param amount The number of fixed LST tokens received from the rescue.
+  /// @param amount The number of rebasing LST tokens received from the rescue.
   event Rescued(address indexed account, uint256 amount);
 
   /// @notice Thrown when a holder attempts to transfer more tokens than they hold.
@@ -264,7 +264,8 @@ contract FixedUniLst is IERC20, IERC20Metadata, Multicall, EIP712, Nonces {
     shareBalances[msg.sender] += _sharesToRescue;
     totalShares += _sharesToRescue;
     emit IERC20.Transfer(address(0), msg.sender, _fixedTokens);
-    emit Rescued(msg.sender, _fixedTokens);
+    uint256 _stakeTokens = LST.stakeForShares(_sharesToRescue);
+    emit Rescued(msg.sender, _stakeTokens);
   }
 
   /// @notice Grant an allowance to the spender to transfer up to a certain amount of fixed LST tokens on behalf of the
