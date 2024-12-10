@@ -1056,6 +1056,7 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     holderStates[_account] = _holderState;
 
     STAKER.stakeMore(_calcDepositId(_holderState), uint96(_amount));
+    _emitTransferEvent(address(0), _account, _amount);
     return _balanceDiff;
   }
 
@@ -1127,6 +1128,7 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     }
 
     STAKE_TOKEN.transfer(_withdrawalTarget, _amount);
+    _emitTransferEvent(_account, address(0), _amount);
     return _amount;
   }
 

@@ -1078,6 +1078,22 @@ contract Stake is UniLstTest {
     lst.stake(_amount);
     vm.stopPrank();
   }
+
+  function testFuzz_EmitsTransferEvent(uint256 _amount, address _holder) public {
+    _assumeSafeHolder(_holder);
+    _amount = _boundToReasonableStakeTokenAmount(_amount);
+
+    _mintStakeToken(_holder, _amount);
+
+    vm.startPrank(_holder);
+    stakeToken.approve(address(lst), _amount);
+
+    vm.expectEmit();
+    emit IERC20.Transfer(address(0), _holder, _amount);
+
+    lst.stake(_amount);
+    vm.stopPrank();
+  }
 }
 
 contract StakeWithAttribution is UniLstTest {
@@ -1442,6 +1458,21 @@ contract Unstake is UniLstTest {
     // Expect the event to be emitted
     vm.expectEmit();
     emit UniLst.Unstaked(_holder, _unstakeAmount);
+
+    vm.prank(_holder);
+    lst.unstake(_unstakeAmount);
+  }
+
+  function testFuzz_EmitsTransferEvent(uint256 _stakeAmount, uint256 _unstakeAmount, address _holder) public {
+    _assumeSafeHolder(_holder);
+    _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
+    _unstakeAmount = bound(_unstakeAmount, 0, _stakeAmount);
+
+    _mintAndStake(_holder, _stakeAmount);
+
+    // Expect the event to be emitted
+    vm.expectEmit();
+    emit IERC20.Transfer(_holder, address(0), _unstakeAmount);
 
     vm.prank(_holder);
     lst.unstake(_unstakeAmount);
