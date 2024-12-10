@@ -54,7 +54,7 @@ contract FixedUniLstTest is UniLstTest {
     return _updateFixedDelegateeAndStakeFixed(_holder, _amount, _delegatee);
   }
 
-  function _fix(address _holder, uint256 _amount) internal returns (uint256) {
+  function _convertToFixed(address _holder, uint256 _amount) internal returns (uint256) {
     vm.startPrank(_holder);
     uint256 _fixedTokens = fixedLst.convertToFixed(_amount);
     vm.stopPrank();
@@ -67,7 +67,7 @@ contract FixedUniLstTest is UniLstTest {
     vm.stopPrank();
   }
 
-  function _unfix(address _holder, uint256 _amount) internal returns (uint256) {
+  function _convertToRebasing(address _holder, uint256 _amount) internal returns (uint256) {
     vm.startPrank(_holder);
     uint256 _lstTokens = fixedLst.convertToRebasing(_amount);
     vm.stopPrank();
@@ -581,7 +581,7 @@ contract ConvertToFixed is FixedUniLstTest {
     // User stakes in the rebasing lst contract.
     _mintAndStake(_holder, _lstAmount);
     // User converts some rebasing lst tokens to fixed lst tokens.
-    _fix(_holder, _fixedAmount);
+    _convertToFixed(_holder, _fixedAmount);
 
     assertEq(lst.sharesOf(_holder.fixedAlias()) / SHARE_SCALE_FACTOR, fixedLst.balanceOf(_holder));
   }
@@ -610,7 +610,7 @@ contract ConvertToFixed is FixedUniLstTest {
     // User stakes in the rebasing lst contract.
     _mintAndStake(_holder, _lstAmount);
     // User converts some rebasing lst tokens to fixed lst tokens.
-    _fix(_holder, _fixedAmount);
+    _convertToFixed(_holder, _fixedAmount);
 
     // The holder's rebasing lst balance has decreased.
     assertEq(lst.balanceOf(_holder), _lstAmount - _fixedAmount);
@@ -631,10 +631,10 @@ contract ConvertToFixed is FixedUniLstTest {
     // User stakes in the rebasing lst contract.
     _mintAndStake(_holder, 2 * _lstAmount);
     // User converts some rebasing lst tokens to fixed lst tokens.
-    uint256 _returnValue1 = _fix(_holder, _fixedAmount / 3);
+    uint256 _returnValue1 = _convertToFixed(_holder, _fixedAmount / 3);
     uint256 _balance1 = fixedLst.balanceOf(_holder);
     // User converts some more rebasing lst tokens to fixed lst tokens.
-    uint256 _returnValue2 = _fix(_holder, (2 * _fixedAmount) / 3);
+    uint256 _returnValue2 = _convertToFixed(_holder, (2 * _fixedAmount) / 3);
     uint256 _balance2 = fixedLst.balanceOf(_holder);
 
     assertEq(_returnValue1, _balance1);
@@ -652,11 +652,11 @@ contract ConvertToFixed is FixedUniLstTest {
     _mintAndStake(_holder, 2 * _lstAmount);
 
     // User converts some rebasing lst tokens to fixed lst tokens.
-    uint256 _returnValue1 = _fix(_holder, _fixedAmount / 3);
+    uint256 _returnValue1 = _convertToFixed(_holder, _fixedAmount / 3);
     assertEq(fixedLst.totalSupply(), _returnValue1);
 
     // User converts some more rebasing lst tokens to fixed lst tokens.
-    uint256 _returnValue2 = _fix(_holder, (2 * _fixedAmount) / 3);
+    uint256 _returnValue2 = _convertToFixed(_holder, (2 * _fixedAmount) / 3);
     assertEq(fixedLst.totalSupply(), _returnValue1 + _returnValue2);
   }
 
@@ -673,7 +673,7 @@ contract ConvertToFixed is FixedUniLstTest {
 
     _mintAndStake(_holder, _lstAmount);
     _updateFixedDelegatee(_holder, _delegatee);
-    _fix(_holder, _fixedAmount);
+    _convertToFixed(_holder, _fixedAmount);
 
     // Fixed tokens are assigned to the fixed delegatee.
     assertEq(stakeToken.getCurrentVotes(_delegatee), _fixedAmount);
@@ -693,7 +693,7 @@ contract ConvertToFixed is FixedUniLstTest {
 
     vm.expectEmit();
     emit IERC20.Transfer(address(0), _holder, _fixedAmount);
-    _fix(_holder, _fixedAmount);
+    _convertToFixed(_holder, _fixedAmount);
   }
 }
 
@@ -993,7 +993,7 @@ contract ConvertToRebasing is FixedUniLstTest {
     uint256 _initialBalance = fixedLst.balanceOf(_holder);
     // Unfix one third of the tokens staked.
     uint256 _unfixAmount = _initialBalance / 3;
-    _unfix(_holder, _unfixAmount);
+    _convertToRebasing(_holder, _unfixAmount);
 
     assertEq(fixedLst.balanceOf(_holder), _initialBalance - _unfixAmount);
   }
@@ -1032,7 +1032,7 @@ contract ConvertToRebasing is FixedUniLstTest {
     _mintStakeTokenUpdateFixedDelegateeAndStakeFixed(_holder, _stakeAmount, _delegatee);
     // Unfix one third of the tokens staked.
     uint256 _unfixAmount = fixedLst.balanceOf(_holder) / 3;
-    _unfix(_holder, _unfixAmount);
+    _convertToRebasing(_holder, _unfixAmount);
 
     assertApproxEqAbs(lst.balanceOf(_holder.fixedAlias()), (2 * _stakeAmount) / 3, 1);
     assertApproxEqAbs(lst.balanceOf(_holder), _stakeAmount / 3, 1);
@@ -1060,7 +1060,7 @@ contract ConvertToRebasing is FixedUniLstTest {
 
     // Unfix one third of the tokens staked.
     uint256 _unfixAmount = fixedLst.balanceOf(_holder) / 3;
-    _unfix(_holder, _unfixAmount);
+    _convertToRebasing(_holder, _unfixAmount);
     // The total number of stake tokens in the system.
     uint256 _totalAmount = _stakeAmount + _rewardAmount;
 
@@ -1086,7 +1086,7 @@ contract ConvertToRebasing is FixedUniLstTest {
     _mintStakeTokenUpdateFixedDelegateeAndStakeFixed(_holder, _stakeAmount, _delegatee);
     // Unfix one third of the tokens staked.
     uint256 _unfixAmount = fixedLst.balanceOf(_holder) / 3;
-    uint256 _returnValue = _unfix(_holder, _unfixAmount);
+    uint256 _returnValue = _convertToRebasing(_holder, _unfixAmount);
 
     assertEq(_returnValue, _stakeAmount / 3);
   }
@@ -1102,7 +1102,7 @@ contract ConvertToRebasing is FixedUniLstTest {
     uint256 _initialStaked = _mintStakeTokenUpdateFixedDelegateeAndStakeFixed(_holder, _stakeAmount, _delegatee);
     // Unfix one third of the tokens staked.
     uint256 _unfixAmount = fixedLst.balanceOf(_holder) / 3;
-    _unfix(_holder, _unfixAmount);
+    _convertToRebasing(_holder, _unfixAmount);
 
     assertEq(fixedLst.totalSupply(), _initialStaked - _unfixAmount);
   }
@@ -1120,7 +1120,7 @@ contract ConvertToRebasing is FixedUniLstTest {
     _mintStakeTokenUpdateFixedDelegateeAndStakeFixed(_holder, _stakeAmount, _delegatee);
     // Unfix one third of the tokens staked.
     uint256 _unfixAmount = fixedLst.balanceOf(_holder) / 3;
-    _unfix(_holder, _unfixAmount);
+    _convertToRebasing(_holder, _unfixAmount);
 
     assertApproxEqAbs(stakeToken.getCurrentVotes(_delegatee), (2 * _stakeAmount) / 3, 1);
     assertApproxEqAbs(stakeToken.getCurrentVotes(defaultDelegatee), _stakeAmount / 3, 1);
@@ -1141,7 +1141,7 @@ contract ConvertToRebasing is FixedUniLstTest {
 
     vm.expectEmit();
     emit IERC20.Transfer(_holder, address(0), _unfixAmount);
-    _unfix(_holder, _unfixAmount);
+    _convertToRebasing(_holder, _unfixAmount);
   }
 
   function testFuzz_RevertIf_HolderUnfixesMoreThanBalance(address _holder, uint256 _stakeAmount, uint256 _unfixAmount)
