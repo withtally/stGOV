@@ -106,6 +106,10 @@ contract FixedUniLst is IERC20, IERC20Metadata, Multicall, EIP712, Nonces {
   bytes32 public constant PERMIT_TYPEHASH =
     keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
 
+  /// @notice Type hash used when encoding data for `updateDepositOnBehalf` calls.
+  bytes32 public constant UPDATE_DEPOSIT_TYPEHASH =
+    keccak256("UpdateDeposit(address account,uint256 depositId,uint256 nonce,uint256 deadline)");
+
   /// @notice Type hash used when encoding data for `stakeOnBehalf` calls.
   bytes32 public constant STAKE_TYPEHASH =
     keccak256("Stake(address account,uint256 amount,uint256 nonce,uint256 deadline)");
@@ -168,8 +172,7 @@ contract FixedUniLst is IERC20, IERC20Metadata, Multicall, EIP712, Nonces {
   /// @param _newDepositId The identifier of a deposit which must be one owned by the rebasing LST. Underlying tokens
   /// staked in the fixed LST will be moved into this deposit.
   function updateDeposit(IUniStaker.DepositIdentifier _newDepositId) public {
-    LST.updateFixedDeposit(msg.sender, _newDepositId);
-    emit DepositUpdated(msg.sender, _newDepositId);
+    _updateDeposit(msg.sender, _newDepositId);
   }
 
   /// @notice Stake tokens and receive fixed balance LST tokens directly.
@@ -299,6 +302,32 @@ contract FixedUniLst is IERC20, IERC20Metadata, Multicall, EIP712, Nonces {
     emit Approval(_owner, _spender, _value);
   }
 
+  /// @notice Updates the deposit identifier for an account using a signed message for authorization. The deposit
+  /// identifier determines which delegatee receives the voting weight of the account's staked tokens.
+  /// @param _account The address of the account whose deposit identifier is being updated.
+  /// @param _newDepositId The new deposit identifier to associate with the account. Must be a deposit owned by the
+  /// rebasing LST. The underlying tokens staked in the fixed LST will be moved into this deposit.
+  /// @param _nonce The nonce being consumed by this operation to prevent replay attacks.
+  /// @param _deadline The timestamp after which the signature should expire.
+  /// @param _signature The signed message authorizing this deposit update, signed by the account.
+  function updateDepositOnBehalf(
+    address _account,
+    IUniStaker.DepositIdentifier _newDepositId,
+    uint256 _nonce,
+    uint256 _deadline,
+    bytes memory _signature
+  ) external {
+    _validateSignature(
+      _account,
+      IUniStaker.DepositIdentifier.unwrap(_newDepositId),
+      _nonce,
+      _deadline,
+      _signature,
+      UPDATE_DEPOSIT_TYPEHASH
+    );
+    _updateDeposit(_account, _newDepositId);
+  }
+
   /// @notice Stake tokens to receive fixed liquid stake tokens on behalf of a user, using a signature to validate the
   /// user's intent. The staking address must pre-approve the LST contract to spend at least the would-be amount
   /// of tokens.
@@ -418,6 +447,15 @@ contract FixedUniLst is IERC20, IERC20Metadata, Multicall, EIP712, Nonces {
     shareBalances[_to] += _receiverShares;
 
     emit IERC20.Transfer(_from, _to, _fixedTokens);
+  }
+
+  /// @notice Internal helper method for updating the deposit identifier associated with a holder's account.
+  /// @dev The deposit identifier determines which delegatee receives the voting weight of the holder's staked tokens.
+  /// @param _newDepositId The identifier of a deposit which must be one owned by the rebasing LST. Underlying tokens
+  /// staked in the fixed LST will be moved into this deposit.
+  function _updateDeposit(address _account, IUniStaker.DepositIdentifier _newDepositId) internal virtual {
+    LST.updateFixedDeposit(_account, _newDepositId);
+    emit DepositUpdated(_account, _newDepositId);
   }
 
   /// @notice Internal convenience method which performs the stake operation.

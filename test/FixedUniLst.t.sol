@@ -425,6 +425,195 @@ contract Permit is FixedUniLstTest {
   }
 }
 
+contract UpdateDepositOnBehalf is FixedUniLstTest {
+  function testFuzz_SetsTheDelegateeForAnotherHolderAliasOnTheLstUsingSignatures(
+    uint256 _nonce,
+    uint256 _expiry,
+    uint256 _holderPrivateKey,
+    address _delegatee,
+    address _sender
+  ) public {
+    _holderPrivateKey = _boundToValidPrivateKey(_holderPrivateKey);
+    _assumeSafeDelegatee(_delegatee);
+    _assumeFutureExpiry(_expiry);
+    address _holder = vm.addr(_holderPrivateKey);
+
+    // Sign the message
+    _setNonce(address(fixedLst), _holder, _nonce);
+    IUniStaker.DepositIdentifier _depositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+    bytes memory _signature = _signFixedMessage(
+      fixedLst.UPDATE_DEPOSIT_TYPEHASH(),
+      _holder,
+      IUniStaker.DepositIdentifier.unwrap(_depositId),
+      fixedLst.nonces(_holder),
+      _expiry,
+      _holderPrivateKey
+    );
+
+    vm.prank(_sender);
+    fixedLst.updateDepositOnBehalf(_holder, _depositId, _nonce, _expiry, _signature);
+
+    address _aliasDelegatee = lst.delegateeForHolder(_holder.fixedAlias());
+    assertEq(_aliasDelegatee, _delegatee);
+  }
+
+  function testFuzz_EmitsEventWhenTheDelegateeForTheHolderAliasOnTheLstIsUpdatedUsingSignatures(
+    uint256 _nonce,
+    uint256 _expiry,
+    uint256 _holderPrivateKey,
+    address _delegatee,
+    address _sender
+  ) public {
+    _holderPrivateKey = _boundToValidPrivateKey(_holderPrivateKey);
+    _assumeSafeDelegatee(_delegatee);
+    _assumeFutureExpiry(_expiry);
+    address _holder = vm.addr(_holderPrivateKey);
+
+    // Sign the message
+    _setNonce(address(fixedLst), _holder, _nonce);
+    IUniStaker.DepositIdentifier _depositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+    bytes memory _signature = _signFixedMessage(
+      fixedLst.UPDATE_DEPOSIT_TYPEHASH(),
+      _holder,
+      IUniStaker.DepositIdentifier.unwrap(_depositId),
+      fixedLst.nonces(_holder),
+      _expiry,
+      _holderPrivateKey
+    );
+
+    vm.expectEmit();
+    emit FixedUniLst.DepositUpdated(_holder, _depositId);
+    vm.prank(_sender);
+    fixedLst.updateDepositOnBehalf(_holder, _depositId, _nonce, _expiry, _signature);
+  }
+
+  function testFuzz_RevertIf_InvalidSignature(
+    address _holder,
+    uint256 _nonce,
+    uint256 _expiry,
+    uint256 _wrongPrivateKey,
+    address _delegatee,
+    address _sender
+  ) public {
+    _assumeSafeHolder(_holder);
+    _wrongPrivateKey = _boundToValidPrivateKey(_wrongPrivateKey);
+    _assumeSafeDelegatee(_delegatee);
+    _assumeFutureExpiry(_expiry);
+
+    // Sign the message
+    _setNonce(address(fixedLst), _holder, _nonce);
+    IUniStaker.DepositIdentifier _depositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+    bytes memory _signature = _signFixedMessage(
+      fixedLst.UPDATE_DEPOSIT_TYPEHASH(),
+      _holder,
+      IUniStaker.DepositIdentifier.unwrap(_depositId),
+      fixedLst.nonces(_holder),
+      _expiry,
+      _wrongPrivateKey
+    );
+
+    vm.prank(_sender);
+    vm.expectRevert(FixedUniLst.FixedUniLst__InvalidSignature.selector);
+    fixedLst.updateDepositOnBehalf(_holder, _depositId, _nonce, _expiry, _signature);
+  }
+
+  function testFuzz_RevertIf_ExpiredSignature(
+    uint256 _nonce,
+    uint256 _expiry,
+    uint256 _holderPrivateKey,
+    address _delegatee,
+    address _sender
+  ) public {
+    _expiry = bound(_expiry, 0, block.timestamp - 1);
+    _holderPrivateKey = _boundToValidPrivateKey(_holderPrivateKey);
+    _assumeSafeDelegatee(_delegatee);
+    address _holder = vm.addr(_holderPrivateKey);
+
+    // Sign the message
+    _setNonce(address(fixedLst), _holder, _nonce);
+    IUniStaker.DepositIdentifier _depositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+    bytes memory _signature = _signFixedMessage(
+      fixedLst.UPDATE_DEPOSIT_TYPEHASH(),
+      _holder,
+      IUniStaker.DepositIdentifier.unwrap(_depositId),
+      fixedLst.nonces(_holder),
+      _expiry,
+      _holderPrivateKey
+    );
+
+    vm.prank(_sender);
+    vm.expectRevert(FixedUniLst.FixedUniLst__SignatureExpired.selector);
+    fixedLst.updateDepositOnBehalf(_holder, _depositId, _nonce, _expiry, _signature);
+  }
+
+  function testFuzz_RevertIf_InvalidNonce(
+    uint256 _currentNonce,
+    uint256 _suppliedNonce,
+    uint256 _expiry,
+    uint256 _holderPrivateKey,
+    address _delegatee,
+    address _sender
+  ) public {
+    vm.assume(_currentNonce != _suppliedNonce);
+    _holderPrivateKey = _boundToValidPrivateKey(_holderPrivateKey);
+    _assumeSafeDelegatee(_delegatee);
+    _assumeFutureExpiry(_expiry);
+    address _holder = vm.addr(_holderPrivateKey);
+
+    // Sign the message
+    _setNonce(address(fixedLst), _holder, _currentNonce);
+    IUniStaker.DepositIdentifier _depositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+    bytes memory _signature = _signFixedMessage(
+      fixedLst.UPDATE_DEPOSIT_TYPEHASH(),
+      _holder,
+      IUniStaker.DepositIdentifier.unwrap(_depositId),
+      _suppliedNonce,
+      _expiry,
+      _holderPrivateKey
+    );
+
+    vm.prank(_sender);
+    bytes memory expectedRevertData =
+      abi.encodeWithSelector(Nonces.InvalidAccountNonce.selector, _holder, _currentNonce);
+    vm.expectRevert(expectedRevertData);
+    fixedLst.updateDepositOnBehalf(_holder, _depositId, _suppliedNonce, _expiry, _signature);
+  }
+
+  function testFuzz_RevertIf_NonceReused(
+    uint256 _nonce,
+    uint256 _expiry,
+    uint256 _holderPrivateKey,
+    address _delegatee,
+    address _sender
+  ) public {
+    _holderPrivateKey = _boundToValidPrivateKey(_holderPrivateKey);
+    _assumeSafeDelegatee(_delegatee);
+    _assumeFutureExpiry(_expiry);
+    address _holder = vm.addr(_holderPrivateKey);
+
+    // Sign the message
+    _setNonce(address(fixedLst), _holder, _nonce);
+    IUniStaker.DepositIdentifier _depositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+    bytes memory _signature = _signFixedMessage(
+      fixedLst.UPDATE_DEPOSIT_TYPEHASH(),
+      _holder,
+      IUniStaker.DepositIdentifier.unwrap(_depositId),
+      fixedLst.nonces(_holder),
+      _expiry,
+      _holderPrivateKey
+    );
+
+    vm.prank(_sender);
+    fixedLst.updateDepositOnBehalf(_holder, _depositId, _nonce, _expiry, _signature);
+
+    vm.prank(_sender);
+    bytes memory expectedRevertData =
+      abi.encodeWithSelector(Nonces.InvalidAccountNonce.selector, _holder, fixedLst.nonces(_holder));
+    vm.expectRevert(expectedRevertData);
+    fixedLst.updateDepositOnBehalf(_holder, _depositId, _nonce, _expiry, _signature);
+  }
+}
+
 contract StakeOnBehalf is FixedUniLstTest {
   function testFuzz_StakesTokensOnBehalfOfAnotherUser(
     uint256 _amount,
