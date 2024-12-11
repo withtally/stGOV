@@ -7,6 +7,7 @@ import {IUniStaker} from "src/interfaces/IUniStaker.sol";
 import {FixedUniLst, IUniStaker} from "src/FixedUniLst.sol";
 import {FixedLstAddressAlias} from "src/FixedLstAddressAlias.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {Nonces} from "openzeppelin/utils/Nonces.sol";
 
 using FixedLstAddressAlias for address;
 
@@ -90,6 +91,33 @@ contract FixedUniLstTest is UniLstTest {
     vm.startPrank(_sender);
     lst.transfer(_receiver.fixedAlias(), lst.balanceOf(_sender));
     vm.stopPrank();
+  }
+
+  function _signFixedMessage(
+    bytes32 _typehash,
+    address _account,
+    uint256 _amount,
+    uint256 _nonce,
+    uint256 _expiry,
+    uint256 _signerPrivateKey
+  ) internal view returns (bytes memory) {
+    bytes32 structHash = keccak256(abi.encode(_typehash, _account, _amount, _nonce, _expiry));
+    bytes32 hash = _hashTypedDataV4(EIP712_DOMAIN_TYPEHASH, structHash, "FixedUniLst", "1", address(fixedLst));
+    (uint8 v, bytes32 r, bytes32 s) = vm.sign(_signerPrivateKey, hash);
+    return abi.encodePacked(r, s, v);
+  }
+
+  function _signFixedMessage(
+    bytes32 _typehash,
+    address _account,
+    uint256 _nonce,
+    uint256 _expiry,
+    uint256 _signerPrivateKey
+  ) internal view returns (bytes memory) {
+    bytes32 structHash = keccak256(abi.encode(_typehash, _account, _nonce, _expiry));
+    bytes32 hash = _hashTypedDataV4(EIP712_DOMAIN_TYPEHASH, structHash, "FixedUniLst", "1", address(fixedLst));
+    (uint8 v, bytes32 r, bytes32 s) = vm.sign(_signerPrivateKey, hash);
+    return abi.encodePacked(r, s, v);
   }
 
   function __dumpFixedHolderState(address _holder) internal view {
@@ -397,6 +425,778 @@ contract Permit is FixedUniLstTest {
   }
 }
 
+contract StakeOnBehalf is FixedUniLstTest {
+  function testFuzz_StakesTokensOnBehalfOfAnotherUser(
+    uint256 _amount,
+    uint256 _nonce,
+    uint256 _expiry,
+    uint256 _stakerPrivateKey,
+    address _sender
+  ) public {
+    _amount = _boundToReasonableStakeTokenAmount(_amount);
+    _stakerPrivateKey = _boundToValidPrivateKey(_stakerPrivateKey);
+    _assumeFutureExpiry(_expiry);
+
+    // Mint and approve tokens to the staker
+    address _staker = vm.addr(_stakerPrivateKey);
+    _mintStakeToken(_staker, _amount);
+    vm.startPrank(_staker);
+    stakeToken.approve(address(fixedLst), _amount);
+    vm.stopPrank();
+
+    // Sign the message
+    _setNonce(address(fixedLst), _staker, _nonce);
+    bytes memory signature = _signFixedMessage(
+      fixedLst.STAKE_TYPEHASH(), _staker, _amount, fixedLst.nonces(_staker), _expiry, _stakerPrivateKey
+    );
+
+    // Perform the stake on behalf
+    vm.prank(_sender);
+    fixedLst.stakeOnBehalf(_staker, _amount, _nonce, _expiry, signature);
+
+    // Check balances
+    assertEq(lst.balanceOf(_staker.fixedAlias()), _amount);
+    assertEq(lst.sharesOf(_staker.fixedAlias()) / SHARE_SCALE_FACTOR, fixedLst.balanceOf(_staker));
+  }
+
+  function testFuzz_EmitsAStakedEvent(
+    uint256 _amount,
+    uint256 _nonce,
+    uint256 _expiry,
+    uint256 _stakerPrivateKey,
+    address _sender
+  ) public {
+    _amount = _boundToReasonableStakeTokenAmount(_amount);
+    _stakerPrivateKey = _boundToValidPrivateKey(_stakerPrivateKey);
+    _assumeFutureExpiry(_expiry);
+
+    address _staker = vm.addr(_stakerPrivateKey);
+    _mintStakeToken(_staker, _amount);
+    vm.startPrank(_staker);
+    stakeToken.approve(address(fixedLst), _amount);
+    vm.stopPrank();
+
+    // Sign the message
+    _setNonce(address(fixedLst), _staker, _nonce);
+    bytes memory signature = _signFixedMessage(
+      fixedLst.STAKE_TYPEHASH(), _staker, _amount, fixedLst.nonces(_staker), _expiry, _stakerPrivateKey
+    );
+
+    // Perform the stake on behalf
+    vm.prank(_sender);
+    vm.expectEmit();
+    emit FixedUniLst.Staked(_staker, _amount);
+    fixedLst.stakeOnBehalf(_staker, _amount, _nonce, _expiry, signature);
+  }
+
+  function testFuzz_RevertIf_InvalidSignature(
+    uint256 _amount,
+    address _staker,
+    uint256 _nonce,
+    uint256 _expiry,
+    uint256 _wrongPrivateKey,
+    address _sender
+  ) public {
+    _assumeSafeHolder(_staker);
+    _assumeFutureExpiry(_expiry);
+    _amount = _boundToReasonableStakeTokenAmount(_amount);
+    _wrongPrivateKey = _boundToValidPrivateKey(_wrongPrivateKey);
+
+    // Mint and approve tokens to the sender (signer)
+    _mintStakeToken(_staker, _amount);
+    vm.startPrank(_staker);
+    stakeToken.approve(address(fixedLst), _amount);
+    vm.stopPrank();
+
+    // Sign the message with an invalid key
+    _setNonce(address(fixedLst), _staker, _nonce);
+    bytes memory invalidSignature =
+      _signFixedMessage(fixedLst.STAKE_TYPEHASH(), _staker, _amount, _nonce, _expiry, _wrongPrivateKey);
+
+    // Attempt to perform the stake on behalf with an invalid signature
+    vm.prank(_sender);
+    vm.expectRevert(FixedUniLst.FixedUniLst__InvalidSignature.selector);
+    fixedLst.stakeOnBehalf(_staker, _amount, _nonce, _expiry, invalidSignature);
+  }
+
+  function testFuzz_RevertIf_ExpiredSignature(
+    uint256 _amount,
+    uint256 _nonce,
+    uint256 _expiry,
+    uint256 _stakerPrivateKey,
+    address _sender
+  ) public {
+    _expiry = bound(_expiry, 0, block.timestamp - 1);
+    _amount = _boundToReasonableStakeTokenAmount(_amount);
+    _stakerPrivateKey = _boundToValidPrivateKey(_stakerPrivateKey);
+
+    // Mint and approve tokens to the staker
+    address _staker = vm.addr(_stakerPrivateKey);
+    _mintStakeToken(_staker, _amount);
+    vm.startPrank(_staker);
+    stakeToken.approve(address(fixedLst), _amount);
+    vm.stopPrank();
+
+    // Sign the message with an expired expiry
+    _setNonce(address(fixedLst), _staker, _nonce);
+    bytes memory signature = _signFixedMessage(
+      fixedLst.STAKE_TYPEHASH(), _staker, _amount, fixedLst.nonces(_staker), _expiry, _stakerPrivateKey
+    );
+
+    // Attempt to perform the stake on behalf with an expired signature
+    vm.prank(_sender);
+    vm.expectRevert(FixedUniLst.FixedUniLst__SignatureExpired.selector);
+    fixedLst.stakeOnBehalf(_staker, _amount, _nonce, _expiry, signature);
+  }
+
+  function testFuzz_RevertIf_InvalidNonce(
+    uint256 _amount,
+    uint256 _currentNonce,
+    uint256 _suppliedNonce,
+    uint256 _expiry,
+    uint256 _stakerPrivateKey,
+    address _sender
+  ) public {
+    vm.assume(_currentNonce != _suppliedNonce);
+    _assumeFutureExpiry(_expiry);
+    _amount = _boundToReasonableStakeTokenAmount(_amount);
+    _stakerPrivateKey = _boundToValidPrivateKey(_stakerPrivateKey);
+
+    // Mint and approve tokens to the sender (staker)
+    address _staker = vm.addr(_stakerPrivateKey);
+    _mintStakeToken(_staker, _amount);
+    vm.startPrank(_staker);
+    stakeToken.approve(address(fixedLst), _amount);
+    vm.stopPrank();
+
+    // Sign the message with an invalid nonce
+    _setNonce(address(fixedLst), _staker, _currentNonce); // expected nonce
+    bytes memory signature =
+      _signFixedMessage(fixedLst.STAKE_TYPEHASH(), _staker, _amount, _suppliedNonce, _expiry, _stakerPrivateKey);
+
+    // Attempt to perform the stake on behalf with an invalid nonce
+    vm.prank(_sender);
+    bytes memory expectedRevertData =
+      abi.encodeWithSelector(Nonces.InvalidAccountNonce.selector, _staker, _currentNonce);
+    vm.expectRevert(expectedRevertData);
+    fixedLst.stakeOnBehalf(_staker, _amount, _suppliedNonce, _expiry, signature);
+  }
+
+  function testFuzz_RevertIf_NonceReused(
+    uint256 _amount,
+    uint256 _expiry,
+    uint256 _nonce,
+    uint256 _stakerPrivateKey,
+    address _sender
+  ) public {
+    _amount = _boundToReasonableStakeTokenAmount(_amount);
+    _stakerPrivateKey = _boundToValidPrivateKey(_stakerPrivateKey);
+    address _staker = vm.addr(_stakerPrivateKey);
+    _assumeSafeHolder(_staker);
+    _assumeFutureExpiry(_expiry);
+
+    // Mint and approve tokens to the sender (staker)
+    _mintStakeToken(_staker, _amount);
+    vm.startPrank(_staker);
+    stakeToken.approve(address(fixedLst), _amount);
+    vm.stopPrank();
+
+    // Sign the message with a valid nonce
+    _setNonce(address(fixedLst), _staker, _nonce);
+    bytes memory signature = _signFixedMessage(
+      fixedLst.STAKE_TYPEHASH(), _staker, _amount, fixedLst.nonces(_staker), _expiry, _stakerPrivateKey
+    );
+
+    // Perform the stake on behalf with a valid nonce
+    vm.prank(_sender);
+    fixedLst.stakeOnBehalf(_staker, _amount, _nonce, _expiry, signature);
+
+    vm.prank(_sender);
+    bytes memory expectedRevertData =
+      abi.encodeWithSelector(Nonces.InvalidAccountNonce.selector, _staker, fixedLst.nonces(_staker));
+    vm.expectRevert(expectedRevertData);
+    fixedLst.stakeOnBehalf(_staker, _amount, _nonce, _expiry, signature);
+  }
+}
+
+contract ConvertToFixedOnBehalf is FixedUniLstTest {
+  function testFuzz_ConvertsToFixedTokensOnBehalfOfAnotherUser(
+    uint256 _lstAmount,
+    uint256 _fixedAmount,
+    uint256 _nonce,
+    uint256 _expiry,
+    uint256 _stakerPrivateKey,
+    address _sender
+  ) public {
+    _lstAmount = _boundToReasonableStakeTokenAmount(_fixedAmount);
+    _fixedAmount = bound(_fixedAmount, 0, _lstAmount);
+    _stakerPrivateKey = _boundToValidPrivateKey(_stakerPrivateKey);
+    _assumeFutureExpiry(_expiry);
+
+    address _staker = vm.addr(_stakerPrivateKey);
+    _mintAndStake(_staker, _lstAmount);
+
+    // Sign the message
+    _setNonce(address(fixedLst), _staker, _nonce);
+    bytes memory signature = _signFixedMessage(
+      fixedLst.CONVERT_TO_FIXED_TYPEHASH(), _staker, _fixedAmount, fixedLst.nonces(_staker), _expiry, _stakerPrivateKey
+    );
+
+    vm.prank(_sender);
+    fixedLst.convertToFixedOnBehalf(_staker, _fixedAmount, _nonce, _expiry, signature);
+
+    // Check balances
+    assertEq(lst.sharesOf(_staker.fixedAlias()) / SHARE_SCALE_FACTOR, fixedLst.balanceOf(_staker));
+  }
+
+  function testFuzz_EmitsAFixedEvent(
+    uint256 _lstAmount,
+    uint256 _fixedAmount,
+    uint256 _nonce,
+    uint256 _expiry,
+    uint256 _stakerPrivateKey,
+    address _sender
+  ) public {
+    _lstAmount = _boundToReasonableStakeTokenAmount(_lstAmount);
+    _fixedAmount = bound(_fixedAmount, 0, _lstAmount);
+    _stakerPrivateKey = _boundToValidPrivateKey(_stakerPrivateKey);
+    _assumeFutureExpiry(_expiry);
+
+    address _staker = vm.addr(_stakerPrivateKey);
+    _mintAndStake(_staker, _lstAmount);
+
+    // Sign the message
+    _setNonce(address(fixedLst), _staker, _nonce);
+    bytes memory signature = _signFixedMessage(
+      fixedLst.CONVERT_TO_FIXED_TYPEHASH(), _staker, _fixedAmount, fixedLst.nonces(_staker), _expiry, _stakerPrivateKey
+    );
+
+    vm.prank(_sender);
+    vm.expectEmit();
+    emit FixedUniLst.Fixed(_staker, _fixedAmount);
+    fixedLst.convertToFixedOnBehalf(_staker, _fixedAmount, _nonce, _expiry, signature);
+  }
+
+  function testFuzz_RevertIf_InvalidSignature(
+    uint256 _lstAmount,
+    uint256 _fixedAmount,
+    address _staker,
+    uint256 _nonce,
+    uint256 _expiry,
+    uint256 _wrongPrivateKey,
+    address _sender
+  ) public {
+    _assumeSafeHolder(_staker);
+    _assumeFutureExpiry(_expiry);
+    _lstAmount = _boundToReasonableStakeTokenAmount(_lstAmount);
+    _fixedAmount = bound(_fixedAmount, 0, _lstAmount);
+    _wrongPrivateKey = _boundToValidPrivateKey(_wrongPrivateKey);
+
+    _mintAndStake(_staker, _lstAmount);
+
+    // Sign the message with an invalid key
+    _setNonce(address(fixedLst), _staker, _nonce);
+    bytes memory invalidSignature =
+      _signFixedMessage(fixedLst.CONVERT_TO_FIXED_TYPEHASH(), _staker, _fixedAmount, _nonce, _expiry, _wrongPrivateKey);
+
+    vm.prank(_sender);
+    vm.expectRevert(FixedUniLst.FixedUniLst__InvalidSignature.selector);
+    fixedLst.convertToFixedOnBehalf(_staker, _fixedAmount, _nonce, _expiry, invalidSignature);
+  }
+
+  function testFuzz_RevertIf_ExpiredSignature(
+    uint256 _lstAmount,
+    uint256 _fixedAmount,
+    uint256 _nonce,
+    uint256 _expiry,
+    uint256 _stakerPrivateKey,
+    address _sender
+  ) public {
+    _expiry = bound(_expiry, 0, block.timestamp - 1);
+    _lstAmount = _boundToReasonableStakeTokenAmount(_lstAmount);
+    _stakerPrivateKey = _boundToValidPrivateKey(_stakerPrivateKey);
+
+    address _staker = vm.addr(_stakerPrivateKey);
+    _mintAndStake(_staker, _lstAmount);
+
+    // Sign the message with an expired expiry
+    _setNonce(address(fixedLst), _staker, _nonce);
+    bytes memory signature = _signFixedMessage(
+      fixedLst.CONVERT_TO_FIXED_TYPEHASH(), _staker, _fixedAmount, fixedLst.nonces(_staker), _expiry, _stakerPrivateKey
+    );
+
+    vm.prank(_sender);
+    vm.expectRevert(FixedUniLst.FixedUniLst__SignatureExpired.selector);
+    fixedLst.convertToFixedOnBehalf(_staker, _fixedAmount, _nonce, _expiry, signature);
+  }
+
+  function testFuzz_RevertIf_InvalidNonce(
+    uint256 _lstAmount,
+    uint256 _fixedAmount,
+    uint256 _currentNonce,
+    uint256 _suppliedNonce,
+    uint256 _expiry,
+    uint256 _stakerPrivateKey,
+    address _sender
+  ) public {
+    vm.assume(_currentNonce != _suppliedNonce);
+    _assumeFutureExpiry(_expiry);
+    _lstAmount = _boundToReasonableStakeTokenAmount(_lstAmount);
+    _stakerPrivateKey = _boundToValidPrivateKey(_stakerPrivateKey);
+
+    address _staker = vm.addr(_stakerPrivateKey);
+    _mintAndStake(_staker, _lstAmount);
+
+    // Sign the message with an invalid nonce
+    _setNonce(address(fixedLst), _staker, _currentNonce); // expected nonce
+    bytes memory signature = _signFixedMessage(
+      fixedLst.CONVERT_TO_FIXED_TYPEHASH(), _staker, _fixedAmount, _suppliedNonce, _expiry, _stakerPrivateKey
+    );
+
+    vm.prank(_sender);
+    bytes memory expectedRevertData =
+      abi.encodeWithSelector(Nonces.InvalidAccountNonce.selector, _staker, _currentNonce);
+    vm.expectRevert(expectedRevertData);
+    fixedLst.convertToFixedOnBehalf(_staker, _fixedAmount, _suppliedNonce, _expiry, signature);
+  }
+
+  function testFuzz_RevertIf_NonceReused(
+    uint256 _lstAmount,
+    uint256 _fixedAmount,
+    uint256 _expiry,
+    uint256 _nonce,
+    uint256 _stakerPrivateKey,
+    address _sender
+  ) public {
+    _lstAmount = _boundToReasonableStakeTokenAmount(_lstAmount);
+    _fixedAmount = bound(_fixedAmount, 0, _lstAmount);
+    _stakerPrivateKey = _boundToValidPrivateKey(_stakerPrivateKey);
+    address _staker = vm.addr(_stakerPrivateKey);
+    _assumeSafeHolder(_staker);
+    _assumeFutureExpiry(_expiry);
+
+    // Mint and approve tokens to the sender (staker)
+    _mintAndStake(_staker, _lstAmount);
+
+    // Sign the message with a valid nonce
+    _setNonce(address(fixedLst), _staker, _nonce);
+    bytes memory signature = _signFixedMessage(
+      fixedLst.CONVERT_TO_FIXED_TYPEHASH(), _staker, _fixedAmount, fixedLst.nonces(_staker), _expiry, _stakerPrivateKey
+    );
+
+    vm.prank(_sender);
+    fixedLst.convertToFixedOnBehalf(_staker, _fixedAmount, _nonce, _expiry, signature);
+
+    vm.prank(_sender);
+    bytes memory expectedRevertData =
+      abi.encodeWithSelector(Nonces.InvalidAccountNonce.selector, _staker, fixedLst.nonces(_staker));
+    vm.expectRevert(expectedRevertData);
+    fixedLst.convertToFixedOnBehalf(_staker, _fixedAmount, _nonce, _expiry, signature);
+  }
+}
+
+contract ConvertToRebasingOnBehalf is FixedUniLstTest {
+  function testFuzz_ConvertsToRebasingTokensOnBehalfOfAnotherUser(
+    uint256 _lstAmount,
+    uint256 _fixedAmount,
+    uint256 _nonce,
+    uint256 _expiry,
+    uint256 _stakerPrivateKey,
+    address _sender,
+    address _delegatee
+  ) public {
+    _assumeSafeDelegatee(_delegatee);
+    _lstAmount = _boundToReasonableStakeTokenAmount(_fixedAmount);
+    _fixedAmount = bound(_fixedAmount, 0, _lstAmount);
+    _stakerPrivateKey = _boundToValidPrivateKey(_stakerPrivateKey);
+    _assumeFutureExpiry(_expiry);
+
+    address _staker = vm.addr(_stakerPrivateKey);
+    _assumeSafeHolder(_staker);
+    _mintStakeTokenUpdateFixedDelegateeAndStakeFixed(_staker, _lstAmount, _delegatee);
+
+    // Sign the message
+    _setNonce(address(fixedLst), _staker, _nonce);
+    bytes memory signature = _signFixedMessage(
+      fixedLst.CONVERT_TO_REBASING_TYPEHASH(),
+      _staker,
+      _fixedAmount,
+      fixedLst.nonces(_staker),
+      _expiry,
+      _stakerPrivateKey
+    );
+    uint256 _initialBalance = fixedLst.balanceOf(_staker);
+
+    vm.prank(_sender);
+    fixedLst.convertToRebasingOnBehalf(_staker, _fixedAmount, _nonce, _expiry, signature);
+
+    // Check balances
+    assertEq(fixedLst.balanceOf(_staker), _initialBalance - _fixedAmount);
+  }
+
+  function testFuzz_EmitsAUnfixedEvent(
+    uint256 _lstAmount,
+    uint256 _fixedAmount,
+    uint256 _nonce,
+    uint256 _expiry,
+    uint256 _stakerPrivateKey,
+    address _sender,
+    address _delegatee
+  ) public {
+    _assumeSafeDelegatee(_delegatee);
+    _lstAmount = _boundToReasonableStakeTokenAmount(_lstAmount);
+    _fixedAmount = bound(_fixedAmount, 0, _lstAmount);
+    _stakerPrivateKey = _boundToValidPrivateKey(_stakerPrivateKey);
+    _assumeFutureExpiry(_expiry);
+
+    address _staker = vm.addr(_stakerPrivateKey);
+    _mintStakeTokenUpdateFixedDelegateeAndStakeFixed(_staker, _lstAmount, _delegatee);
+
+    // Sign the message
+    _setNonce(address(fixedLst), _staker, _nonce);
+    bytes memory signature = _signFixedMessage(
+      fixedLst.CONVERT_TO_REBASING_TYPEHASH(),
+      _staker,
+      _fixedAmount,
+      fixedLst.nonces(_staker),
+      _expiry,
+      _stakerPrivateKey
+    );
+
+    vm.prank(_sender);
+    vm.expectEmit();
+    emit FixedUniLst.Unfixed(_staker, _fixedAmount);
+    fixedLst.convertToRebasingOnBehalf(_staker, _fixedAmount, _nonce, _expiry, signature);
+  }
+
+  function testFuzz_RevertIf_InvalidSignature(
+    uint256 _lstAmount,
+    uint256 _fixedAmount,
+    address _staker,
+    uint256 _nonce,
+    uint256 _expiry,
+    uint256 _wrongPrivateKey,
+    address _sender,
+    address _delegatee
+  ) public {
+    _assumeSafeDelegatee(_delegatee);
+    _assumeSafeHolder(_staker);
+    _assumeFutureExpiry(_expiry);
+    _lstAmount = _boundToReasonableStakeTokenAmount(_lstAmount);
+    _fixedAmount = bound(_fixedAmount, 0, _lstAmount);
+    _wrongPrivateKey = _boundToValidPrivateKey(_wrongPrivateKey);
+
+    _mintStakeTokenUpdateFixedDelegateeAndStakeFixed(_staker, _lstAmount, _delegatee);
+
+    // Sign the message with an invalid key
+    _setNonce(address(fixedLst), _staker, _nonce);
+    bytes memory invalidSignature = _signFixedMessage(
+      fixedLst.CONVERT_TO_REBASING_TYPEHASH(), _staker, _fixedAmount, _nonce, _expiry, _wrongPrivateKey
+    );
+
+    vm.prank(_sender);
+    vm.expectRevert(FixedUniLst.FixedUniLst__InvalidSignature.selector);
+    fixedLst.convertToRebasingOnBehalf(_staker, _fixedAmount, _nonce, _expiry, invalidSignature);
+  }
+
+  function testFuzz_RevertIf_ExpiredSignature(
+    uint256 _lstAmount,
+    uint256 _fixedAmount,
+    uint256 _nonce,
+    uint256 _expiry,
+    uint256 _stakerPrivateKey,
+    address _sender,
+    address _delegatee
+  ) public {
+    _assumeSafeDelegatee(_delegatee);
+    _expiry = bound(_expiry, 0, block.timestamp - 1);
+    _lstAmount = _boundToReasonableStakeTokenAmount(_lstAmount);
+    _stakerPrivateKey = _boundToValidPrivateKey(_stakerPrivateKey);
+
+    address _staker = vm.addr(_stakerPrivateKey);
+    _mintStakeTokenUpdateFixedDelegateeAndStakeFixed(_staker, _lstAmount, _delegatee);
+
+    // Sign the message with an expired expiry
+    _setNonce(address(fixedLst), _staker, _nonce);
+    bytes memory signature = _signFixedMessage(
+      fixedLst.CONVERT_TO_REBASING_TYPEHASH(),
+      _staker,
+      _fixedAmount,
+      fixedLst.nonces(_staker),
+      _expiry,
+      _stakerPrivateKey
+    );
+
+    vm.prank(_sender);
+    vm.expectRevert(FixedUniLst.FixedUniLst__SignatureExpired.selector);
+    fixedLst.convertToRebasingOnBehalf(_staker, _fixedAmount, _nonce, _expiry, signature);
+  }
+
+  function testFuzz_RevertIf_InvalidNonce(
+    uint256 _lstAmount,
+    uint256 _fixedAmount,
+    uint256 _currentNonce,
+    uint256 _suppliedNonce,
+    uint256 _expiry,
+    uint256 _stakerPrivateKey,
+    address _sender,
+    address _delegatee
+  ) public {
+    vm.assume(_currentNonce != _suppliedNonce);
+    _assumeSafeDelegatee(_delegatee);
+    _assumeFutureExpiry(_expiry);
+    _lstAmount = _boundToReasonableStakeTokenAmount(_lstAmount);
+    _stakerPrivateKey = _boundToValidPrivateKey(_stakerPrivateKey);
+
+    address _staker = vm.addr(_stakerPrivateKey);
+    _assumeSafeHolder(_staker);
+    _mintStakeTokenUpdateFixedDelegateeAndStakeFixed(_staker, _lstAmount, _delegatee);
+
+    // Sign the message with an invalid nonce
+    _setNonce(address(fixedLst), _staker, _currentNonce); // expected nonce
+    bytes memory signature = _signFixedMessage(
+      fixedLst.CONVERT_TO_REBASING_TYPEHASH(), _staker, _fixedAmount, _suppliedNonce, _expiry, _stakerPrivateKey
+    );
+
+    vm.prank(_sender);
+    bytes memory expectedRevertData =
+      abi.encodeWithSelector(Nonces.InvalidAccountNonce.selector, _staker, _currentNonce);
+    vm.expectRevert(expectedRevertData);
+    fixedLst.convertToRebasingOnBehalf(_staker, _fixedAmount, _suppliedNonce, _expiry, signature);
+  }
+
+  function testFuzz_RevertIf_NonceReused(
+    uint256 _lstAmount,
+    uint256 _fixedAmount,
+    uint256 _expiry,
+    uint256 _nonce,
+    uint256 _stakerPrivateKey,
+    address _sender,
+    address _delegatee
+  ) public {
+    _assumeSafeDelegatee(_delegatee);
+    _lstAmount = _boundToReasonableStakeTokenAmount(_lstAmount);
+    _fixedAmount = bound(_fixedAmount, 0, _lstAmount);
+    _stakerPrivateKey = _boundToValidPrivateKey(_stakerPrivateKey);
+    address _staker = vm.addr(_stakerPrivateKey);
+    _assumeSafeHolder(_staker);
+    _assumeFutureExpiry(_expiry);
+
+    _mintStakeTokenUpdateFixedDelegateeAndStakeFixed(_staker, _lstAmount, _delegatee);
+
+    // Sign the message with a valid nonce
+    _setNonce(address(fixedLst), _staker, _nonce);
+    bytes memory signature = _signFixedMessage(
+      fixedLst.CONVERT_TO_REBASING_TYPEHASH(),
+      _staker,
+      _fixedAmount,
+      fixedLst.nonces(_staker),
+      _expiry,
+      _stakerPrivateKey
+    );
+
+    vm.prank(_sender);
+    fixedLst.convertToRebasingOnBehalf(_staker, _fixedAmount, _nonce, _expiry, signature);
+
+    vm.prank(_sender);
+    bytes memory expectedRevertData =
+      abi.encodeWithSelector(Nonces.InvalidAccountNonce.selector, _staker, fixedLst.nonces(_staker));
+    vm.expectRevert(expectedRevertData);
+    fixedLst.convertToRebasingOnBehalf(_staker, _fixedAmount, _nonce, _expiry, signature);
+  }
+}
+
+contract RescueOnBehalf is FixedUniLstTest {
+  function testFuzz_RescueTokensOnBehalfOfAnotherUser(
+    uint256 _initialStakeAmount,
+    uint256 _rescueAmount,
+    uint256 _nonce,
+    uint256 _expiry,
+    uint256 _stakerPrivateKey,
+    address _sender,
+    address _delegatee
+  ) public {
+    _assumeSafeDelegatee(_delegatee);
+    _initialStakeAmount = _boundToReasonableStakeTokenAmount(_initialStakeAmount);
+    _rescueAmount = _boundToReasonableStakeTokenAmount(_rescueAmount);
+    _stakerPrivateKey = _boundToValidPrivateKey(_stakerPrivateKey);
+    _assumeFutureExpiry(_expiry);
+
+    address _staker = vm.addr(_stakerPrivateKey);
+    _assumeSafeHolder(_staker);
+    _mintStakeTokenUpdateFixedDelegateeAndStakeFixed(_staker, _initialStakeAmount, _delegatee);
+    _sendLstTokensDirectlyToAlias(_staker, _rescueAmount);
+
+    // Sign the message
+    _setNonce(address(fixedLst), _staker, _nonce);
+    bytes memory signature =
+      _signFixedMessage(fixedLst.RESCUE_TYPEHASH(), _staker, fixedLst.nonces(_staker), _expiry, _stakerPrivateKey);
+
+    vm.prank(_sender);
+    fixedLst.rescueOnBehalf(_staker, _nonce, _expiry, signature);
+    uint256 _expectedBalance = lst.sharesForStake(_initialStakeAmount + _rescueAmount) / SHARE_SCALE_FACTOR;
+    assertEq(fixedLst.balanceOf(_staker), _expectedBalance);
+  }
+
+  function testFuzz_EmitsARescuedEvent(
+    uint256 _initialStakeAmount,
+    uint256 _rescueAmount,
+    uint256 _nonce,
+    uint256 _expiry,
+    uint256 _stakerPrivateKey,
+    address _sender,
+    address _delegatee
+  ) public {
+    _assumeSafeDelegatee(_delegatee);
+    _initialStakeAmount = _boundToReasonableStakeTokenAmount(_initialStakeAmount);
+    _rescueAmount = _boundToReasonableStakeTokenAmount(_rescueAmount);
+    _stakerPrivateKey = _boundToValidPrivateKey(_stakerPrivateKey);
+    _assumeFutureExpiry(_expiry);
+
+    address _staker = vm.addr(_stakerPrivateKey);
+    _mintStakeTokenUpdateFixedDelegateeAndStakeFixed(_staker, _initialStakeAmount, _delegatee);
+    _sendLstTokensDirectlyToAlias(_staker, _rescueAmount);
+
+    // Sign the message
+    _setNonce(address(fixedLst), _staker, _nonce);
+    bytes memory signature =
+      _signFixedMessage(fixedLst.RESCUE_TYPEHASH(), _staker, fixedLst.nonces(_staker), _expiry, _stakerPrivateKey);
+
+    vm.prank(_sender);
+    vm.expectEmit();
+    emit FixedUniLst.Rescued(_staker, _rescueAmount);
+    fixedLst.rescueOnBehalf(_staker, _nonce, _expiry, signature);
+  }
+
+  function testFuzz_RevertIf_InvalidSignature(
+    uint256 _initialStakeAmount,
+    uint256 _rescueAmount,
+    address _staker,
+    uint256 _nonce,
+    uint256 _expiry,
+    uint256 _wrongPrivateKey,
+    address _sender,
+    address _delegatee
+  ) public {
+    _assumeSafeDelegatee(_delegatee);
+    _assumeSafeHolder(_staker);
+    _assumeFutureExpiry(_expiry);
+    _initialStakeAmount = _boundToReasonableStakeTokenAmount(_initialStakeAmount);
+    _rescueAmount = _boundToReasonableStakeTokenAmount(_rescueAmount);
+    _wrongPrivateKey = _boundToValidPrivateKey(_wrongPrivateKey);
+
+    _mintStakeTokenUpdateFixedDelegateeAndStakeFixed(_staker, _initialStakeAmount, _delegatee);
+    _sendLstTokensDirectlyToAlias(_staker, _rescueAmount);
+
+    // Sign the message with an invalid key
+    _setNonce(address(fixedLst), _staker, _nonce);
+    bytes memory invalidSignature =
+      _signFixedMessage(fixedLst.RESCUE_TYPEHASH(), _staker, _nonce, _expiry, _wrongPrivateKey);
+
+    vm.prank(_sender);
+    vm.expectRevert(FixedUniLst.FixedUniLst__InvalidSignature.selector);
+    fixedLst.rescueOnBehalf(_staker, _nonce, _expiry, invalidSignature);
+  }
+
+  function testFuzz_RevertIf_ExpiredSignature(
+    uint256 _initialStakeAmount,
+    uint256 _rescueAmount,
+    uint256 _nonce,
+    uint256 _expiry,
+    uint256 _stakerPrivateKey,
+    address _sender,
+    address _delegatee
+  ) public {
+    _assumeSafeDelegatee(_delegatee);
+    _expiry = bound(_expiry, 0, block.timestamp - 1);
+    _initialStakeAmount = _boundToReasonableStakeTokenAmount(_initialStakeAmount);
+    _rescueAmount = _boundToReasonableStakeTokenAmount(_rescueAmount);
+    _stakerPrivateKey = _boundToValidPrivateKey(_stakerPrivateKey);
+
+    address _staker = vm.addr(_stakerPrivateKey);
+    _mintStakeTokenUpdateFixedDelegateeAndStakeFixed(_staker, _initialStakeAmount, _delegatee);
+    _sendLstTokensDirectlyToAlias(_staker, _rescueAmount);
+
+    // Sign the message with an expired expiry
+    _setNonce(address(fixedLst), _staker, _nonce);
+    bytes memory signature =
+      _signFixedMessage(fixedLst.RESCUE_TYPEHASH(), _staker, fixedLst.nonces(_staker), _expiry, _stakerPrivateKey);
+
+    vm.prank(_sender);
+    vm.expectRevert(FixedUniLst.FixedUniLst__SignatureExpired.selector);
+    fixedLst.rescueOnBehalf(_staker, _nonce, _expiry, signature);
+  }
+
+  function testFuzz_RevertIf_InvalidNonce(
+    uint256 _initialStakeAmount,
+    uint256 _rescueAmount,
+    uint256 _currentNonce,
+    uint256 _suppliedNonce,
+    uint256 _expiry,
+    uint256 _stakerPrivateKey,
+    address _sender,
+    address _delegatee
+  ) public {
+    vm.assume(_currentNonce != _suppliedNonce);
+    _assumeSafeDelegatee(_delegatee);
+    _assumeFutureExpiry(_expiry);
+    _initialStakeAmount = _boundToReasonableStakeTokenAmount(_initialStakeAmount);
+    _rescueAmount = _boundToReasonableStakeTokenAmount(_rescueAmount);
+    _stakerPrivateKey = _boundToValidPrivateKey(_stakerPrivateKey);
+
+    address _staker = vm.addr(_stakerPrivateKey);
+    _assumeSafeHolder(_staker);
+    _mintStakeTokenUpdateFixedDelegateeAndStakeFixed(_staker, _initialStakeAmount, _delegatee);
+    _sendLstTokensDirectlyToAlias(_staker, _rescueAmount);
+
+    // Sign the message with an invalid nonce
+    _setNonce(address(fixedLst), _staker, _currentNonce); // expected nonce
+    bytes memory signature =
+      _signFixedMessage(fixedLst.RESCUE_TYPEHASH(), _staker, _suppliedNonce, _expiry, _stakerPrivateKey);
+
+    vm.prank(_sender);
+    bytes memory expectedRevertData =
+      abi.encodeWithSelector(Nonces.InvalidAccountNonce.selector, _staker, _currentNonce);
+    vm.expectRevert(expectedRevertData);
+    fixedLst.rescueOnBehalf(_staker, _suppliedNonce, _expiry, signature);
+  }
+
+  function testFuzz_RevertIf_NonceReused(
+    uint256 _initialStakeAmount,
+    uint256 _rescueAmount,
+    uint256 _expiry,
+    uint256 _nonce,
+    uint256 _stakerPrivateKey,
+    address _sender,
+    address _delegatee
+  ) public {
+    _assumeSafeDelegatee(_delegatee);
+    _initialStakeAmount = _boundToReasonableStakeTokenAmount(_initialStakeAmount);
+    _rescueAmount = _boundToReasonableStakeTokenAmount(_rescueAmount);
+    _stakerPrivateKey = _boundToValidPrivateKey(_stakerPrivateKey);
+    address _staker = vm.addr(_stakerPrivateKey);
+    _assumeSafeHolder(_staker);
+    _assumeFutureExpiry(_expiry);
+
+    _mintStakeTokenUpdateFixedDelegateeAndStakeFixed(_staker, _initialStakeAmount, _delegatee);
+    _sendLstTokensDirectlyToAlias(_staker, _rescueAmount);
+
+    // Sign the message with a valid nonce
+    _setNonce(address(fixedLst), _staker, _nonce);
+    bytes memory signature =
+      _signFixedMessage(fixedLst.RESCUE_TYPEHASH(), _staker, fixedLst.nonces(_staker), _expiry, _stakerPrivateKey);
+
+    vm.prank(_sender);
+    fixedLst.rescueOnBehalf(_staker, _nonce, _expiry, signature);
+
+    vm.prank(_sender);
+    bytes memory expectedRevertData =
+      abi.encodeWithSelector(Nonces.InvalidAccountNonce.selector, _staker, fixedLst.nonces(_staker));
+    vm.expectRevert(expectedRevertData);
+    fixedLst.rescueOnBehalf(_staker, _nonce, _expiry, signature);
+  }
+}
+
 contract PermitAndStake is FixedUniLstTest {
   using stdStorage for StdStorage;
 
@@ -566,6 +1366,200 @@ contract Multicall is FixedUniLstTest {
     vm.expectRevert(FixedUniLst.FixedUniLst__InsufficientBalance.selector);
     vm.prank(_actor);
     fixedLst.multicall(_calls);
+  }
+}
+
+contract UnstakeOnBehalf is FixedUniLstTest {
+  function testFuzz_UnstakesTokensOnBehalfOfAnotherUser(
+    uint256 _amount,
+    uint256 _nonce,
+    uint256 _expiry,
+    uint256 _stakerPrivateKey,
+    address _sender,
+    address _delegatee
+  ) public {
+    _assumeSafeDelegatee(_delegatee);
+    _assumeFutureExpiry(_expiry);
+    _amount = _boundToReasonableStakeTokenAmount(_amount);
+    _stakerPrivateKey = _boundToValidPrivateKey(_stakerPrivateKey);
+    address _staker = vm.addr(_stakerPrivateKey);
+    _assumeSafeHolder(_staker);
+
+    // Mint and stake tokens for the holder
+    _mintStakeTokenUpdateFixedDelegateeAndStakeFixed(_staker, _amount, _delegatee);
+
+    // Sign the message
+    _setNonce(address(fixedLst), _staker, _nonce);
+    bytes memory signature = _signFixedMessage(
+      fixedLst.UNSTAKE_TYPEHASH(), _staker, _amount, fixedLst.nonces(_staker), _expiry, _stakerPrivateKey
+    );
+
+    uint256 _initialBalance = fixedLst.balanceOf(_staker);
+
+    // Perform the unstake on behalf
+    vm.prank(_sender);
+    fixedLst.unstakeOnBehalf(_staker, _amount, fixedLst.nonces(_staker), _expiry, signature);
+
+    // Check balances
+    assertEq(stakeToken.balanceOf(_staker), 0);
+    // The holder still has the remaining fixed tokens.
+    assertEq(fixedLst.balanceOf(_staker), _initialBalance - _amount);
+  }
+
+  function testFuzz_EmitsAnUnstakedEvent(
+    uint256 _amount,
+    uint256 _nonce,
+    uint256 _expiry,
+    uint256 _stakerPrivateKey,
+    address _sender,
+    address _delegatee
+  ) public {
+    _assumeSafeHolder(_sender);
+    _assumeSafeDelegatee(_delegatee);
+    _assumeFutureExpiry(_expiry);
+    _amount = _boundToReasonableStakeTokenAmount(_amount);
+    _stakerPrivateKey = _boundToValidPrivateKey(_stakerPrivateKey);
+    address _staker = vm.addr(_stakerPrivateKey);
+
+    // Mint and stake tokens for the holder
+    _mintStakeTokenUpdateFixedDelegateeAndStakeFixed(_staker, _amount, _delegatee);
+
+    // Sign the message
+    _setNonce(address(fixedLst), _staker, _nonce);
+    bytes memory signature = _signFixedMessage(
+      fixedLst.UNSTAKE_TYPEHASH(), _staker, _amount, fixedLst.nonces(_staker), _expiry, _stakerPrivateKey
+    );
+
+    // Perform the unstake on behalf
+    vm.prank(_sender);
+    vm.expectEmit();
+    emit FixedUniLst.Unstaked(_staker, _amount);
+    fixedLst.unstakeOnBehalf(_staker, _amount, fixedLst.nonces(_staker), _expiry, signature);
+  }
+
+  function testFuzz_RevertIf_InvalidSignature(
+    uint256 _amount,
+    address _holder,
+    uint256 _nonce,
+    uint256 _expiry,
+    uint256 _wrongPrivateKey,
+    address _sender,
+    address _delegatee
+  ) public {
+    _assumeSafeHolder(_sender);
+    _assumeSafeDelegatee(_delegatee);
+    _assumeSafeHolder(_holder);
+    _assumeFutureExpiry(_expiry);
+    _amount = _boundToReasonableStakeTokenAmount(_amount);
+    _wrongPrivateKey = _boundToValidPrivateKey(_wrongPrivateKey);
+
+    // Mint and stake tokens for the holder
+    _mintStakeTokenUpdateFixedDelegateeAndStakeFixed(_holder, _amount, _delegatee);
+
+    // Sign the message with an invalid key
+    _setNonce(address(fixedLst), _holder, _nonce);
+    bytes memory invalidSignature =
+      _signFixedMessage(fixedLst.UNSTAKE_TYPEHASH(), _holder, _amount, _nonce, _expiry, _wrongPrivateKey);
+
+    // Attempt to perform the unstake on behalf with an invalid signature
+    vm.prank(_sender);
+    vm.expectRevert(FixedUniLst.FixedUniLst__InvalidSignature.selector);
+    fixedLst.unstakeOnBehalf(_holder, _amount, _nonce, _expiry, invalidSignature);
+  }
+
+  function testFuzz_RevertIf_ExpiredSignature(
+    uint256 _amount,
+    address _holder,
+    uint256 _nonce,
+    uint256 _expiry,
+    uint256 _stakerPrivateKey,
+    address _sender,
+    address _delegatee
+  ) public {
+    _assumeSafeHolder(_sender);
+    _assumeSafeDelegatee(_delegatee);
+    _assumeSafeHolder(_holder);
+    _expiry = bound(_expiry, 0, block.timestamp - 1);
+    _amount = _boundToReasonableStakeTokenAmount(_amount);
+    _stakerPrivateKey = _boundToValidPrivateKey(_stakerPrivateKey);
+
+    // Mint and stake tokens for the holder
+    _mintStakeTokenUpdateFixedDelegateeAndStakeFixed(_holder, _amount, _delegatee);
+
+    // Sign the message with an expired expiry
+    _setNonce(address(fixedLst), _holder, _nonce);
+    bytes memory signature =
+      _signFixedMessage(fixedLst.UNSTAKE_TYPEHASH(), _holder, _amount, _nonce, _expiry, _stakerPrivateKey);
+
+    // Attempt to perform the unstake on behalf with an expired signature
+    vm.prank(_sender);
+    vm.expectRevert(FixedUniLst.FixedUniLst__SignatureExpired.selector);
+    fixedLst.unstakeOnBehalf(_holder, _amount, _nonce, _expiry, signature);
+  }
+
+  function testFuzz_RevertIf_InvalidNonce(
+    uint256 _amount,
+    address _holder,
+    uint256 _currentNonce,
+    uint256 _suppliedNonce,
+    uint256 _expiry,
+    uint256 _stakerPrivateKey,
+    address _sender,
+    address _delegatee
+  ) public {
+    _assumeSafeHolder(_holder);
+    _assumeSafeDelegatee(_delegatee);
+    vm.assume(_currentNonce != _suppliedNonce);
+    _amount = _boundToReasonableStakeTokenAmount(_amount);
+    _stakerPrivateKey = _boundToValidPrivateKey(_stakerPrivateKey);
+
+    // Mint and stake tokens for the holder
+    _mintStakeTokenUpdateFixedDelegateeAndStakeFixed(_holder, _amount, _delegatee);
+
+    // Sign the message with an invalid nonce
+    _setNonce(address(fixedLst), _holder, _currentNonce);
+    bytes memory signature =
+      _signMessage(fixedLst.UNSTAKE_TYPEHASH(), _holder, _amount, _suppliedNonce, _expiry, _stakerPrivateKey);
+
+    // Attempt to perform the unstake on behalf with an invalid nonce
+    vm.prank(_sender);
+    bytes memory expectedRevertData =
+      abi.encodeWithSelector(Nonces.InvalidAccountNonce.selector, _holder, fixedLst.nonces(_holder));
+    vm.expectRevert(expectedRevertData);
+    fixedLst.unstakeOnBehalf(_holder, _amount, _suppliedNonce, _expiry, signature);
+  }
+
+  function testFuzz_RevertIf_NonceReused(
+    uint256 _amount,
+    uint256 _expiry,
+    uint256 _nonce,
+    uint256 _stakerPrivateKey,
+    address _sender,
+    address _delegatee
+  ) public {
+    _assumeSafeDelegatee(_delegatee);
+    _amount = _boundToReasonableStakeTokenAmount(_amount);
+    _stakerPrivateKey = _boundToValidPrivateKey(_stakerPrivateKey);
+    address _staker = vm.addr(_stakerPrivateKey);
+    _assumeSafeHolder(_staker);
+    _assumeFutureExpiry(_expiry);
+
+    // Mint and stake tokens for the holder
+    _mintStakeTokenUpdateFixedDelegateeAndStakeFixed(_staker, _amount, _delegatee);
+
+    // Sign the message with a valid nonce
+    _setNonce(address(fixedLst), _staker, _nonce);
+    bytes memory signature =
+      _signFixedMessage(fixedLst.UNSTAKE_TYPEHASH(), _staker, _amount, _nonce, _expiry, _stakerPrivateKey);
+
+    // Perform the unstake on behalf with a valid nonce
+    fixedLst.unstakeOnBehalf(_staker, _amount, _nonce, _expiry, signature);
+
+    vm.prank(_sender);
+    bytes memory expectedRevertData =
+      abi.encodeWithSelector(Nonces.InvalidAccountNonce.selector, _staker, fixedLst.nonces(_staker));
+    vm.expectRevert(expectedRevertData);
+    fixedLst.unstakeOnBehalf(_staker, _amount, _nonce, _expiry, signature);
   }
 }
 

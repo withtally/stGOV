@@ -10,6 +10,7 @@ import {EIP712} from "openzeppelin/utils/cryptography/EIP712.sol";
 import {Nonces} from "openzeppelin/utils/Nonces.sol";
 import {IUni} from "src/interfaces/IUni.sol";
 import {Multicall} from "openzeppelin/utils/Multicall.sol";
+import {SignatureChecker} from "openzeppelin/utils/cryptography/SignatureChecker.sol";
 
 /// @title FixedUniLst
 /// @author [ScopeLift](https://scopelift.co)
@@ -105,6 +106,25 @@ contract FixedUniLst is IERC20, IERC20Metadata, Multicall, EIP712, Nonces {
   bytes32 public constant PERMIT_TYPEHASH =
     keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
 
+  /// @notice Type hash used when encoding data for `stakeOnBehalf` calls.
+  bytes32 public constant STAKE_TYPEHASH =
+    keccak256("Stake(address account,uint256 amount,uint256 nonce,uint256 deadline)");
+
+  /// @notice Type hash used when encoding data for `convertToFixedOnBehalf` calls.
+  bytes32 public constant CONVERT_TO_FIXED_TYPEHASH =
+    keccak256("ConvertToFixed(address account,uint256 amount,uint256 nonce,uint256 deadline)");
+
+  /// @notice Type hash used when encoding data for `convertToRebasingOnBehalf` calls.
+  bytes32 public constant CONVERT_TO_REBASING_TYPEHASH =
+    keccak256("ConvertToRebasing(address account,uint256 amount,uint256 nonce,uint256 deadline)");
+
+  /// @notice Type hash used when encoding data for `unstakeOnBehalf` calls.
+  bytes32 public constant UNSTAKE_TYPEHASH =
+    keccak256("Unstake(address account,uint256 amount,uint256 nonce,uint256 deadline)");
+
+  /// @notice Type hash used when encoding data for `rescueOnBehalf` calls.
+  bytes32 public constant RESCUE_TYPEHASH = keccak256("Rescue(address account,uint256 nonce,uint256 deadline)");
+
   /// @notice Mapping used to determine the amount of Fixed LST tokens the spender has been approved to transfer on
   /// the holder's behalf.
   mapping(address holder => mapping(address spender => uint256 amount)) public allowance;
@@ -159,28 +179,16 @@ contract FixedUniLst is IERC20, IERC20Metadata, Multicall, EIP712, Nonces {
   /// @dev The caller must approve *the rebasing LST contract* to transfer at least the number of stake tokens being
   /// staked before calling this method. This is different from a typical experience, where one would expect to approve
   /// the address on which the `stake` method was being called.
-  function stake(uint256 _stakeTokens) public returns (uint256 _fixedTokens) {
-    // Send the stake tokens to the LST.
-    STAKE_TOKEN.transferFrom(msg.sender, address(LST), _stakeTokens);
-    uint256 _shares = LST.stakeAndConvertToFixed(msg.sender, _stakeTokens);
-    shareBalances[msg.sender] += _shares;
-    totalShares += _shares;
-    _fixedTokens = _scaleDown(_shares);
-    emit IERC20.Transfer(address(0), msg.sender, _fixedTokens);
-    emit Staked(msg.sender, _stakeTokens);
+  function stake(uint256 _stakeTokens) public returns (uint256) {
+    return _stake(msg.sender, _stakeTokens);
   }
 
   /// @notice Convert existing rebasing LST tokens to fixed balance LST tokens.
   /// @param _lstTokens The number of rebasing LST tokens that will be converted to fixed balance LST tokens.
   /// @return _fixedTokens The number of fixed balance LST tokens received upon fixing. These tokens are *not*
   /// exchanged 1:1 with the stake tokens.
-  function convertToFixed(uint256 _lstTokens) external returns (uint256 _fixedTokens) {
-    uint256 _shares = LST.convertToFixed(msg.sender, _lstTokens);
-    shareBalances[msg.sender] += _shares;
-    totalShares += _shares;
-    _fixedTokens = _scaleDown(_shares);
-    emit IERC20.Transfer(address(0), msg.sender, _fixedTokens);
-    emit Fixed(msg.sender, _lstTokens);
+  function convertToFixed(uint256 _lstTokens) external returns (uint256) {
+    return _convertToFixed(msg.sender, _lstTokens);
   }
 
   /// @notice Move fixed LST tokens held by the caller to another account.
@@ -209,14 +217,8 @@ contract FixedUniLst is IERC20, IERC20Metadata, Multicall, EIP712, Nonces {
   /// @notice Convert fixed LST tokens to rebasing LST tokens.
   /// @param _fixedTokens The number of fixed LST tokens to convert.
   /// @return _lstTokens The number of rebasing LST tokens received.
-  function convertToRebasing(uint256 _fixedTokens) external returns (uint256 _lstTokens) {
-    uint256 _shares = _scaleUp(_fixedTokens);
-    // revert on overflow prevents unfixing more than balance
-    shareBalances[msg.sender] -= _shares;
-    totalShares -= _shares;
-    emit IERC20.Transfer(msg.sender, address(0), _fixedTokens);
-    _lstTokens = LST.convertToRebasing(msg.sender, _shares);
-    emit Unfixed(msg.sender, _lstTokens);
+  function convertToRebasing(uint256 _fixedTokens) external returns (uint256) {
+    return _convertToRebasing(msg.sender, _fixedTokens);
   }
 
   /// @notice Unstake fixed LST tokens and receive underlying staked tokens back. If a withdrawal delay is being
@@ -224,13 +226,7 @@ contract FixedUniLst is IERC20, IERC20Metadata, Multicall, EIP712, Nonces {
   /// @param _fixedTokens The number of fixed LST tokens to unstake.
   /// @return _stakeTokens The number of underlying governance tokens received in exchange.
   function unstake(uint256 _fixedTokens) external returns (uint256 _stakeTokens) {
-    uint256 _shares = _scaleUp(_fixedTokens);
-    // revert on overflow prevents unfixing more than balance
-    shareBalances[msg.sender] -= _shares;
-    totalShares -= _shares;
-    emit IERC20.Transfer(msg.sender, address(0), _fixedTokens);
-    _stakeTokens = LST.convertToRebasingAndUnstake(msg.sender, _shares);
-    emit Unstaked(msg.sender, _stakeTokens);
+    return _unstake(msg.sender, _fixedTokens);
   }
 
   /// @notice Allow a depositor to change the address they are delegating their staked tokens.
@@ -252,20 +248,7 @@ contract FixedUniLst is IERC20, IERC20Metadata, Multicall, EIP712, Nonces {
   /// @return _fixedTokens The number of fixed LST tokens rescued by reclaiming rebasing LST tokens sent the caller's
   /// alias address.
   function rescue() external returns (uint256 _fixedTokens) {
-    // Shares not accounted for inside this Fixed LST accounting system are the ones to rescue.
-    uint256 _sharesToRescue = LST.sharesOf(msg.sender.fixedAlias()) - shareBalances[msg.sender];
-
-    // We intentionally scale down then scale up. The method is not intended for reclaiming dust below
-    // the precision of the Fixed LST, but only for tokens accidentally sent to the alias address inside
-    // the Rebasing LST contract.
-    _fixedTokens = _scaleDown(_sharesToRescue);
-    _sharesToRescue = _scaleUp(_fixedTokens);
-
-    shareBalances[msg.sender] += _sharesToRescue;
-    totalShares += _sharesToRescue;
-    emit IERC20.Transfer(address(0), msg.sender, _fixedTokens);
-    uint256 _stakeTokens = LST.stakeForShares(_sharesToRescue);
-    emit Rescued(msg.sender, _stakeTokens);
+    return _rescue(msg.sender);
   }
 
   /// @notice Grant an allowance to the spender to transfer up to a certain amount of fixed LST tokens on behalf of the
@@ -316,6 +299,96 @@ contract FixedUniLst is IERC20, IERC20Metadata, Multicall, EIP712, Nonces {
     emit Approval(_owner, _spender, _value);
   }
 
+  /// @notice Stake tokens to receive fixed liquid stake tokens on behalf of a user, using a signature to validate the
+  /// user's intent. The staking address must pre-approve the LST contract to spend at least the would-be amount
+  /// of tokens.
+  /// @param _account The address on behalf of whom the staking is being performed.
+  /// @param _amount The quantity of tokens that will be staked.
+  /// @param _nonce The nonce being consumed by this operation.
+  /// @param _deadline The timestamp after which the signature should expire.
+  /// @param _signature Signature of the user authorizing this stake.
+  /// @dev The increase in the holder's balance after staking may be slightly less than the amount staked due to
+  /// rounding.
+  /// @return The amount of fixed tokens created after staking.
+  function stakeOnBehalf(address _account, uint256 _amount, uint256 _nonce, uint256 _deadline, bytes memory _signature)
+    external
+    returns (uint256)
+  {
+    _validateSignature(_account, _amount, _nonce, _deadline, _signature, STAKE_TYPEHASH);
+    return _stake(_account, _amount);
+  }
+
+  /// @notice Destroy liquid staked tokens, to receive the underlying token in exchange, on behalf of a user. Use a
+  /// signature to validate the user's  intent. Tokens are removed first from the default deposit, if any are present,
+  /// then from holder's specified deposit if any are needed.
+  /// @param _account The address on behalf of whom the unstaking is being performed.
+  /// @param _amount The amount of tokens to unstake.
+  /// @param _nonce The nonce being consumed by this operation.
+  /// @param _deadline The timestamp after which the signature should expire.
+  /// @param _signature Signature of the user authorizing this stake.
+  /// @return The amount of stake tokens created after unstaking.
+  function unstakeOnBehalf(
+    address _account,
+    uint256 _amount,
+    uint256 _nonce,
+    uint256 _deadline,
+    bytes memory _signature
+  ) external returns (uint256) {
+    _validateSignature(_account, _amount, _nonce, _deadline, _signature, UNSTAKE_TYPEHASH);
+    return _unstake(_account, _amount);
+  }
+
+  /// @notice Convert existing rebasing LST tokens to fixed balance LST tokens on behalf of an account.
+  /// @param _account The address on behalf of whom the conversion is being performed.
+  /// @param _amount The amount of rebasing LST tokens to convert.
+  /// @param _nonce The nonce being consumed by this operation.
+  /// @param _deadline The timestamp after which the signature should expire.
+  /// @param _signature Signature of the user authorizing this stake.
+  /// @return The amount of fixed tokens.
+  function convertToFixedOnBehalf(
+    address _account,
+    uint256 _amount,
+    uint256 _nonce,
+    uint256 _deadline,
+    bytes memory _signature
+  ) external returns (uint256) {
+    _validateSignature(_account, _amount, _nonce, _deadline, _signature, CONVERT_TO_FIXED_TYPEHASH);
+    return _convertToFixed(_account, _amount);
+  }
+
+  /// @notice Convert fixed LST tokens to rebasing LST tokens on behalf of an account.
+  /// @param _account The address on behalf of whom the conversion is being performed.
+  /// @param _amount The amount of fixed LST tokens to convert.
+  /// @param _nonce The nonce being consumed by this operation.
+  /// @param _deadline The timestamp after which the signature should expire.
+  /// @param _signature Signature of the user authorizing this stake.
+  /// @return The amount of rebasing tokens.
+  function convertToRebasingOnBehalf(
+    address _account,
+    uint256 _amount,
+    uint256 _nonce,
+    uint256 _deadline,
+    bytes memory _signature
+  ) external returns (uint256) {
+    _validateSignature(_account, _amount, _nonce, _deadline, _signature, CONVERT_TO_REBASING_TYPEHASH);
+    return _convertToRebasing(_account, _amount);
+  }
+
+  /// @notice Save rebasing LST tokens that were mistakenly sent to the fixed holder alias address on behalf of an
+  /// account.
+  /// @param _account The address on behalf of whom the rescue is being performed.
+  /// @param _nonce The nonce being consumed by this operation.
+  /// @param _deadline The timestamp after which the signature should expire.
+  /// @param _signature Signature of the user authorizing this stake.
+  /// @return The amount of fixed tokens rescued.
+  function rescueOnBehalf(address _account, uint256 _nonce, uint256 _deadline, bytes memory _signature)
+    external
+    returns (uint256)
+  {
+    _validateSignature(_account, _nonce, _deadline, _signature, RESCUE_TYPEHASH);
+    return _rescue(_account);
+  }
+
   /// @notice Stake tokens to receive fixed liquid stake tokens. Before the staking operation occurs, a signature is
   /// passed to the token contract's permit method to spend the would-be staked amount of the token.
   /// @param _amount The quantity of fixed tokens that will be staked.
@@ -323,9 +396,13 @@ contract FixedUniLst is IERC20, IERC20Metadata, Multicall, EIP712, Nonces {
   /// @param _v ECDSA signature component: Parity of the `y` coordinate of point `R`
   /// @param _r ECDSA signature component: x-coordinate of `R`
   /// @param _s ECDSA signature component: `s` value of the signature
-  function permitAndStake(uint256 _amount, uint256 _deadline, uint8 _v, bytes32 _r, bytes32 _s) public {
+  /// @return The number of fixed tokens after staking.
+  function permitAndStake(uint256 _amount, uint256 _deadline, uint8 _v, bytes32 _r, bytes32 _s)
+    public
+    returns (uint256)
+  {
     try STAKE_TOKEN.permit(msg.sender, address(this), _amount, _deadline, _v, _r, _s) {} catch {}
-    stake(_amount);
+    return stake(_amount);
   }
 
   /// @notice Internal convenience method which performs transfer operations.
@@ -341,6 +418,87 @@ contract FixedUniLst is IERC20, IERC20Metadata, Multicall, EIP712, Nonces {
     shareBalances[_to] += _receiverShares;
 
     emit IERC20.Transfer(_from, _to, _fixedTokens);
+  }
+
+  /// @notice Internal convenience method which performs the stake operation.
+  /// @param _account The account to perform the stake action.
+  /// @param _stakeTokens The amount of governance tokens to stake.
+  /// @return The number of fixed tokens after staking.
+  function _stake(address _account, uint256 _stakeTokens) internal virtual returns (uint256) {
+    // Send the stake tokens to the LST.
+    STAKE_TOKEN.transferFrom(_account, address(LST), _stakeTokens);
+    uint256 _shares = LST.stakeAndConvertToFixed(_account, _stakeTokens);
+    shareBalances[_account] += _shares;
+    totalShares += _shares;
+    uint256 _fixedTokens = _scaleDown(_shares);
+    emit IERC20.Transfer(address(0), _account, _fixedTokens);
+    emit Staked(_account, _stakeTokens);
+    return _fixedTokens;
+  }
+
+  /// @notice Internal convenience method which performs the unstake operation.
+  /// @param _account The account to perform the unstake action.
+  /// @param _amount The amount of fixed tokens to unstake.
+  /// @return The number of governance tokens after unstaking.
+  function _unstake(address _account, uint256 _amount) internal virtual returns (uint256) {
+    uint256 _shares = _scaleUp(_amount);
+    // revert on overflow prevents unfixing more than balance
+    shareBalances[_account] -= _shares;
+    totalShares -= _shares;
+    emit IERC20.Transfer(_account, address(0), _amount);
+    uint256 _stakeTokens = LST.convertToRebasingAndUnstake(_account, _shares);
+    emit Unstaked(_account, _stakeTokens);
+    return _stakeTokens;
+  }
+
+  /// @notice Internal convenience method which performs the convert to fixed tokens operation.
+  /// @param _account The account to perform the conversion action.
+  /// @param _lstTokens The amount of rebasing tokens to convert.
+  /// @return The number of fixed tokens.
+  function _convertToFixed(address _account, uint256 _lstTokens) internal virtual returns (uint256) {
+    uint256 _shares = LST.convertToFixed(_account, _lstTokens);
+    shareBalances[_account] += _shares;
+    totalShares += _shares;
+    uint256 _fixedTokens = _scaleDown(_shares);
+    emit IERC20.Transfer(address(0), _account, _fixedTokens);
+    emit Fixed(_account, _lstTokens);
+    return _fixedTokens;
+  }
+
+  /// @notice Internal convenience method which performs the convert to rebasing tokens operation.
+  /// @param _account The account to perform the conversion action.
+  /// @param _fixedTokens The amount of rebasing tokens to convert.
+  /// @return The number of rebasing tokens.
+  function _convertToRebasing(address _account, uint256 _fixedTokens) internal virtual returns (uint256) {
+    uint256 _shares = _scaleUp(_fixedTokens);
+    // revert on overflow prevents unfixing more than balance
+    shareBalances[_account] -= _shares;
+    totalShares -= _shares;
+    emit IERC20.Transfer(_account, address(0), _fixedTokens);
+    uint256 _lstTokens = LST.convertToRebasing(_account, _shares);
+    emit Unfixed(_account, _lstTokens);
+    return _lstTokens;
+  }
+
+  /// @notice Internal convenience method which performs the rescue operation.
+  /// @param _account The account to perform the rescue action.
+  /// @return The number of fixed tokens rescued.
+  function _rescue(address _account) internal virtual returns (uint256) {
+    // Shares not accounted for inside this Fixed LST accounting system are the ones to rescue.
+    uint256 _sharesToRescue = LST.sharesOf(_account.fixedAlias()) - shareBalances[_account];
+
+    // We intentionally scale down then scale up. The method is not intended for reclaiming dust below
+    // the precision of the Fixed LST, but only for tokens accidentally sent to the alias address inside
+    // the Rebasing LST contract.
+    uint256 _fixedTokens = _scaleDown(_sharesToRescue);
+    _sharesToRescue = _scaleUp(_fixedTokens);
+
+    shareBalances[_account] += _sharesToRescue;
+    totalShares += _sharesToRescue;
+    emit IERC20.Transfer(address(0), _account, _fixedTokens);
+    uint256 _stakeTokens = LST.stakeForShares(_sharesToRescue);
+    emit Rescued(_account, _stakeTokens);
+    return _fixedTokens;
   }
 
   /// @notice Internal helper that updates the allowance of the from address for the message sender, and reverts if the
@@ -366,5 +524,57 @@ contract FixedUniLst is IERC20, IERC20Metadata, Multicall, EIP712, Nonces {
   /// @return _fixedTokens The number of fixed LST tokens.
   function _scaleDown(uint256 _lstShares) internal view returns (uint256 _fixedTokens) {
     _fixedTokens = _lstShares / SHARE_SCALE_FACTOR;
+  }
+
+  /// @notice Internal helper method which reverts with FixedUniLst__SignatureExpired if the signature
+  /// is invalid.
+  /// @param _account The address of the signer.
+  /// @param _amount The amount of tokens involved in this operation.
+  /// @param _nonce The nonce being consumed by this operation.
+  /// @param _deadline The timestamp after which the signature should expire.
+  /// @param _signature Signature of the user authorizing this stake.
+  /// @param _typeHash The typehash being signed over for this operation.
+  function _validateSignature(
+    address _account,
+    uint256 _amount,
+    uint256 _nonce,
+    uint256 _deadline,
+    bytes memory _signature,
+    bytes32 _typeHash
+  ) internal {
+    _useCheckedNonce(_account, _nonce);
+    if (block.timestamp > _deadline) {
+      revert FixedUniLst__SignatureExpired();
+    }
+    bytes32 _structHash = keccak256(abi.encode(_typeHash, _account, _amount, _nonce, _deadline));
+    bytes32 _hash = _hashTypedDataV4(_structHash);
+    if (!SignatureChecker.isValidSignatureNow(_account, _hash, _signature)) {
+      revert FixedUniLst__InvalidSignature();
+    }
+  }
+
+  /// @notice Internal helper method which reverts with FixedUniLst__SignatureExpired if the signature
+  /// is invalid.
+  /// @param _account The address of the signer.
+  /// @param _nonce The nonce being consumed by this operation.
+  /// @param _deadline The timestamp after which the signature should expire.
+  /// @param _signature Signature of the user authorizing this stake.
+  /// @param _typeHash The typehash being signed over for this operation.
+  function _validateSignature(
+    address _account,
+    uint256 _nonce,
+    uint256 _deadline,
+    bytes memory _signature,
+    bytes32 _typeHash
+  ) internal {
+    _useCheckedNonce(_account, _nonce);
+    if (block.timestamp > _deadline) {
+      revert FixedUniLst__SignatureExpired();
+    }
+    bytes32 _structHash = keccak256(abi.encode(_typeHash, _account, _nonce, _deadline));
+    bytes32 _hash = _hashTypedDataV4(_structHash);
+    if (!SignatureChecker.isValidSignatureNow(_account, _hash, _signature)) {
+      revert FixedUniLst__InvalidSignature();
+    }
   }
 }
