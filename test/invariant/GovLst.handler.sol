@@ -7,19 +7,19 @@ import {StdUtils} from "forge-std/StdUtils.sol";
 import {console} from "forge-std/console.sol";
 import {AddressSet, LibAddressSet} from "./AddressSet.sol";
 import {DepositIdSet, LibDepositIdSet} from "./DepositIdSet.sol";
-import {UniLst} from "src/UniLst.sol";
-import {IUniStaker} from "src/interfaces/IUniStaker.sol";
+import {GovLst} from "src/GovLst.sol";
 import {IERC20} from "openzeppelin/token/ERC20/IERC20.sol";
-import {IUni} from "src/interfaces/IUni.sol";
+import {GovernanceStaker} from "@staker/src/GovernanceStaker.sol";
+import {FakeGovernanceStaker} from "test/fakes/FakeGovernanceStaker.sol";
 
-contract UniLstHandler is CommonBase, StdCheats, StdUtils {
+contract GovLstHandler is CommonBase, StdCheats, StdUtils {
   using LibAddressSet for AddressSet;
   using LibDepositIdSet for DepositIdSet;
 
   // system setup
-  UniLst public lst;
-  IUniStaker public staker;
-  IUni public stakeToken;
+  GovLst public lst;
+  GovernanceStaker public staker;
+  IERC20 public stakeToken;
   IERC20 public rewardToken;
   address public admin;
   mapping(bytes32 => uint256) public calls;
@@ -43,10 +43,10 @@ contract UniLstHandler is CommonBase, StdCheats, StdUtils {
     _;
   }
 
-  constructor(UniLst _uniLst) {
-    lst = _uniLst;
-    staker = _uniLst.STAKER();
-    stakeToken = IUni(address(staker.STAKE_TOKEN()));
+  constructor(GovLst _govLst) {
+    lst = _govLst;
+    staker = _govLst.STAKER();
+    stakeToken = staker.STAKE_TOKEN();
     rewardToken = IERC20(address(staker.REWARD_TOKEN()));
     admin = staker.admin();
     depositIds.add(lst.DEFAULT_DEPOSIT_ID());
@@ -151,7 +151,7 @@ contract UniLstHandler is CommonBase, StdCheats, StdUtils {
     vm.assume(_delegatee != address(0));
 
     vm.startPrank(_actor);
-    IUniStaker.DepositIdentifier _id = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+    GovernanceStaker.DepositIdentifier _id = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
     vm.stopPrank();
 
     depositIds.add(_id);
@@ -159,7 +159,7 @@ contract UniLstHandler is CommonBase, StdCheats, StdUtils {
 
   function updateDeposit(uint256 _actorSeed, uint256 _depositSeed) public countCall("updateDeposit") {
     address _holder = _useActor(holders, _actorSeed);
-    IUniStaker.DepositIdentifier _id = depositIds.rand(_depositSeed);
+    GovernanceStaker.DepositIdentifier _id = depositIds.rand(_depositSeed);
 
     vm.startPrank(_holder);
     lst.updateDeposit(_id);
@@ -176,20 +176,22 @@ contract UniLstHandler is CommonBase, StdCheats, StdUtils {
     ghost_rewardsNotified += _amount;
   }
 
-  function claimAndDistributeReward(address _actor, address _recipient, uint256 _minExpectedAmount)
-    public
-    countCall("claimAndDistributeReward")
-  {
+  function claimAndDistributeReward(
+    address _actor,
+    address _recipient,
+    uint256 _minExpectedAmount,
+    GovernanceStaker.DepositIdentifier _depositId
+  ) public countCall("claimAndDistributeReward") {
     vm.assume(_actor != address(0));
     vm.assume(_recipient != address(0));
     // in REWARD_TOKEN
-    _minExpectedAmount = _bound(_minExpectedAmount, 0, staker.unclaimedReward(address(lst)));
+    _minExpectedAmount = _bound(_minExpectedAmount, 0, staker.unclaimedReward(_depositId));
     uint256 _payoutAmount = lst.payoutAmount();
     _mintStakeToken(_actor, _payoutAmount);
     vm.startPrank(_actor);
     // we give STAKE_TOKEN to get REWARD_TOKEN
     stakeToken.approve(address(lst), _payoutAmount);
-    lst.claimAndDistributeReward(_recipient, _minExpectedAmount);
+    lst.claimAndDistributeReward(_recipient, _minExpectedAmount, _depositId);
     vm.stopPrank();
 
     // If distributing this reward would result in the raw total supply being greater than the raw
@@ -225,14 +227,14 @@ contract UniLstHandler is CommonBase, StdCheats, StdUtils {
     holders.forEach(func);
   }
 
-  function reduceDepositIds(uint256 acc, function(uint256,IUniStaker.DepositIdentifier) external returns (uint256) func)
-    public
-    returns (uint256)
-  {
+  function reduceDepositIds(
+    uint256 acc,
+    function(uint256,GovernanceStaker.DepositIdentifier) external returns (uint256) func
+  ) public returns (uint256) {
     return depositIds.reduce(acc, func);
   }
 
-  function forEachDepositId(function(IUniStaker.DepositIdentifier) external func) external {
+  function forEachDepositId(function(GovernanceStaker.DepositIdentifier) external func) external {
     depositIds.forEach(func);
   }
 

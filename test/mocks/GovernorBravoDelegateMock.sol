@@ -10,7 +10,7 @@ contract GovernorBravoDelegateMock is IGovernorBravoDelegate {
   mapping(uint256 => GovernorBravoDelegateStorageV1.Proposal) public mockProposals;
   /// @notice The number of votes in support of a proposal required in order for a quorum to be reached and for a vote
   /// to succeed
-  uint256 public quorumVotesOverride = 40_000_000e18; // 40,000,000 = 4% of UNI
+  uint256 public quorumVotesOverride = 40_000_000e18; // 40,000,000 = 4% of GOV
   uint256 public votingPeriodOverride = 40_320;
 
   // Methods implementing the IGovernorBravoDelegate interface

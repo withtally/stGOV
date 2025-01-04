@@ -15,7 +15,7 @@ contract OverwhelmingSupportAutoDelegateTest is Test {
   uint256 proposalEndBlock = 20_000; // Random proposal end block.
   uint256 minSupportThreshold = 5000; // 50%
   uint256 maxSupportThreshold = 9500; // 95%
-  uint256 internal constant UNI_SUPPLY = 1_000_000_000e18;
+  uint256 internal constant GOV_SUPPLY = 1_000_000_000e18;
   /// @notice BIP (Basis Points) constant where 100% equals 10,000 basis points (BIP)
   uint256 internal constant BIP = 10_000;
 
@@ -47,7 +47,7 @@ contract CastVote is OverwhelmingSupportAutoDelegateTest {
     _proposalEndBlock = bound(_proposalEndBlock, vm.getBlockNumber() + governor.votingPeriod(), type(uint256).max);
     _forVotesBIP = bound(_forVotesBIP, subQuorumBips, BIP);
     uint256 _forVotesLowerBound = governor.quorumVotes() * _forVotesBIP / BIP;
-    _forVotes = bound(_forVotes, _forVotesLowerBound, UNI_SUPPLY);
+    _forVotes = bound(_forVotes, _forVotesLowerBound, GOV_SUPPLY);
 
     // Set the proposal end block to a random block number.
     governor.__setProposals(_proposalId, _proposalEndBlock, _forVotes, /*Against*/ 0);
@@ -101,7 +101,7 @@ contract CastVote is OverwhelmingSupportAutoDelegateTest {
   ) public {
     _blocksWithinBuffer = bound(_blocksWithinBuffer, 0, votingWindow);
     uint256 _subQuorumVotes = (governor.quorumVotes() * subQuorumBips / BIP);
-    _totalVotes = bound(_totalVotes, _subQuorumVotes * 2, UNI_SUPPLY);
+    _totalVotes = bound(_totalVotes, _subQuorumVotes * 2, GOV_SUPPLY);
     // Max is bound to 1 below votes required to meet supportThreshold.
     _forVotes = bound(_forVotes, _subQuorumVotes, _totalVotes * supportThreshold / BIP - 1);
     _againstVotes = _totalVotes - _forVotes;

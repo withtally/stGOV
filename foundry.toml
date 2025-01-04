@@ -8,9 +8,10 @@
   optimizer = true
   optimizer_runs = 31_000
   remappings = [
+    "lib/staker:src=lib/staker/src/",
+    "@staker/=lib/staker/",
     "forge-std/=lib/forge-std/src",
     "openzeppelin/=lib/openzeppelin-contracts/contracts",
-    "unistaker/=lib/UniStaker/src",
   ]
   verbosity = 3
   via-ir = false

@@ -4,11 +4,10 @@ pragma solidity 0.8.28;
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/interfaces/IERC20Metadata.sol";
 import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
-import {IUniStaker} from "src/interfaces/IUniStaker.sol";
-import {IUni} from "src/interfaces/IUni.sol";
+import {GovernanceStaker} from "@staker/src/GovernanceStaker.sol";
 import {IWETH9} from "src/interfaces/IWETH9.sol";
 import {WithdrawGate} from "src/WithdrawGate.sol";
-import {FixedUniLst} from "src/FixedUniLst.sol";
+import {FixedGovLst} from "src/FixedGovLst.sol";
 import {FixedLstAddressAlias} from "src/FixedLstAddressAlias.sol";
 import {Ownable} from "openzeppelin/access/Ownable.sol";
 import {EIP712} from "openzeppelin/utils/cryptography/EIP712.sol";
@@ -17,22 +16,23 @@ import {Nonces} from "openzeppelin/utils/Nonces.sol";
 import {Multicall} from "openzeppelin/utils/Multicall.sol";
 import {SafeCast} from "openzeppelin/utils/math/SafeCast.sol";
 
-/// @title UniLst
+/// @title GovLst
 /// @author [ScopeLift](https://scopelift.co)
-/// @notice A liquid staking token implemented on top of UniStaker. Users can deposit UNI and receive stUNI in
-/// exchange. UNI is deposited in UniStaker. Holders can specify a delegatee to which staked tokens' voting weight
-/// will be delegated. 1 stUNI is equivalent to 1 underlying UNI. As rewards are distributed, holders' balances
-/// automatically increase to reflect their share of the rewards earned. Reward balances are delegated to a default
-/// delegatee set by the Uniswap DAO. Holders can consolidate their voting weight back to their chosen delegate. Holders
-/// who don't specify a custom delegatee also have their stake's voting weight assigned to the default delegatee.
+/// @notice A liquid staking token implemented on top of Staker. Users can deposit a governance token and receive
+/// a liquid staked governance token in exchange. Holders can specify a delegatee to which staked tokens' voting weight
+/// will be delegated. 1 staked token is equivalent to 1 underlying governance token. As rewards are distributed,
+/// holders' balances automatically increase to reflect their share of the rewards earned. Reward balances are delegated
+/// to a default delegatee set by the token owner. Holders can consolidate their voting weight back to their chosen
+/// delegate. Holders who don't specify a custom delegatee also have their stake's voting weight assigned to the default
+/// delegatee.
 ///
-/// To enable delegation functionality, the LST must manage an individual UniStaker deposit for each delegatee,
+/// To enable delegation functionality, the LST must manage an individual stake deposit for each delegatee,
 /// including one for the default delegatee. As tokens are staked, unstaked, or transferred, the LST must move tokens
 /// between these deposits to reflect the changing state. Because a holder balance is a dynamic calculation based on
 /// its share of the total staked supply, the balance is subject to truncation. Care must be taken to ensure all
 /// deposits remain solvent. Where a deposit might be left short due to truncation, we aim to accumulate these
 /// shortfalls in the default deposit, which can be subsidized to remain solvent.
-contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP712, Nonces {
+contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP712, Nonces {
   using FixedLstAddressAlias for address;
 
   /// @notice Emitted when the LST owner updates the payout amount required for the MEV reward game in
@@ -48,12 +48,14 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// @notice Emitted when the delegatee guardian is updated by the owner or guardian itself.
   event DelegateeGuardianSet(address oldDelegatee, address newDelegatee);
 
-  /// @notice Emitted when a UniStaker deposit is initialized for a new delegatee.
-  event DepositInitialized(address indexed delegatee, IUniStaker.DepositIdentifier depositId);
+  /// @notice Emitted when a stake deposit is initialized for a new delegatee.
+  event DepositInitialized(address indexed delegatee, GovernanceStaker.DepositIdentifier depositId);
 
-  /// @notice Emitted when a user updates their UniStaker deposit, moving their staked tokens accordingly.
+  /// @notice Emitted when a user updates their stake deposit, moving their staked tokens accordingly.
   event DepositUpdated(
-    address indexed holder, IUniStaker.DepositIdentifier oldDepositId, IUniStaker.DepositIdentifier newDepositId
+    address indexed holder,
+    GovernanceStaker.DepositIdentifier oldDepositId,
+    GovernanceStaker.DepositIdentifier newDepositId
   );
 
   /// @notice Emitted when a user stakes tokens in exchange for liquid staked tokens.
@@ -62,7 +64,7 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// @notice Emitted when a user exchanges their liquid staked tokens for the underlying staked token.
   event Unstaked(address indexed account, uint256 amount);
 
-  ///@notice Emitted when a reward is distributed by an MEV searcher who claims the LST's UniStaker rewards in exchange
+  ///@notice Emitted when a reward is distributed by an MEV searcher who claims the LST's stake rewards in exchange
   /// for providing the payout amount of the stake token to the LST.
   event RewardDistributed(
     address indexed claimer,
@@ -76,55 +78,56 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// @notice Struct to encapsulate reward-related parameters.
   struct RewardParameters {
     /// @notice The amount of stake token that an MEV searcher must provide in order to earn the right to claim the
-    /// UniStaker rewards earned by the LST. Can be set by the LST owner.
-    /// @dev Maximum payout amount (~1.2 Million UNI)
+    /// stake rewards earned by the LST. Can be set by the LST owner.
     uint80 payoutAmount;
-    /// @notice The amount of stake token issued (as stUNI) to the fee collector, expressed in basis points.
+    /// @notice The amount of stake token issued to the fee collector, expressed in basis points.
     /// @dev Fee in basis points (1 bips = 0.01%)
     uint16 feeBips;
-    /// @notice The address that receives the fees (as stUNI) when rewards are distributed.
+    /// @notice The address that receives the fees when rewards are distributed.
     address feeCollector;
   }
 
   /// @notice Emitted when a user stakes and attributes their staking action to a referrer address.
-  event StakedWithAttribution(IUniStaker.DepositIdentifier _depositId, uint256 _amount, address indexed _referrer);
+  event StakedWithAttribution(
+    GovernanceStaker.DepositIdentifier _depositId, uint256 _amount, address indexed _referrer
+  );
 
   /// @notice Emitted when someone irrevocably adds stake tokens to a deposit without receiving liquid tokens.
-  event DepositSubsidized(IUniStaker.DepositIdentifier indexed depositId, uint256 amount);
+  event DepositSubsidized(GovernanceStaker.DepositIdentifier indexed depositId, uint256 amount);
 
   /// @notice Thrown when an operation to change the default delegatee or its guardian is attempted by an account that
   /// does not have permission to alter it.
-  error UniLst__Unauthorized();
+  error GovLst__Unauthorized();
 
   /// @notice Thrown when an operation is not possible because the holder's balance is insufficient.
-  error UniLst__InsufficientBalance();
+  error GovLst__InsufficientBalance();
 
   /// @notice Thrown when a caller (likely an MEV searcher) would receive an insufficient payout in
   /// `claimAndDistributeReward`.
-  error UniLst__InsufficientRewards();
+  error GovLst__InsufficientRewards();
 
   /// @notice Thrown when the LST owner attempts to set invalid fee parameters.
-  error UniLst__InvalidFeeParameters();
+  error GovLst__InvalidFeeParameters();
 
   /// @notice Thrown by signature-based "onBehalf" methods when a signature is invalid.
-  error UniLst__InvalidSignature();
+  error GovLst__InvalidSignature();
 
   /// @notice Thrown by signature-based "onBehalf" methods when a signature is past its expiry date.
-  error UniLst__SignatureExpired();
+  error GovLst__SignatureExpired();
 
   /// @notice Thrown when the fee bips exceed the maximum allowed value.
-  error UniLst__FeeBipsExceedMaximum(uint16 feeBips, uint16 maxFeeBips);
+  error GovLst__FeeBipsExceedMaximum(uint16 feeBips, uint16 maxFeeBips);
 
   /// @notice Thrown when attempting to set the fee collector to the zero address.
-  error UniLst__FeeCollectorCannotBeZeroAddress();
+  error GovLst__FeeCollectorCannotBeZeroAddress();
 
-  /// @notice The UniStaker instance in which staked tokens will be deposited to earn rewards.
-  IUniStaker public immutable STAKER;
+  /// @notice The Staker instance in which staked tokens will be deposited to earn rewards.
+  GovernanceStaker public immutable STAKER;
 
-  /// @notice The governance token used by the UniStaker instance; in this case, UNI.
-  IUni public immutable STAKE_TOKEN;
+  /// @notice The governance token used by the staking system.
+  IERC20 public immutable STAKE_TOKEN;
 
-  /// @notice The token distributed as rewards by the UniStaker instance; in this case, WETH.
+  /// @notice The token distributed as rewards by the staking instance; in this case, WETH.
   IWETH9 public immutable REWARD_TOKEN;
 
   /// @notice A coupled contract used by the LST to enforce an optional delay when withdrawing staked tokens from the
@@ -136,12 +139,13 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// dynamic, rebasing balances, the Fixed LST is deployed alongside of it but has balances that remain fixed. To
   /// achieve this, the Fixed LST contract is privileged to make special calls on behalf if its holders, allowing the
   /// Fixed LST to use the same accounting system as this rebasing LST.
-  FixedUniLst public immutable FIXED_LST;
+  FixedGovLst public immutable FIXED_LST;
 
   /// @notice The deposit identifier of the default deposit.
-  IUniStaker.DepositIdentifier public immutable DEFAULT_DEPOSIT_ID;
+  GovernanceStaker.DepositIdentifier public immutable DEFAULT_DEPOSIT_ID;
 
-  /// @notice Scale factor applied to UNI before converting it to shares, which are tracked internally and used to
+  /// @notice Scale factor applied to the stake token before converting it to shares, which are tracked internally and
+  /// used to
   /// calculate holders' balances dynamically as rewards are accumulated.
   uint256 public constant SHARE_SCALE_FACTOR = 1e10;
 
@@ -158,7 +162,7 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   }
 
   /// @notice Data structure for data pertaining to a given LST holder.
-  /// @param depositId The UniStaker deposit identifier corresponding to the holder's delegatee of choice.
+  /// @param depositId The staking system deposit identifier corresponding to the holder's delegatee of choice.
   /// @param balanceCheckpoint The portion of the holder's balance that is currently delegated to the delegatee of
   /// their choosing. LST tokens are assigned to this delegatee when a user stakes or receives tokens via transfer.
   /// When rewards are distributed, they accrue to the default delegatee unless the holder chooses to consolidate them.
@@ -217,10 +221,10 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// @notice Struct to store reward-related parameters.
   RewardParameters internal rewardParams;
 
-  /// @notice Mapping of delegatee address to the delegate's UniLST-created UniStaker deposit identifier. The
+  /// @notice Mapping of delegatee address to the delegate's GovLST-created Staker deposit identifier. The
   /// delegatee for a given deposit can not change. All LST holders who choose the same delegatee will have their
   /// tokens staked in the corresponding deposit. Each delegatee can only have a single deposit.
-  mapping(address delegatee => IUniStaker.DepositIdentifier depositId) internal storedDepositIdForDelegatee;
+  mapping(address delegatee => GovernanceStaker.DepositIdentifier depositId) internal storedDepositIdForDelegatee;
 
   /// @notice Mapping of holder addresses to the data pertaining to their holdings.
   mapping(address holder => HolderState state) private holderStates;
@@ -231,23 +235,23 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
 
   /// @param _name The name for the liquid stake token.
   /// @param _symbol The symbol for the liquid stake token.
-  /// @param _staker The UniStaker deployment where tokens will be staked.
+  /// @param _staker The staker deployment where tokens will be staked.
   /// @param _initialDefaultDelegatee The initial delegatee to which the default deposit will be delegated.
   /// @param _initialOwner The address of the initial LST owner.
   /// @param _initialPayoutAmount The initial amount that must be provided to win the MEV race and claim the LST's
-  /// UniStaker rewards.
+  /// stake rewards.
   constructor(
     string memory _name,
     string memory _symbol,
-    IUniStaker _staker,
+    GovernanceStaker _staker,
     address _initialDefaultDelegatee,
     address _initialOwner,
     uint80 _initialPayoutAmount,
     address _initialDelegateeGuardian
-  ) Ownable(_initialOwner) EIP712("UniLst", "1") {
+  ) Ownable(_initialOwner) EIP712("GovLst", "1") {
     STAKER = _staker;
-    STAKE_TOKEN = IUni(_staker.STAKE_TOKEN());
-    REWARD_TOKEN = IWETH9(payable(_staker.REWARD_TOKEN()));
+    STAKE_TOKEN = IERC20(_staker.STAKE_TOKEN());
+    REWARD_TOKEN = IWETH9(payable(address(_staker.REWARD_TOKEN())));
     NAME = _name;
     SYMBOL = _symbol;
 
@@ -262,7 +266,7 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
 
     // Deploy the WithdrawGate
     WITHDRAW_GATE = new WithdrawGate(_initialOwner, address(this), address(STAKE_TOKEN), 0);
-    FIXED_LST = new FixedUniLst(
+    FIXED_LST = new FixedGovLst(
       string.concat("Fixed ", _name), string.concat("f", _symbol), this, STAKE_TOKEN, SHARE_SCALE_FACTOR
     );
   }
@@ -347,13 +351,13 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// @return _delegatee The address to which this holder has assigned his staked voting weight.
   function delegateeForHolder(address _holder) external view returns (address _delegatee) {
     HolderState memory _holderState = holderStates[_holder];
-    (,, _delegatee,) = STAKER.deposits(_calcDepositId(_holderState));
+    (,,, _delegatee,,,) = STAKER.deposits(_calcDepositId(_holderState));
   }
 
-  /// @notice The UniStaker deposit identifier associated with a given delegatee address.
+  /// @notice The stake deposit identifier associated with a given delegatee address.
   /// @param _delegatee The delegatee in question.
   /// @return The deposit identifier of the deposit in question.
-  function depositForDelegatee(address _delegatee) public view returns (IUniStaker.DepositIdentifier) {
+  function depositForDelegatee(address _delegatee) public view returns (GovernanceStaker.DepositIdentifier) {
     if (_delegatee == defaultDelegatee || _delegatee == address(0)) {
       return DEFAULT_DEPOSIT_ID;
     } else {
@@ -361,9 +365,9 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     }
   }
 
-  /// @notice Returns the UniStaker deposit identifier a given LST holder address is currently assigned to. If the
+  /// @notice Returns the stake deposit identifier a given LST holder address is currently assigned to. If the
   /// address has not set a deposit identifier, it returns the default deposit.
-  function depositIdForHolder(address _holder) external view returns (IUniStaker.DepositIdentifier) {
+  function depositIdForHolder(address _holder) external view returns (GovernanceStaker.DepositIdentifier) {
     HolderState memory _holderState = holderStates[_holder];
     return _calcDepositId(_holderState);
   }
@@ -400,11 +404,11 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// exist, it initializes it. A depositor can call this method if the deposit for their chosen delegatee has not been
   /// previously initialized.
   /// @param _delegatee The address of the delegatee.
-  /// @return The deposit identifier of the existing, or newly created, UniStaker deposit for this delegatee.
-  function fetchOrInitializeDepositForDelegatee(address _delegatee) public returns (IUniStaker.DepositIdentifier) {
-    IUniStaker.DepositIdentifier _depositId = depositForDelegatee(_delegatee);
+  /// @return The deposit identifier of the existing, or newly created, stake deposit for this delegatee.
+  function fetchOrInitializeDepositForDelegatee(address _delegatee) public returns (GovernanceStaker.DepositIdentifier) {
+    GovernanceStaker.DepositIdentifier _depositId = depositForDelegatee(_delegatee);
 
-    if (IUniStaker.DepositIdentifier.unwrap(_depositId) != 0) {
+    if (GovernanceStaker.DepositIdentifier.unwrap(_depositId) != 0) {
       return _depositId;
     }
 
@@ -421,32 +425,32 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// tokens transferred to the holder, will be moved into this deposit. Tokens distributed as rewards will remain in
   /// the default deposit, however holders may consolidate their reward tokens back to their preferred delegatee by
   /// calling this method again, even with their existing deposit identifier.
-  /// @param _newDepositId The UniStaker deposit identifier to which this holder's staked tokens will be moved to and
+  /// @param _newDepositId The stake deposit identifier to which this holder's staked tokens will be moved to and
   /// kept in henceforth.
-  function updateDeposit(IUniStaker.DepositIdentifier _newDepositId) public {
-    IUniStaker.DepositIdentifier _oldDepositId = _updateDeposit(msg.sender, _newDepositId);
+  function updateDeposit(GovernanceStaker.DepositIdentifier _newDepositId) public {
+    GovernanceStaker.DepositIdentifier _oldDepositId = _updateDeposit(msg.sender, _newDepositId);
     _emitDepositUpdatedEvent(msg.sender, _oldDepositId, _newDepositId);
   }
 
   /// @notice Sets the deposit to which a holder is choosing to assign their staked tokens using a signature to
   /// validate the user's intent.
   /// @param _account The address of the holder whose deposit is being updated.
-  /// @param _newDepositId The UniStaker deposit identifier to which this holder's staked tokens will be moved to and
+  /// @param _newDepositId The stake deposit identifier to which this holder's staked tokens will be moved to and
   /// kept in henceforth.
   /// @param _nonce The nonce being consumed by this operation.
   /// @param _deadline The timestamp after which the signature should expire.
   /// @param _signature Signature of the user authorizing this stake.
-  /// @return _oldDepositId The UniStaker deposit identifier which was previously assigned to this holder's staked.
+  /// @return _oldDepositId The stake deposit identifier which was previously assigned to this holder's staked.
   function updateDepositOnBehalf(
     address _account,
-    IUniStaker.DepositIdentifier _newDepositId,
+    GovernanceStaker.DepositIdentifier _newDepositId,
     uint256 _nonce,
     uint256 _deadline,
     bytes memory _signature
-  ) external returns (IUniStaker.DepositIdentifier _oldDepositId) {
+  ) external returns (GovernanceStaker.DepositIdentifier _oldDepositId) {
     _validateSignature(
       _account,
-      IUniStaker.DepositIdentifier.unwrap(_newDepositId),
+      GovernanceStaker.DepositIdentifier.unwrap(_newDepositId),
       _nonce,
       _deadline,
       _signature,
@@ -476,7 +480,7 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// @param _referrer The address the holder is declaring has referred them to the LST. It will be emitted in an
   /// attribution event, but not otherwise used.
   function stakeWithAttribution(uint256 _amount, address _referrer) external returns (uint256) {
-    IUniStaker.DepositIdentifier _depositId = _calcDepositId(holderStates[msg.sender]);
+    GovernanceStaker.DepositIdentifier _depositId = _calcDepositId(holderStates[msg.sender]);
     emit StakedWithAttribution(_depositId, _amount, _referrer);
     // UNI reverts on failure so it's not necessary to check return value.
     STAKE_TOKEN.transferFrom(msg.sender, address(this), _amount);
@@ -517,7 +521,7 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     external
     returns (uint256)
   {
-    try STAKE_TOKEN.permit(msg.sender, address(this), _amount, _deadline, _v, _r, _s) {} catch {}
+    try IERC20Permit(address(STAKE_TOKEN)).permit(msg.sender, address(this), _amount, _deadline, _v, _r, _s) {} catch {}
     // UNI reverts on failure so it's not necessary to check return value.
     STAKE_TOKEN.transferFrom(msg.sender, address(this), _amount);
     _emitStakedEvent(msg.sender, _amount);
@@ -578,7 +582,7 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     virtual
   {
     if (block.timestamp > _deadline) {
-      revert UniLst__SignatureExpired();
+      revert GovLst__SignatureExpired();
     }
 
     bytes32 _structHash;
@@ -593,7 +597,7 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     address _recoveredAddress = ecrecover(_hash, _v, _r, _s);
 
     if (_recoveredAddress == address(0) || _recoveredAddress != _owner) {
-      revert UniLst__InvalidSignature();
+      revert GovLst__InvalidSignature();
     }
 
     allowance[_recoveredAddress][_spender] = _value;
@@ -668,7 +672,7 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     return _transfer(_from, _to, _value);
   }
 
-  /// @notice Public method that allows any caller to claim the UniStaker rewards earned by the LST. Caller must pre-
+  /// @notice Public method that allows any caller to claim the stake rewards earned by the LST. Caller must pre-
   /// approve the LST on the stake token contract for at least the payout amount, which is transferred from the caller
   /// to the LST, added to the total supply, and sent to the default deposit. The effect of this is to distribute the
   /// reward proportionally to all LST holders, whose underlying shares will now be worth more of the stake token due
@@ -677,11 +681,12 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   ///
   /// A quick example can help illustrate why an external party, such as an MEV searcher, would be incentivized to call
   /// this method. Imagine, purely for the sake of example, that the LST contract has accrued rewards of 1 ETH in the
-  /// UniStaker contract, and the payout amount here in the LST is set to 500 UNI. Imagine ETH is trading at $2,500 and
-  /// UNI is trading at $5. At this point, the value of ETH available to be claimed is equal to the value of the payout
-  /// amount required in UNI. Once a bit more ETH accrues, it will be profitable for a searcher to trade the 500 UNI in
-  /// exchange for the accrued ETH rewards. (This ignores other details, which real searchers would take into
-  /// consideration, such as the gas/builder fee they would pay to call the method).
+  /// staking contract, and the payout amount here in the LST is set to 500 governance tokens. Imagine ETH is trading at
+  /// $2,500 and the governance token is trading at $5. At this point, the value of ETH available to be claimed is equal
+  /// to the value of the payout amount required in staking token. Once a bit more ETH accrues, it will be profitable
+  /// for a searcher to trade the 500 staking tokens in exchange for the accrued ETH rewards. (This ignores other
+  /// details, which real searchers would take into consideration, such as the gas/builder fee they would pay to call
+  /// the method).
   ///
   /// Note that `payoutAmount` may be changed by the admin (governance). Any proposal that changes this amount is
   /// expected to be subject to the governance process, including a timelocked execution, and so it's unlikely that a
@@ -690,12 +695,16 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// 2. Caller's claimAndDistributeReward transaction is in the mempool.
   /// 3. The payoutAmount is changed.
   /// 4. The claimAndDistributeReward transaction is now included in a block.
-  /// @param _recipient The address that will receive the UniStaker reward payout.
+  /// @param _recipient The address that will receive the stake reward payout.
   /// @param _minExpectedReward The minimum reward payout, in the reward token of the underlying staker contract, that
   /// the caller will accept in exchange for providing the payout amount of stake token. If the amount claimed is less
   /// than this, the transaction will revert. This parameter is a last line of defense against the MEV caller losing
   /// funds because they've been frontrun by another searcher.
-  function claimAndDistributeReward(address _recipient, uint256 _minExpectedReward) external {
+  function claimAndDistributeReward(
+    address _recipient,
+    uint256 _minExpectedReward,
+    GovernanceStaker.DepositIdentifier _depositId
+  ) external {
     RewardParameters memory _rewardParams = rewardParams;
 
     uint256 _feeAmount = _calcFeeAmount(_rewardParams);
@@ -727,11 +736,11 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     // Stake the rewards with the default delegatee
     STAKER.stakeMore(DEFAULT_DEPOSIT_ID, _rewardParams.payoutAmount);
     // Claim the reward tokens earned by the LST
-    uint256 _rewards = STAKER.claimReward();
+    uint256 _rewards = STAKER.claimReward(_depositId);
     // Ensure rewards distributed meet the claimers expectations; provides protection from frontrunning resulting in
     // loss of funds for the MEV racers.
     if (_rewards < _minExpectedReward) {
-      revert UniLst__InsufficientRewards();
+      revert GovLst__InsufficientRewards();
     }
     // Transfer the reward tokens to the recipient
     REWARD_TOKEN.transfer(_recipient, _rewards);
@@ -744,22 +753,22 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// @notice Allow a depositor to change the address they are delegating their staked tokens.
   /// @param _delegatee The address where voting is delegated.
   /// @return _depositId The deposit identifier for the delegatee.
-  function delegate(address _delegatee) public virtual returns (IUniStaker.DepositIdentifier _depositId) {
+  function delegate(address _delegatee) public virtual returns (GovernanceStaker.DepositIdentifier _depositId) {
     _depositId = fetchOrInitializeDepositForDelegatee(_delegatee);
     updateDeposit(_depositId);
   }
 
-  /// @notice Open method which allows anyone to add funds to a UniStaker deposit owned by the LST. These funds are not
+  /// @notice Open method which allows anyone to add funds to a stake deposit owned by the LST. These funds are not
   /// added to the LST's supply and no tokens or shares are issues to the caller. The  purpose of this method is to
   /// provide buffer funds for shortfalls in deposits due to rounding errors. In particular, the system is designed
   /// such that rounding errors are known to accrue to the default deposit. Being able to provably provide a buffer for
   /// the default deposit is the primary intended use case for this method. That said, if other unknown issues were to
-  /// arise, it could also be used to ensure the internal solvency of the other UniStaker deposits as well.
-  /// @param _depositId The UniStaker deposit identifier that is being subsidized.
+  /// arise, it could also be used to ensure the internal solvency of the other stake deposits as well.
+  /// @param _depositId The stake deposit identifier that is being subsidized.
   /// @param _amount The quantity of stake tokens that will be sent to the deposit.
   /// @dev Caller must approve the LST contract for at least the `_amount` on the stake token before calling this
   /// method.
-  function subsidizeDeposit(IUniStaker.DepositIdentifier _depositId, uint256 _amount) external {
+  function subsidizeDeposit(GovernanceStaker.DepositIdentifier _depositId, uint256 _amount) external {
     STAKE_TOKEN.transferFrom(msg.sender, address(this), _amount);
 
     // This will revert if the deposit is not owned by this contract
@@ -777,7 +786,7 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
 
   /// @notice Update the default delegatee. Can only be called by the delegatee guardian or by the LST owner. Once the
   /// guardian takes an action on the LST, the owner can no longer override it.
-  /// @param _newDelegatee The address which will be assigned as the delegatee for the default UniStaker deposit.
+  /// @param _newDelegatee The address which will be assigned as the delegatee for the default staker deposit.
   function setDefaultDelegatee(address _newDelegatee) external {
     _checkAndToggleGuardianControlOrOwner();
     _setDefaultDelegatee(_newDelegatee);
@@ -796,13 +805,13 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
 
   /// @notice Permissioned fixed LST helper method which updates the deposit of the holder's fixed LST alias address.
   /// @param _account The holder setting their deposit in the fixed LST.
-  /// @param _newDepositId The UniStaker deposit identifier to which this holder's fixed LST staked tokens will be
+  /// @param _newDepositId The stake deposit identifier to which this holder's fixed LST staked tokens will be
   /// moved to and kept in henceforth.
-  /// @return _oldDepositId The UniStaker deposit identifier from which this holder's fixed LST staked tokens were
+  /// @return _oldDepositId The stake deposit identifier from which this holder's fixed LST staked tokens were
   /// moved.
-  function updateFixedDeposit(address _account, IUniStaker.DepositIdentifier _newDepositId)
+  function updateFixedDeposit(address _account, GovernanceStaker.DepositIdentifier _newDepositId)
     external
-    returns (IUniStaker.DepositIdentifier _oldDepositId)
+    returns (GovernanceStaker.DepositIdentifier _oldDepositId)
   {
     _revertIfNotFixedLst();
     _oldDepositId = _updateDeposit(_account.fixedAlias(), _newDepositId);
@@ -962,22 +971,22 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     return _calcStakeForShares(_holder.shares, _totals);
   }
 
-  /// @notice Internal helper method that takes the metadata representing an LST holder and returns the UniStaker
+  /// @notice Internal helper method that takes the metadata representing an LST holder and returns the staker
   /// deposit identifier that holder has assigned his voting weight to.
-  function _calcDepositId(HolderState memory _holder) internal view returns (IUniStaker.DepositIdentifier) {
+  function _calcDepositId(HolderState memory _holder) internal view returns (GovernanceStaker.DepositIdentifier) {
     if (_holder.depositId == 0) {
       return DEFAULT_DEPOSIT_ID;
     } else {
-      return IUniStaker.DepositIdentifier.wrap(_holder.depositId);
+      return GovernanceStaker.DepositIdentifier.wrap(_holder.depositId);
     }
   }
 
   /// @notice Internal convenience method which performs deposit update operations.
   /// @dev This method must only be called after proper authorization has been completed.
   /// @dev See public updateDeposit methods for additional documentation.
-  function _updateDeposit(address _account, IUniStaker.DepositIdentifier _newDepositId)
+  function _updateDeposit(address _account, GovernanceStaker.DepositIdentifier _newDepositId)
     internal
-    returns (IUniStaker.DepositIdentifier _oldDepositId)
+    returns (GovernanceStaker.DepositIdentifier _oldDepositId)
   {
     // Read required state from storage once.
     Totals memory _totals = totals;
@@ -990,7 +999,7 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     // If the user's deposit is currently zero, and the deposit identifier specified is indeed owned by the LST as it
     // must be, we can simply update their deposit identifier and avoid actions on the underlying Staker.
     if (_balanceOf == 0) {
-      (, address _owner,,) = STAKER.deposits(_newDepositId);
+      (, address _owner,,,,,) = STAKER.deposits(_newDepositId);
       if (_owner == address(this)) {
         holderStates[_account].depositId = _depositIdToUInt32(_newDepositId);
         return _oldDepositId;
@@ -1036,8 +1045,8 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// @notice Internal helper method that emits a DepositUpdated event with the parameters provided.
   function _emitDepositUpdatedEvent(
     address _account,
-    IUniStaker.DepositIdentifier _oldDepositId,
-    IUniStaker.DepositIdentifier _newDepositId
+    GovernanceStaker.DepositIdentifier _oldDepositId,
+    GovernanceStaker.DepositIdentifier _newDepositId
   ) internal {
     emit DepositUpdated(_account, _oldDepositId, _newDepositId);
   }
@@ -1093,7 +1102,7 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     uint256 _initialBalanceOf = _calcBalanceOf(_holderState, _totals);
 
     if (_amount > _initialBalanceOf) {
-      revert UniLst__InsufficientBalance();
+      revert GovLst__InsufficientBalance();
     }
 
     // Decreases the holder's balance by the amount being withdrawn
@@ -1177,7 +1186,7 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     uint256 _senderUndelegatedBalance = _senderInitBalance - _senderDelegatedBalance;
 
     if (_value > _senderInitBalance) {
-      revert UniLst__InsufficientBalance();
+      revert GovLst__InsufficientBalance();
     }
 
     // Move underlying shares.
@@ -1283,11 +1292,11 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// @param _feeCollector The new fee collector address
   function _setRewardParams(uint80 _payoutAmount, uint16 _feeBips, address _feeCollector) internal {
     if (_feeBips > MAX_FEE_BIPS) {
-      revert UniLst__FeeBipsExceedMaximum(_feeBips, MAX_FEE_BIPS);
+      revert GovLst__FeeBipsExceedMaximum(_feeBips, MAX_FEE_BIPS);
     }
 
     if (_feeCollector == address(0)) {
-      revert UniLst__FeeCollectorCannotBeZeroAddress();
+      revert GovLst__FeeCollectorCannotBeZeroAddress();
     }
 
     rewardParams = RewardParameters({payoutAmount: _payoutAmount, feeBips: _feeBips, feeCollector: _feeCollector});
@@ -1307,7 +1316,7 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     delegateeGuardian = _newDelegateeGuardian;
   }
 
-  /// @notice Internal helper method which reverts with UniLst__SignatureExpired if the signature
+  /// @notice Internal helper method which reverts with GovLst__SignatureExpired if the signature
   /// is invalid.
   /// @param _account The address of the signer.
   /// @param _amount The amount of tokens involved in this operation.
@@ -1325,12 +1334,12 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   ) internal {
     _useCheckedNonce(_account, _nonce);
     if (block.timestamp > _deadline) {
-      revert UniLst__SignatureExpired();
+      revert GovLst__SignatureExpired();
     }
     bytes32 _structHash = keccak256(abi.encode(_typeHash, _account, _amount, _nonce, _deadline));
     bytes32 _hash = _hashTypedDataV4(_structHash);
     if (!SignatureChecker.isValidSignatureNow(_account, _hash, _signature)) {
-      revert UniLst__InvalidSignature();
+      revert GovLst__InvalidSignature();
     }
   }
 
@@ -1351,10 +1360,10 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// hasn't yet been.
   function _checkAndToggleGuardianControlOrOwner() internal {
     if (msg.sender != owner() && msg.sender != delegateeGuardian) {
-      revert UniLst__Unauthorized();
+      revert GovLst__Unauthorized();
     }
     if (msg.sender == owner() && isGuardianControlled) {
-      revert UniLst__Unauthorized();
+      revert GovLst__Unauthorized();
     }
     if (msg.sender == delegateeGuardian && !isGuardianControlled) {
       isGuardianControlled = true;
@@ -1364,7 +1373,7 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// @notice Internal helper which reverts if the caller is not the fixed lst contract.
   function _revertIfNotFixedLst() internal view {
     if (msg.sender != address(FIXED_LST)) {
-      revert UniLst__Unauthorized();
+      revert GovLst__Unauthorized();
     }
   }
 
@@ -1375,23 +1384,23 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     return (uint256(_rewardParams.payoutAmount) * uint256(_rewardParams.feeBips)) / 1e4;
   }
 
-  /// @notice Internal convenience helper for comparing the equality of two UniStaker DepositIdentifiers.
+  /// @notice Internal convenience helper for comparing the equality of two staker DepositIdentifiers.
   /// @param _depositIdA The first deposit identifier.
   /// @param _depositIdB The second deposit identifier.
   /// @return True if the deposit identifiers are equal, false if they are different.
-  function _isSameDepositId(IUniStaker.DepositIdentifier _depositIdA, IUniStaker.DepositIdentifier _depositIdB)
-    internal
-    pure
-    returns (bool)
-  {
-    return IUniStaker.DepositIdentifier.unwrap(_depositIdA) == IUniStaker.DepositIdentifier.unwrap(_depositIdB);
+  function _isSameDepositId(
+    GovernanceStaker.DepositIdentifier _depositIdA,
+    GovernanceStaker.DepositIdentifier _depositIdB
+  ) internal pure returns (bool) {
+    return
+      GovernanceStaker.DepositIdentifier.unwrap(_depositIdA) == GovernanceStaker.DepositIdentifier.unwrap(_depositIdB);
   }
 
-  /// @notice Internal helper function to convert a UniStaker DepositIdentifier to a uint32
+  /// @notice Internal helper function to convert a Staker DepositIdentifier to a uint32
   /// @param _depositId The DepositIdentifier to convert
   /// @return The uint32 representation of the DepositIdentifier
-  function _depositIdToUInt32(IUniStaker.DepositIdentifier _depositId) private pure returns (uint32) {
-    return SafeCast.toUint32(IUniStaker.DepositIdentifier.unwrap(_depositId));
+  function _depositIdToUInt32(GovernanceStaker.DepositIdentifier _depositId) private pure returns (uint32) {
+    return SafeCast.toUint32(GovernanceStaker.DepositIdentifier.unwrap(_depositId));
   }
 
   /// @notice Internal helper that returns the lesser of the two parameters passed.

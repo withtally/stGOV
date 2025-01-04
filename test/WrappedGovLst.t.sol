@@ -2,12 +2,13 @@
 pragma solidity 0.8.28;
 
 import {console2} from "forge-std/Test.sol";
-import {UniLstTest, UniLst, IUniStaker} from "test/UniLst.t.sol";
-import {WrappedUniLst, Ownable} from "src/WrappedUniLst.sol";
+import {GovLstTest, GovLst} from "test/GovLst.t.sol";
+import {GovernanceStaker} from "@staker/src/GovernanceStaker.sol";
+import {WrappedGovLst, Ownable} from "src/WrappedGovLst.sol";
 import {IERC20Errors} from "openzeppelin/interfaces/draft-IERC6093.sol";
 
-contract WrappedUniLstTest is UniLstTest {
-  WrappedUniLst wrappedLst;
+contract WrappedGovLstTest is GovLstTest {
+  WrappedGovLst wrappedLst;
   string NAME = "Wrapped Test LST";
   string SYMBOL = "wtLST";
   address delegatee = makeAddr("Initial Delegatee");
@@ -15,7 +16,7 @@ contract WrappedUniLstTest is UniLstTest {
 
   function setUp() public virtual override {
     super.setUp();
-    wrappedLst = new WrappedUniLst(NAME, SYMBOL, lst, delegatee, wrappedLstOwner);
+    wrappedLst = new WrappedGovLst(NAME, SYMBOL, lst, delegatee, wrappedLstOwner);
   }
 
   function _assumeSafeWrapHolder(address _holder) public view {
@@ -39,7 +40,7 @@ contract WrappedUniLstTest is UniLstTest {
   }
 }
 
-contract Constructor is WrappedUniLstTest {
+contract Constructor is WrappedGovLstTest {
   function test_SetsConfigurationParameters() public view {
     assertEq(wrappedLst.name(), NAME);
     assertEq(wrappedLst.symbol(), SYMBOL);
@@ -73,30 +74,30 @@ contract Constructor is WrappedUniLstTest {
     );
     vm.mockCall(
       _lst,
-      abi.encodeWithSelector(UniLst.fetchOrInitializeDepositForDelegatee.selector, _delegatee),
+      abi.encodeWithSelector(GovLst.fetchOrInitializeDepositForDelegatee.selector, _delegatee),
       abi.encode(_depositId)
     );
-    vm.mockCall(_lst, abi.encodeWithSelector(UniLst.updateDeposit.selector, _depositId), "");
+    vm.mockCall(_lst, abi.encodeWithSelector(GovLst.updateDeposit.selector, _depositId), "");
 
     // need wrappedLstAddress in order to mock the following call
     address _expectedWrappedLstAddress = vm.computeCreateAddress(address(this), vm.getNonce(address(this)));
     vm.mockCall(
       _lst,
-      abi.encodeWithSelector(UniLst.delegateeForHolder.selector, _expectedWrappedLstAddress),
+      abi.encodeWithSelector(GovLst.delegateeForHolder.selector, _expectedWrappedLstAddress),
       abi.encode(address(0)) // in actuality this would return the defaultDelegatee, but we don't need to mock that
     );
 
-    WrappedUniLst _wrappedLst = new WrappedUniLst(_name, _symbol, UniLst(_lst), _delegatee, _owner);
+    WrappedGovLst _wrappedLst = new WrappedGovLst(_name, _symbol, GovLst(_lst), _delegatee, _owner);
 
     assertEq(_wrappedLst.name(), _name);
     assertEq(_wrappedLst.symbol(), _symbol);
     assertEq(address(_wrappedLst.LST()), _lst);
-    assertEq(IUniStaker.DepositIdentifier.unwrap(_wrappedLst.depositId()), _depositId);
+    assertEq(GovernanceStaker.DepositIdentifier.unwrap(_wrappedLst.depositId()), _depositId);
     assertEq(_wrappedLst.owner(), _owner);
   }
 }
 
-contract Wrap is WrappedUniLstTest {
+contract Wrap is WrappedGovLstTest {
   function testFuzz_TransfersLstTokensFromHolderToWrapper(
     address _holder,
     uint256 _stakeAmount,
@@ -175,7 +176,7 @@ contract Wrap is WrappedUniLstTest {
 
     _approveWrapperToTransferLstToken(_holder);
     vm.expectEmit();
-    emit WrappedUniLst.Wrapped(_holder, _wrapAmount, _expectedMintAmount);
+    emit WrappedGovLst.Wrapped(_holder, _wrapAmount, _expectedMintAmount);
     _wrap(_holder, _wrapAmount);
   }
 
@@ -187,12 +188,12 @@ contract Wrap is WrappedUniLstTest {
     _distributeReward(_rewardAmount);
     _approveWrapperToTransferLstToken(_holder);
 
-    vm.expectRevert(WrappedUniLst.WrappedUniLst__InvalidAmount.selector);
+    vm.expectRevert(WrappedGovLst.WrappedGovLst__InvalidAmount.selector);
     _wrap(_holder, 0);
   }
 }
 
-contract Unwrap is WrappedUniLstTest {
+contract Unwrap is WrappedGovLstTest {
   function testFuzz_TransfersLstTokensBackToTheHolder(
     address _holder,
     uint256 _stakeAmount,
@@ -291,7 +292,7 @@ contract Unwrap is WrappedUniLstTest {
     uint256 _expectedLstReturned = lst.stakeForShares(_unwrapAmount * lst.SHARE_SCALE_FACTOR());
 
     vm.expectEmit();
-    emit WrappedUniLst.Unwrapped(_holder, _expectedLstReturned, _unwrapAmount);
+    emit WrappedGovLst.Unwrapped(_holder, _expectedLstReturned, _unwrapAmount);
     _unwrap(_holder, _unwrapAmount);
   }
 
@@ -318,7 +319,8 @@ contract Unwrap is WrappedUniLstTest {
     _wrap(_otherHolder, lst.balanceOf(_otherHolder));
 
     // A reward is distributed
-    _distributeReward(_rewardAmount);
+    GovernanceStaker.DepositIdentifier _depositId2 = lst.depositIdForHolder(address(lst));
+    _distributeReward(_rewardAmount, _depositId2, _toPercentage(_stakeAmount, _stakeAmount + _otherWrapAmount));
 
     // The holder wraps some amount of their LST tokens
     _wrapAmount = bound(_wrapAmount, 0.0001e18, lst.balanceOf(_holder));
@@ -350,12 +352,12 @@ contract Unwrap is WrappedUniLstTest {
     _approveWrapperToTransferLstToken(_holder);
     _wrap(_holder, _wrapAmount);
 
-    vm.expectRevert(WrappedUniLst.WrappedUniLst__InvalidAmount.selector);
+    vm.expectRevert(WrappedGovLst.WrappedGovLst__InvalidAmount.selector);
     _unwrap(_holder, 0);
   }
 }
 
-contract SetDelegatee is WrappedUniLstTest {
+contract SetDelegatee is WrappedGovLstTest {
   function testFuzz_SetsTheNewDelegatee(address _newDelegatee) public {
     _assumeSafeDelegatee(_newDelegatee);
 
@@ -379,7 +381,7 @@ contract SetDelegatee is WrappedUniLstTest {
 
     vm.prank(wrappedLstOwner);
     vm.expectEmit();
-    emit WrappedUniLst.DelegateeSet(delegatee, _newDelegatee);
+    emit WrappedGovLst.DelegateeSet(delegatee, _newDelegatee);
     wrappedLst.setDelegatee(_newDelegatee);
   }
 

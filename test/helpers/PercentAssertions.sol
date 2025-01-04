@@ -4,8 +4,14 @@ pragma solidity 0.8.28;
 import {Test} from "forge-std/Test.sol";
 
 contract PercentAssertions is Test {
+  function _toPercentage(uint256 x, uint256 y) public pure returns (uint256) {
+    require(y > 0, "Cannot divide by zero");
+    // multiply first, then divide to avoid truncation
+    return (x * 100) / y;
+  }
   // Because there will be (expected) rounding errors in the amount of rewards earned, this helper
   // checks that the truncated number is lesser and within 1% of the expected number.
+
   function assertLteWithinOnePercent(uint256 a, uint256 b) public {
     if (a > b) {
       emit log("Error: a <= b not satisfied");
