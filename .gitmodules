@@ -7,3 +7,6 @@
 [submodule "lib/UniStaker"]
 	path = lib/UniStaker
 	url = https://github.com/uniswapfoundation/UniStaker
+[submodule "lib/arbstaker"]
+	path = lib/arbstaker
+	url = https://github.com/withtally/arbstaker
