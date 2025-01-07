@@ -1,5 +1,6 @@
 [profile.default]
-  auto-detect-solc = true
+  solc_version = "0.8.28"
+  # auto-detect-solc = true
   evm_version = "cancun"
   fs_permissions = [
     { access = "write", path = "./test/gas-reports/lst-gas-report.json" },
@@ -8,9 +9,11 @@
   optimizer = true
   optimizer_runs = 31_000
   remappings = [
-    "forge-std/=lib/forge-std/src",
-    "openzeppelin/=lib/openzeppelin-contracts/contracts",
-    "unistaker/=lib/UniStaker/src",
+    "forge-std/=lib/forge-std/src/",
+    "openzeppelin/=lib/openzeppelin-contracts/contracts/",
+    "unistaker/=lib/UniStaker/src/",
+    "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
+    "@unistaker/=lib/UniStaker/src/"
   ]
   verbosity = 3
   via-ir = false
@@ -58,3 +61,9 @@
   # the test.
   include_storage = false
   #include_push_bytes = false
+
+[rpc_endpoints]
+arbitrum-sepolia = "${ETH_RPC_URL}"
+
+[etherscan]
+arbitrum-sepolia = { key = "${ARBISCAN_API_KEY}", url = "https://api-sepolia.arbiscan.io/api" }
