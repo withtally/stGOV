@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.4;
+pragma solidity ^0.8.28;
 
 /// @notice Interface of UniStaker contract on Ethereum mainnet.
 /// @dev Generated via Foundry `cast interface 0xE3071e87a7E6dD19A911Dbf1127BA9dD67Aa6fc8`

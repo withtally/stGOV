@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.4;
+pragma solidity ^0.8.28;
 
 // @notice This library has been modified to make it simpler for mock testing purposes.
 library GovernorBravoDelegateStorageV1 {

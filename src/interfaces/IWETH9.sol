@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.4;
+pragma solidity ^0.8.28;
 
 /// @notice Interface of WETH9 token contract on Ethereum mainnet.
 /// @dev Generated via Foundry `cast interface 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2`

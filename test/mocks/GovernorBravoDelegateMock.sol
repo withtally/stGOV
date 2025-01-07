@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.26;
+pragma solidity 0.8.28;
 
 import {IGovernorBravoDelegate} from "src/interfaces/IGovernorBravoDelegate.sol";
 import {GovernorBravoDelegateStorageV1} from "test/helpers/GovernorBravoDelegateStorageV1.sol";

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.26;
+pragma solidity 0.8.28;
 
 import {Ownable} from "openzeppelin/access/Ownable.sol";
 import {IGovernorBravoDelegate} from "src/interfaces/IGovernorBravoDelegate.sol";

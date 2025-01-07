@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.4;
+pragma solidity ^0.8.28;
 
 /// @notice Interface of UNI token contract on Ethereum mainnet.
 /// @dev Generated via Foundry `cast interface 0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984`
