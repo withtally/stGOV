@@ -34,6 +34,12 @@ contract FixedUniLstTest is UniLstTest {
     return _fixedTokens;
   }
 
+  function _fixedApprove(address _staker, address _caller, uint256 _amount) internal {
+    vm.startPrank(_staker);
+    fixedLst.approve(_caller, _amount);
+    vm.stopPrank();
+  }
+
   function _mintAndStakeFixed(address _holder, uint256 _amount) internal returns (uint256) {
     _mintStakeToken(_holder, _amount);
     return _stakeFixed(_holder, _amount);

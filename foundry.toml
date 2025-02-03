@@ -3,6 +3,7 @@
   evm_version = "cancun"
   fs_permissions = [
     { access = "write", path = "./test/gas-reports/lst-gas-report.json" },
+    { access = "write", path = "./test/gas-reports/fixedLst-gas-report.json" },
   ]
   ignored_warnings_from = ["src/interfaces/IWETH9.sol"]
   optimizer = true
