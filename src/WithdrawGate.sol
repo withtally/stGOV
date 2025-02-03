@@ -5,7 +5,7 @@ import {Ownable} from "openzeppelin/access/Ownable.sol";
 import {UniLst} from "src/UniLst.sol";
 import {IERC20} from "openzeppelin/token/ERC20/IERC20.sol";
 import {EIP712} from "openzeppelin/utils/cryptography/EIP712.sol";
-import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
+import {SignatureChecker} from "openzeppelin/utils/cryptography/SignatureChecker.sol";
 import {Multicall} from "openzeppelin/utils/Multicall.sol";
 
 /// @title WithdrawGate

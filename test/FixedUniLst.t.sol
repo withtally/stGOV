@@ -6,7 +6,7 @@ import {UniLstTest, UniLst} from "test/UniLst.t.sol";
 import {IUniStaker} from "src/interfaces/IUniStaker.sol";
 import {FixedUniLst, IUniStaker} from "src/FixedUniLst.sol";
 import {FixedLstAddressAlias} from "src/FixedLstAddressAlias.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20} from "openzeppelin/token/ERC20/IERC20.sol";
 import {Nonces} from "openzeppelin/utils/Nonces.sol";
 
 using FixedLstAddressAlias for address;

@@ -4,7 +4,7 @@ pragma solidity 0.8.26;
 import {Ownable} from "openzeppelin/access/Ownable.sol";
 import {IGovernorBravoDelegate} from "src/interfaces/IGovernorBravoDelegate.sol";
 import {SafeCast} from "openzeppelin/utils/math/SafeCast.sol";
-import {IERC6372} from "@openzeppelin/contracts/interfaces/IERC6372.sol";
+import {IERC6372} from "openzeppelin/interfaces/IERC6372.sol";
 
 contract OverwhelmingSupportAutoDelegate is Ownable, IERC6372 {
   /// @notice Error thrown when attempting to cast a vote outside the permitted voting window.

@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {IERC20Metadata} from "@openzeppelin/contracts/interfaces/IERC20Metadata.sol";
-import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
+import {IERC20} from "openzeppelin/token/ERC20/IERC20.sol";
+import {IERC20Metadata} from "openzeppelin/interfaces/IERC20Metadata.sol";
+import {IERC20Permit} from "openzeppelin/token/ERC20/extensions/IERC20Permit.sol";
 import {IUniStaker} from "src/interfaces/IUniStaker.sol";
 import {IUni} from "src/interfaces/IUni.sol";
 import {IWETH9} from "src/interfaces/IWETH9.sol";
