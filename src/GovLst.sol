@@ -782,18 +782,26 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   function bumpDepositToOverride(GovernanceStaker.DepositIdentifier _depositId, address _tipReceiver, uint256 _requestedTip)
     external
   {
+    if (_isSameDepositId(_depositId, DEFAULT_DEPOSIT_ID)) { // TODO: move to shared helper
+      revert("this is not allowed"); // TODO: replace with an actual error
+    }
+
     // Check the earning power of the deposit compared to the minimum threshold, revert if it's safe
     (uint96 _balance,,uint96 _earningPower,,,,) = STAKER.deposits(_depositId);
     uint256 minQualifyingEarningPowerBips; // TODO: move to an admin updatable storage variable
     bool _isBelowMin = ((_earningPower * 1e4) / _balance) < minQualifyingEarningPowerBips;
     if (!_isBelowMin) {
-      revert("Still qualifying error"); // todo replace with an actual error
+      revert("Still qualifying error"); // TODO: replace with an actual error
+    }
+
+    if (isDelegateeOverridden[_depositId]) {
+      revert("Already overridden!"); // TODO: replace with actual error
     }
 
     // Ensure requested tip is below the max tip
     uint256 maxBumpTip; // TODO: move to admin updatable storage variable
     if (_requestedTip > maxBumpTip) {
-      revert("The tip is too damn high!"); // todo replace with actual error
+      revert("The tip is too damn high!"); // TODO: replace with actual error
     }
 
     // Move the deposit delegatee to the default delegatee
@@ -801,6 +809,51 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
 
     // Record the fact that the deposit is in the "override" state
     isDelegateeOverridden[_depositId] = true;
+
+    // Issue reward shares to tipper
+    Totals memory _totals = totals;
+    // TODO: sanity check equation pulled from fee distribution
+    uint160 _tipShares = uint160((uint256(_requestedTip) * uint256(_totals.shares)) / (_totals.supply - _requestedTip));
+    totals.shares += _tipShares;
+    holderStates[_tipReceiver].shares += uint128(_tipShares);
+
+    // TODO: emit event with depositId, tip receiver, tip amount, tip shares
+  }
+
+  function bumpDepositFromOverride(GovernanceStaker.DepositIdentifier _depositId, address _originalDelegatee, address _tipReceiver, uint256 _requestedTip) external {
+    if (_isSameDepositId(_depositId, DEFAULT_DEPOSIT_ID)) { // TODO: move to shared helper
+      revert("this is not allowed"); // TODO: replace with an actual error
+    }
+
+    // Check the earning power of the deposit compared to the minimum threshold, revert if it's still below
+    (uint96 _balance,,uint96 _earningPower,,,,) = STAKER.deposits(_depositId);
+    uint256 minQualifyingEarningPowerBips; // TODO: move to an admin updatable storage variable
+    bool _isBelowMin = ((_earningPower * 1e4) / _balance) < minQualifyingEarningPowerBips;
+    if (_isBelowMin) {
+      revert("Still NOT qualifying error"); // TODO: replace with an actual error
+    }
+
+    if (!isDelegateeOverridden[_depositId]) {
+      revert("Not overridden!"); // TODO: replace with actual error
+    }
+
+    // Ensure requested tip is below the max tip
+    uint256 maxBumpTip; // TODO: move to admin updatable storage variable
+    // TODO: pull check into a shared helper
+    if (_requestedTip > maxBumpTip) {
+      revert("The tip is too damn high!"); // TODO: replace with actual error
+    }
+
+    // Ensure the bumper has provided the correct, original delegatee
+    if (!_isSameDepositId(storedDepositIdForDelegatee[_originalDelegatee], _depositId)) {
+      revert("Wrong delegatee to bump back to"); // TODO: replace with an actual error
+    }
+
+    // Move the deposit's delegatee back to the original
+    STAKER.alterDelegatee(_depositId, _originalDelegatee);
+
+    // Record the fact that the deposit is in the "override" state
+    isDelegateeOverridden[_depositId] = false;
 
     // Issue reward shares to tipper
     Totals memory _totals = totals;
