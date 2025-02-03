@@ -233,6 +233,8 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// holder's behalf.
   mapping(address holder => mapping(address spender => uint256 amount)) public allowance;
 
+  mapping(GovernanceStaker.DepositIdentifier depositId => bool isOverridden) public isDelegateeOverridden;
+
   /// @param _name The name for the liquid stake token.
   /// @param _symbol The symbol for the liquid stake token.
   /// @param _staker The staker deployment where tokens will be staked.
@@ -775,6 +777,39 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     STAKER.stakeMore(_depositId, uint96(_amount));
 
     emit DepositSubsidized(_depositId, _amount);
+  }
+
+  function bumpDepositToOverride(GovernanceStaker.DepositIdentifier _depositId, address _tipReceiver, uint256 _requestedTip)
+    external
+  {
+    // Check the earning power of the deposit compared to the minimum threshold, revert if it's safe
+    (uint96 _balance,,uint96 _earningPower,,,,) = STAKER.deposits(_depositId);
+    uint256 minQualifyingEarningPowerBips; // TODO: move to an admin updatable storage variable
+    bool _isBelowMin = ((_earningPower * 1e4) / _balance) < minQualifyingEarningPowerBips;
+    if (!_isBelowMin) {
+      revert("Still qualifying error"); // todo replace with an actual error
+    }
+
+    // Ensure requested tip is below the max tip
+    uint256 maxBumpTip; // TODO: move to admin updatable storage variable
+    if (_requestedTip > maxBumpTip) {
+      revert("The tip is too damn high!"); // todo replace with actual error
+    }
+
+    // Move the deposit delegatee to the default delegatee
+    STAKER.alterDelegatee(_depositId, defaultDelegatee);
+
+    // Record the fact that the deposit is in the "override" state
+    isDelegateeOverridden[_depositId] = true;
+
+    // Issue reward shares to tipper
+    Totals memory _totals = totals;
+    // TODO: sanity check equation pulled from fee distribution
+    uint160 _tipShares = uint160((uint256(_requestedTip) * uint256(_totals.shares)) / (_totals.supply - _requestedTip));
+    totals.shares += _tipShares;
+    holderStates[_tipReceiver].shares += uint128(_tipShares);
+
+    // TODO: emit event with depositId, tip receiver, tip amount, tip shares
   }
 
   /// @notice Sets the reward parameters including payout amount, fee in bips, and fee collector.
