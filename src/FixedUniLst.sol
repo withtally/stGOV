@@ -38,9 +38,14 @@ contract FixedUniLst is IERC20, IERC20Metadata, Multicall, EIP712, Nonces {
 
   /// @notice Emitted when a holder updates their deposit identifier, which determines the delegatee of their voting
   /// weight.
+  /// @dev This event must be combined with the `DepositUpdated` event on the UniLst for an accurate picture all deposit
+  /// ids for a given holder.
   /// @param holder The address of the account updating their deposit.
-  /// @param depositId The new deposit identifier that will receive the holder's voting weight.
-  event DepositUpdated(address indexed holder, IUniStaker.DepositIdentifier depositId);
+  /// @param oldDepositId The old deposit identifier that loses the holder's voting weight.
+  /// @param newDepositId The new deposit identifier that will receive the holder's voting weight.
+  event DepositUpdated(
+    address indexed holder, IUniStaker.DepositIdentifier oldDepositId, IUniStaker.DepositIdentifier newDepositId
+  );
 
   /// @notice Emitted when governance tokens are staked to receive fixed LST tokens.
   /// @param account The address of the account staking tokens.
@@ -454,8 +459,8 @@ contract FixedUniLst is IERC20, IERC20Metadata, Multicall, EIP712, Nonces {
   /// @param _newDepositId The identifier of a deposit which must be one owned by the rebasing LST. Underlying tokens
   /// staked in the fixed LST will be moved into this deposit.
   function _updateDeposit(address _account, IUniStaker.DepositIdentifier _newDepositId) internal virtual {
-    LST.updateFixedDeposit(_account, _newDepositId);
-    emit DepositUpdated(_account, _newDepositId);
+    IUniStaker.DepositIdentifier _oldDepositId = LST.updateFixedDeposit(_account, _newDepositId);
+    emit DepositUpdated(_account, _oldDepositId, _newDepositId);
   }
 
   /// @notice Internal convenience method which performs the stake operation.

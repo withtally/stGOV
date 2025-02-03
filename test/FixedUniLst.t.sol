@@ -179,12 +179,13 @@ contract UpdateDeposit is FixedUniLstTest {
   {
     _assumeSafeHolder(_holder);
     _assumeSafeDelegatee(_delegatee);
-    IUniStaker.DepositIdentifier _depositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+    IUniStaker.DepositIdentifier _newDepositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+    IUniStaker.DepositIdentifier _oldDepositId = lst.depositIdForHolder(_holder.fixedAlias());
 
     vm.expectEmit();
-    emit FixedUniLst.DepositUpdated(_holder, _depositId);
+    emit FixedUniLst.DepositUpdated(_holder, _oldDepositId, _newDepositId);
     vm.prank(_holder);
-    fixedLst.updateDeposit(_depositId);
+    fixedLst.updateDeposit(_newDepositId);
   }
 }
 
@@ -477,20 +478,22 @@ contract UpdateDepositOnBehalf is FixedUniLstTest {
 
     // Sign the message
     _setNonce(address(fixedLst), _holder, _nonce);
-    IUniStaker.DepositIdentifier _depositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+    IUniStaker.DepositIdentifier _newDepositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+    IUniStaker.DepositIdentifier _oldDepositId = lst.depositIdForHolder(_holder.fixedAlias());
+
     bytes memory _signature = _signFixedMessage(
       fixedLst.UPDATE_DEPOSIT_TYPEHASH(),
       _holder,
-      IUniStaker.DepositIdentifier.unwrap(_depositId),
+      IUniStaker.DepositIdentifier.unwrap(_newDepositId),
       fixedLst.nonces(_holder),
       _expiry,
       _holderPrivateKey
     );
 
     vm.expectEmit();
-    emit FixedUniLst.DepositUpdated(_holder, _depositId);
+    emit FixedUniLst.DepositUpdated(_holder, _oldDepositId, _newDepositId);
     vm.prank(_sender);
-    fixedLst.updateDepositOnBehalf(_holder, _depositId, _nonce, _expiry, _signature);
+    fixedLst.updateDepositOnBehalf(_holder, _newDepositId, _nonce, _expiry, _signature);
   }
 
   function testFuzz_RevertIf_InvalidSignature(

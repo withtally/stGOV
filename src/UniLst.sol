@@ -52,6 +52,8 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   event DepositInitialized(address indexed delegatee, IUniStaker.DepositIdentifier depositId);
 
   /// @notice Emitted when a user updates their UniStaker deposit, moving their staked tokens accordingly.
+  /// @dev This event must be combined with the `DepositUpdated` event on the FixedUniLst for an accurate picture all
+  /// deposit ids for a given holder.
   event DepositUpdated(
     address indexed holder, IUniStaker.DepositIdentifier oldDepositId, IUniStaker.DepositIdentifier newDepositId
   );
