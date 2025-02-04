@@ -235,6 +235,10 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
 
   mapping(GovernanceStaker.DepositIdentifier depositId => bool isOverridden) public isDelegateeOverridden;
 
+  // TODO: add to constructor, add setter, etc...
+  uint256 minQualifyingEarningPowerBips;
+  uint256 maxBumpTip;
+
   /// @param _name The name for the liquid stake token.
   /// @param _symbol The symbol for the liquid stake token.
   /// @param _staker The staker deployment where tokens will be staked.
@@ -786,9 +790,15 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
       revert("this is not allowed"); // TODO: replace with an actual error
     }
 
+    // TODO: convert min qualifying to compare earning power values rather than percentages
+    // TODO: we might need to disallow bumping if the deposit has zero balance
+
     // Check the earning power of the deposit compared to the minimum threshold, revert if it's safe
     (uint96 _balance,,uint96 _earningPower,,,,) = STAKER.deposits(_depositId);
-    uint256 minQualifyingEarningPowerBips; // TODO: move to an admin updatable storage variable
+    if (_balance == 0) {
+      revert("Not allowed to bump with zero balance");
+    }
+
     bool _isBelowMin = ((_earningPower * 1e4) / _balance) < minQualifyingEarningPowerBips;
     if (!_isBelowMin) {
       revert("Still qualifying error"); // TODO: replace with an actual error
@@ -799,7 +809,6 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     }
 
     // Ensure requested tip is below the max tip
-    uint256 maxBumpTip; // TODO: move to admin updatable storage variable
     if (_requestedTip > maxBumpTip) {
       revert("The tip is too damn high!"); // TODO: replace with actual error
     }
@@ -821,12 +830,9 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   }
 
   function bumpDepositFromOverride(GovernanceStaker.DepositIdentifier _depositId, address _originalDelegatee, address _tipReceiver, uint256 _requestedTip) external {
-    // Check the earning power of the deposit compared to the minimum threshold, revert if it's still below
-    (uint96 _balance,,uint96 _earningPower,,,,) = STAKER.deposits(_depositId);
-    uint256 minQualifyingEarningPowerBips; // TODO: move to an admin updatable storage variable
-    bool _isBelowMin = ((_earningPower * 1e4) / _balance) < minQualifyingEarningPowerBips;
-    if (_isBelowMin) {
-      revert("Still NOT qualifying error"); // TODO: replace with an actual error
+    // Ensure the bumper has provided the correct, original delegatee
+    if (!_isSameDepositId(storedDepositIdForDelegatee[_originalDelegatee], _depositId)) {
+      revert("Wrong delegatee to bump back to"); // TODO: replace with an actual error
     }
 
     // This check also prevents this method from ever being called on the default deposit
@@ -836,19 +842,25 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     }
 
     // Ensure requested tip is below the max tip
-    uint256 maxBumpTip; // TODO: move to admin updatable storage variable
     // TODO: pull check into a shared helper
     if (_requestedTip > maxBumpTip) {
       revert("The tip is too damn high!"); // TODO: replace with actual error
     }
 
-    // Ensure the bumper has provided the correct, original delegatee
-    if (!_isSameDepositId(storedDepositIdForDelegatee[_originalDelegatee], _depositId)) {
-      revert("Wrong delegatee to bump back to"); // TODO: replace with an actual error
-    }
-
     // Move the deposit's delegatee back to the original
     STAKER.alterDelegatee(_depositId, _originalDelegatee);
+
+    // Check the earning power of the deposit compared to the minimum threshold, revert if it's still below
+    (uint96 _balance,,uint96 _earningPower,,,,) = STAKER.deposits(_depositId);
+
+    if (_balance == 0) {
+      revert("Not allowed to bump with zero balance"); // TODO: replace with an actual error
+    }
+
+    bool _isBelowMin = ((_earningPower * 1e4) / _balance) < minQualifyingEarningPowerBips;
+    if (_isBelowMin) {
+      revert("Still NOT qualifying error"); // TODO: replace with an actual error
+    }
 
     // Record the fact that the deposit is in the "override" state
     isDelegateeOverridden[_depositId] = false;
@@ -875,7 +887,6 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     }
 
     // Ensure requested tip is below the max tip
-    uint256 maxBumpTip; // TODO: move to admin updatable storage variable
     // TODO: pull check into a shared helper
     if (_requestedTip > maxBumpTip) {
       revert("The tip is too damn high!"); // TODO: replace with actual error
@@ -1113,12 +1124,18 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
 
     uint256 _balanceOf = _calcBalanceOf(_holderState, _totals);
 
+    // To prevent bump draining we need to:
+    // 1. Prevent bumps on deposits with zero balance
+    // 2. x Prevent user from setting a deposit id that is unqualified
+    // 3. x Prevent user from setting a deposit id w/ zero balance
+
     // If the user's deposit is currently zero, and the deposit identifier specified is indeed owned by the LST as it
     // must be, we can simply update their deposit identifier and avoid actions on the underlying Staker.
     if (_balanceOf == 0) {
       (, address _owner,,,,,) = STAKER.deposits(_newDepositId);
       if (_owner == address(this)) {
         holderStates[_account].depositId = _depositIdToUInt32(_newDepositId);
+        _revertIfDepositHasZeroBalanceOrIsUnqualified(_newDepositId);
         return _oldDepositId;
       }
     }
@@ -1145,6 +1162,7 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
       _holderState.depositId = _depositIdToUInt32(_newDepositId);
       STAKER.withdraw(DEFAULT_DEPOSIT_ID, uint96(_balanceOf));
       STAKER.stakeMore(_newDepositId, uint96(_balanceOf));
+      _revertIfDepositHasZeroBalanceOrIsUnqualified(_newDepositId);
     } else {
       _holderState.balanceCheckpoint = uint96(_balanceOf);
       _holderState.depositId = _depositIdToUInt32(_newDepositId);
@@ -1153,10 +1171,31 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
       }
       STAKER.withdraw(_oldDepositId, uint96(_delegatedBalance));
       STAKER.stakeMore(_newDepositId, uint96(_balanceOf));
+      _revertIfDepositHasZeroBalanceOrIsUnqualified(_newDepositId);
     }
 
     // Write updated states back to storage.
     holderStates[_account] = _holderState;
+  }
+
+  function _revertIfDepositHasZeroBalanceOrIsUnqualified(GovernanceStaker.DepositIdentifier _depositId) internal view {
+    (uint96 _balance,,uint96 _earningPower,,,,) = STAKER.deposits(_depositId);
+    if (_balance == 0) {
+      revert(); // TODO: real error
+    }
+
+    // First check if in override state, revert if it is? Or qualify if it is?
+    // Second, calculate the earning power and see if it's qualifying, revert if not
+
+    if (isDelegateeOverridden[_depositId]) {
+      // TODO: decide Revert or return?
+    }
+
+    // Do the earning power calculation, revert if below minqualifying
+    uint256 _scaledMinQualifyingEarningPower = _balance * minQualifyingEarningPowerBips;
+    if ((_earningPower * 1e4) < _scaledMinQualifyingEarningPower) {
+      revert(); // TODO: real error
+    }
   }
 
   /// @notice Internal helper method that emits a DepositUpdated event with the parameters provided.
