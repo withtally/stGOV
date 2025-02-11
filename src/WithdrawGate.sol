@@ -2,7 +2,7 @@
 pragma solidity 0.8.28;
 
 import {Ownable} from "openzeppelin/access/Ownable.sol";
-import {UniLst} from "src/UniLst.sol";
+import {GovLst} from "src/GovLst.sol";
 import {IERC20} from "openzeppelin/token/ERC20/IERC20.sol";
 import {EIP712} from "openzeppelin/utils/cryptography/EIP712.sol";
 import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";

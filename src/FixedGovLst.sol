@@ -1,20 +1,20 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {UniLst} from "src/UniLst.sol";
+import {GovLst} from "src/GovLst.sol";
 import {FixedLstAddressAlias} from "src/FixedLstAddressAlias.sol";
-import {IUniStaker} from "src/interfaces/IUniStaker.sol";
+import {GovernanceStaker} from "@staker/src/GovernanceStaker.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/interfaces/IERC20Metadata.sol";
 import {EIP712} from "openzeppelin/utils/cryptography/EIP712.sol";
 import {Nonces} from "openzeppelin/utils/Nonces.sol";
-import {IUni} from "src/interfaces/IUni.sol";
 import {Multicall} from "openzeppelin/utils/Multicall.sol";
 import {SignatureChecker} from "openzeppelin/utils/cryptography/SignatureChecker.sol";
 
-/// @title FixedUniLst
+/// @title FixedGovLst
 /// @author [ScopeLift](https://scopelift.co)
-/// @notice This contract creates a fixed balance counterpart LST to the rebasing LST implemented in `UniLst.sol`.
+/// @notice This contract creates a fixed balance counterpart LST to the rebasing LST implemented in `GovLst.sol`.
 /// In most ways, it can be thought of as a peer to the rebasing LST with a different accounting system. Whereas the
 /// rebasing LST token is 1:1 with the underlying governance token, this fixed LST has an exchange rate. Whereas the
 /// total supply and holder balances of the rebasing LST token increase automatically as rewards are distributed, this
@@ -33,14 +33,14 @@ import {SignatureChecker} from "openzeppelin/utils/cryptography/SignatureChecker
 /// regards to delegation. Holders of a wrapped LST tokens are not able to specify their own delegatee, instead all
 /// tokens are delegated to the default. Holders of the fixed LST do not have to make this tradeoff. They are able to
 /// specify a delegate in the same way as holders of the rebasing LST.
-contract FixedUniLst is IERC20, IERC20Metadata, Multicall, EIP712, Nonces {
+contract FixedGovLst is IERC20, IERC20Metadata, Multicall, EIP712, Nonces {
   using FixedLstAddressAlias for address;
 
   /// @notice Emitted when a holder updates their deposit identifier, which determines the delegatee of their voting
   /// weight.
   /// @param holder The address of the account updating their deposit.
   /// @param depositId The new deposit identifier that will receive the holder's voting weight.
-  event DepositUpdated(address indexed holder, IUniStaker.DepositIdentifier depositId);
+  event DepositUpdated(address indexed holder, GovernanceStaker.DepositIdentifier depositId);
 
   /// @notice Emitted when governance tokens are staked to receive fixed LST tokens.
   /// @param account The address of the account staking tokens.
@@ -68,19 +68,19 @@ contract FixedUniLst is IERC20, IERC20Metadata, Multicall, EIP712, Nonces {
   event Rescued(address indexed account, uint256 amount);
 
   /// @notice Thrown when a holder attempts to transfer more tokens than they hold.
-  error FixedUniLst__InsufficientBalance();
+  error FixedGovLst__InsufficientBalance();
 
   /// @notice Thrown by signature-based "onBehalf" methods when a signature is past its expiry date.
-  error FixedUniLst__SignatureExpired();
+  error FixedGovLst__SignatureExpired();
 
   /// @notice Thrown by signature-based "onBehalf" methods when a signature is invalid.
-  error FixedUniLst__InvalidSignature();
+  error FixedGovLst__InvalidSignature();
 
   /// @notice The corresponding rebasing LST token for which this contract serves as a fixed balance counterpart.
-  UniLst public immutable LST;
+  GovLst public immutable LST;
 
   /// @notice The underlying governance token which is staked.
-  IUni public immutable STAKE_TOKEN;
+  IERC20 public immutable STAKE_TOKEN;
 
   /// @notice The factor by which scales are multiplied in the underlying rebasing LST.
   uint256 public immutable SHARE_SCALE_FACTOR;
@@ -136,8 +136,8 @@ contract FixedUniLst is IERC20, IERC20Metadata, Multicall, EIP712, Nonces {
   /// @param _name The name for the fixed balance liquid stake token.
   /// @param _symbol The symbol for the fixed balance liquid stake token.
   /// @param _lst The rebasing LST for which this contract will serve as the fixed balance counterpart.
-  constructor(string memory _name, string memory _symbol, UniLst _lst, IUni _stakeToken, uint256 _shareScaleFactor)
-    EIP712("FixedUniLst", "1")
+  constructor(string memory _name, string memory _symbol, GovLst _lst, IERC20 _stakeToken, uint256 _shareScaleFactor)
+    EIP712("FixedGovLst", "1")
   {
     name = _name;
     symbol = _symbol;
@@ -171,7 +171,7 @@ contract FixedUniLst is IERC20, IERC20Metadata, Multicall, EIP712, Nonces {
   /// by specifying the deposit identifier associated with that delegatee.
   /// @param _newDepositId The identifier of a deposit which must be one owned by the rebasing LST. Underlying tokens
   /// staked in the fixed LST will be moved into this deposit.
-  function updateDeposit(IUniStaker.DepositIdentifier _newDepositId) public {
+  function updateDeposit(GovernanceStaker.DepositIdentifier _newDepositId) public {
     _updateDeposit(msg.sender, _newDepositId);
   }
 
@@ -235,7 +235,7 @@ contract FixedUniLst is IERC20, IERC20Metadata, Multicall, EIP712, Nonces {
   /// @notice Allow a depositor to change the address they are delegating their staked tokens.
   /// @param _delegatee The address where voting is delegated.
   function delegate(address _delegatee) public virtual {
-    IUniStaker.DepositIdentifier _depositId = LST.fetchOrInitializeDepositForDelegatee(_delegatee);
+    GovernanceStaker.DepositIdentifier _depositId = LST.fetchOrInitializeDepositForDelegatee(_delegatee);
     updateDeposit(_depositId);
   }
 
@@ -279,7 +279,7 @@ contract FixedUniLst is IERC20, IERC20Metadata, Multicall, EIP712, Nonces {
     virtual
   {
     if (block.timestamp > _deadline) {
-      revert FixedUniLst__SignatureExpired();
+      revert FixedGovLst__SignatureExpired();
     }
 
     bytes32 _structHash;
@@ -294,7 +294,7 @@ contract FixedUniLst is IERC20, IERC20Metadata, Multicall, EIP712, Nonces {
     address _recoveredAddress = ecrecover(_hash, _v, _r, _s);
 
     if (_recoveredAddress == address(0) || _recoveredAddress != _owner) {
-      revert FixedUniLst__InvalidSignature();
+      revert FixedGovLst__InvalidSignature();
     }
 
     allowance[_recoveredAddress][_spender] = _value;
@@ -312,14 +312,14 @@ contract FixedUniLst is IERC20, IERC20Metadata, Multicall, EIP712, Nonces {
   /// @param _signature The signed message authorizing this deposit update, signed by the account.
   function updateDepositOnBehalf(
     address _account,
-    IUniStaker.DepositIdentifier _newDepositId,
+    GovernanceStaker.DepositIdentifier _newDepositId,
     uint256 _nonce,
     uint256 _deadline,
     bytes memory _signature
   ) external {
     _validateSignature(
       _account,
-      IUniStaker.DepositIdentifier.unwrap(_newDepositId),
+      GovernanceStaker.DepositIdentifier.unwrap(_newDepositId),
       _nonce,
       _deadline,
       _signature,
@@ -430,7 +430,7 @@ contract FixedUniLst is IERC20, IERC20Metadata, Multicall, EIP712, Nonces {
     public
     returns (uint256)
   {
-    try STAKE_TOKEN.permit(msg.sender, address(this), _amount, _deadline, _v, _r, _s) {} catch {}
+    try IERC20Permit(address(STAKE_TOKEN)).permit(msg.sender, address(this), _amount, _deadline, _v, _r, _s) {} catch {}
     return stake(_amount);
   }
 
@@ -439,7 +439,7 @@ contract FixedUniLst is IERC20, IERC20Metadata, Multicall, EIP712, Nonces {
   /// @dev See public transfer methods for additional documentation.
   function _transfer(address _from, address _to, uint256 _fixedTokens) internal virtual {
     if (balanceOf(_from) < _fixedTokens) {
-      revert FixedUniLst__InsufficientBalance();
+      revert FixedGovLst__InsufficientBalance();
     }
 
     (uint256 _senderShares, uint256 _receiverShares) = LST.transferFixed(_from, _to, _scaleUp(_fixedTokens));
@@ -453,7 +453,7 @@ contract FixedUniLst is IERC20, IERC20Metadata, Multicall, EIP712, Nonces {
   /// @dev The deposit identifier determines which delegatee receives the voting weight of the holder's staked tokens.
   /// @param _newDepositId The identifier of a deposit which must be one owned by the rebasing LST. Underlying tokens
   /// staked in the fixed LST will be moved into this deposit.
-  function _updateDeposit(address _account, IUniStaker.DepositIdentifier _newDepositId) internal virtual {
+  function _updateDeposit(address _account, GovernanceStaker.DepositIdentifier _newDepositId) internal virtual {
     LST.updateFixedDeposit(_account, _newDepositId);
     emit DepositUpdated(_account, _newDepositId);
   }
@@ -564,7 +564,7 @@ contract FixedUniLst is IERC20, IERC20Metadata, Multicall, EIP712, Nonces {
     _fixedTokens = _lstShares / SHARE_SCALE_FACTOR;
   }
 
-  /// @notice Internal helper method which reverts with FixedUniLst__SignatureExpired if the signature
+  /// @notice Internal helper method which reverts with FixedGovLst__SignatureExpired if the signature
   /// is invalid.
   /// @param _account The address of the signer.
   /// @param _amount The amount of tokens involved in this operation.
@@ -582,16 +582,16 @@ contract FixedUniLst is IERC20, IERC20Metadata, Multicall, EIP712, Nonces {
   ) internal {
     _useCheckedNonce(_account, _nonce);
     if (block.timestamp > _deadline) {
-      revert FixedUniLst__SignatureExpired();
+      revert FixedGovLst__SignatureExpired();
     }
     bytes32 _structHash = keccak256(abi.encode(_typeHash, _account, _amount, _nonce, _deadline));
     bytes32 _hash = _hashTypedDataV4(_structHash);
     if (!SignatureChecker.isValidSignatureNow(_account, _hash, _signature)) {
-      revert FixedUniLst__InvalidSignature();
+      revert FixedGovLst__InvalidSignature();
     }
   }
 
-  /// @notice Internal helper method which reverts with FixedUniLst__SignatureExpired if the signature
+  /// @notice Internal helper method which reverts with FixedGovLst__SignatureExpired if the signature
   /// is invalid.
   /// @param _account The address of the signer.
   /// @param _nonce The nonce being consumed by this operation.
@@ -607,12 +607,12 @@ contract FixedUniLst is IERC20, IERC20Metadata, Multicall, EIP712, Nonces {
   ) internal {
     _useCheckedNonce(_account, _nonce);
     if (block.timestamp > _deadline) {
-      revert FixedUniLst__SignatureExpired();
+      revert FixedGovLst__SignatureExpired();
     }
     bytes32 _structHash = keccak256(abi.encode(_typeHash, _account, _nonce, _deadline));
     bytes32 _hash = _hashTypedDataV4(_structHash);
     if (!SignatureChecker.isValidSignatureNow(_account, _hash, _signature)) {
-      revert FixedUniLst__InvalidSignature();
+      revert FixedGovLst__InvalidSignature();
     }
   }
 }

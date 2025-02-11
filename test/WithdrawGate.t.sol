@@ -3,8 +3,7 @@ pragma solidity 0.8.28;
 
 import {console2} from "forge-std/Test.sol";
 import {WithdrawGate} from "src/WithdrawGate.sol";
-import {IUni} from "src/interfaces/IUni.sol";
-import {UniLst} from "src/UniLst.sol";
+import {GovLst} from "src/GovLst.sol";
 import {TestHelpers} from "test/helpers/TestHelpers.sol";
 import {MockERC20Token} from "test/mocks/MockERC20Token.sol";
 import {FakeERC1271Wallet} from "test/fakes/FakeERC1271Wallet.sol";
@@ -27,7 +26,7 @@ contract WithdrawGateTest is TestHelpers {
     stakeToken = new MockERC20Token();
     initialDelay = 7 days;
 
-    vm.mockCall(lst, abi.encodeWithSelector(UniLst(lst).STAKE_TOKEN.selector), abi.encode(address(stakeToken)));
+    vm.mockCall(lst, abi.encodeWithSelector(GovLst(lst).STAKE_TOKEN.selector), abi.encode(address(stakeToken)));
 
     withdrawGate = new WithdrawGate(owner, lst, address(stakeToken), initialDelay);
 
@@ -119,7 +118,7 @@ contract Constructor is WithdrawGateTest {
     _assumeSafeAddress(_lst);
     _delay = _boundToUnreasonableDelay(_delay);
 
-    vm.mockCall(_lst, abi.encodeWithSelector(UniLst(lst).STAKE_TOKEN.selector), abi.encode(address(stakeToken)));
+    vm.mockCall(_lst, abi.encodeWithSelector(GovLst(lst).STAKE_TOKEN.selector), abi.encode(address(stakeToken)));
 
     vm.expectRevert(WithdrawGate.WithdrawGate__InvalidDelay.selector);
     new WithdrawGate(_owner, _lst, _stakeToken, _delay);

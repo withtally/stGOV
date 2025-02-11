@@ -2,7 +2,7 @@
 pragma solidity 0.8.28;
 
 import {Test} from "forge-std/Test.sol";
-import {IUniStaker} from "src/interfaces/IUniStaker.sol";
+import {GovernanceStaker} from "@staker/src/GovernanceStaker.sol";
 
 contract TestHelpers is Test {
   function _assumeSafeMockAddress(address _address) internal pure {
@@ -13,7 +13,7 @@ contract TestHelpers is Test {
     vm.assume(_address != address(vm) && _address != address(_console));
   }
 
-  function assertEq(IUniStaker.DepositIdentifier a, IUniStaker.DepositIdentifier b) public pure {
-    assertEq(IUniStaker.DepositIdentifier.unwrap(a), IUniStaker.DepositIdentifier.unwrap(b));
+  function assertEq(GovernanceStaker.DepositIdentifier a, GovernanceStaker.DepositIdentifier b) public pure {
+    assertEq(GovernanceStaker.DepositIdentifier.unwrap(a), GovernanceStaker.DepositIdentifier.unwrap(b));
   }
 }

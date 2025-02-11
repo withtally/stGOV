@@ -2,33 +2,47 @@
 pragma solidity 0.8.28;
 
 import {Test, console2} from "forge-std/Test.sol";
-import {UniLst, WithdrawGate} from "src/UniLst.sol";
-import {UniLstHandler} from "./UniLst.handler.sol";
-import {IUniStaker} from "src/interfaces/IUniStaker.sol";
+import {GovLst, WithdrawGate} from "src/GovLst.sol";
+import {GovLstHandler} from "./GovLst.handler.sol";
 import {UnitTestBase} from "test/UnitTestBase.sol";
+import {GovernanceStaker} from "@staker/src/GovernanceStaker.sol";
+import {MockFullEarningPowerCalculator} from "test/mocks/MockFullEarningPowerCalculator.sol";
+import {FakeGovernanceStaker} from "test/fakes/FakeGovernanceStaker.sol";
+import {IERC20} from "openzeppelin/token/ERC20/IERC20.sol";
+import {IERC20Staking} from "@staker/src/interfaces/IERC20Staking.sol";
 
-contract UniStakerInvariants is Test, UnitTestBase {
-  UniLstHandler handler;
-  IUniStaker staker;
+contract GovStakerInvariants is Test, UnitTestBase {
+  GovLstHandler handler;
+  MockFullEarningPowerCalculator earningPowerCalculator;
+  GovernanceStaker staker;
   address rewardsNotifier;
-  UniLst lst;
+  GovLst lst;
   address lstOwner;
   uint80 initialPayoutAmount = 2500e18;
 
   // vars for reducers
-  IUniStaker.DepositIdentifier public currentId;
+  GovernanceStaker.DepositIdentifier public currentId;
 
   address defaultDelegatee = makeAddr("Default Delegatee");
   address delegateeGuardian = makeAddr("Delegatee Guardian");
 
   function setUp() public override {
-    // begin UniLst.t.sol setup
+    // begin GovLst.t.sol setup
     super.setUp();
 
     lstOwner = makeAddr("LST Owner");
 
-    // UniStaker contracts from bytecode to avoid compiler conflicts.
-    staker = IUniStaker(deployCode("UniStaker.sol", abi.encode(rewardToken, stakeToken, stakerAdmin)));
+    // Staker contracts from bytecode to avoid compiler conflicts.
+    earningPowerCalculator = new MockFullEarningPowerCalculator();
+
+    staker = new FakeGovernanceStaker(
+      IERC20(address(rewardToken)),
+      IERC20Staking(address(stakeToken)),
+      earningPowerCalculator,
+      1e18,
+      stakerAdmin,
+      "Gov staker"
+    );
 
     // We do the 0th deposit because the LST includes an assumption that deposit Id 0 is not held by it.
     vm.startPrank(stakeMinter);
@@ -41,33 +55,33 @@ contract UniStakerInvariants is Test, UnitTestBase {
     staker.setRewardNotifier(stakerAdmin, true);
 
     // Finally, deploy the lst for tests.
-    lst = new UniLst("Uni Lst", "stUni", staker, defaultDelegatee, lstOwner, initialPayoutAmount, delegateeGuardian);
+    lst = new GovLst("Gov Lst", "stGov", staker, defaultDelegatee, lstOwner, initialPayoutAmount, delegateeGuardian);
 
     // Set the withdrawal delay to a non-zero amount
     vm.startPrank(lstOwner);
     lst.WITHDRAW_GATE().setDelay(1 hours);
     vm.stopPrank();
 
-    // end UniLst.t.sol setup
+    // end GovLst.t.sol setup
 
-    handler = new UniLstHandler(lst);
+    handler = new GovLstHandler(lst);
 
     bytes4[] memory selectors = new bytes4[](8);
-    selectors[0] = UniLstHandler.stake.selector;
-    selectors[1] = UniLstHandler.unstake.selector;
-    selectors[2] = UniLstHandler.validTransfer.selector;
-    selectors[3] = UniLstHandler.fetchOrInitializeDepositForDelegatee.selector;
-    selectors[4] = UniLstHandler.updateDeposit.selector;
-    selectors[5] = UniLstHandler.claimAndDistributeReward.selector;
-    selectors[6] = UniLstHandler.notifyRewardAmount.selector;
-    selectors[7] = UniLstHandler.warpAhead.selector;
+    selectors[0] = GovLstHandler.stake.selector;
+    selectors[1] = GovLstHandler.unstake.selector;
+    selectors[2] = GovLstHandler.validTransfer.selector;
+    selectors[3] = GovLstHandler.fetchOrInitializeDepositForDelegatee.selector;
+    selectors[4] = GovLstHandler.updateDeposit.selector;
+    selectors[5] = GovLstHandler.claimAndDistributeReward.selector;
+    selectors[6] = GovLstHandler.notifyRewardAmount.selector;
+    selectors[7] = GovLstHandler.warpAhead.selector;
 
     targetSelector(FuzzSelector({addr: address(handler), selectors: selectors}));
 
     targetContract(address(handler));
   }
 
-  function _depositIdForHolder(address _holder) internal view returns (IUniStaker.DepositIdentifier) {
+  function _depositIdForHolder(address _holder) internal view returns (GovernanceStaker.DepositIdentifier) {
     return lst.depositForDelegatee(lst.delegateeForHolder(_holder));
   }
 
@@ -101,7 +115,7 @@ contract UniStakerInvariants is Test, UnitTestBase {
     handler.forEachHolder(this.assertHolderBalanceCheckpoint);
   }
 
-  /// @notice The `balance` of a given UniStaker deposit (that is not the default deposit) is always greater than or
+  /// @notice The `balance` of a given Staker deposit (that is not the default deposit) is always greater than or
   /// equal to the sum of the `balanceCheckpoint`s of all users who chose that as their deposit Id.
   function invariant_eachStakerDepositBalanceGreaterOrEqualToSumOfUserBalanceCheckpoints() public {
     // for each deposit, if the depositor matches the depositId, add the user balance checkpoints
@@ -113,7 +127,7 @@ contract UniStakerInvariants is Test, UnitTestBase {
     );
   }
 
-  /// @notice The UniStaker balance of the default deposit is always greater than or equal to the sum of the following
+  /// @notice The Staker balance of the default deposit is always greater than or equal to the sum of the following
   /// two summations:
   /// - The sum of the `balanceOf`s of all holders who have set/left the default deposit
   /// - The sum of the undelegated balances of all holders who have set a custom delegate, where undelegated balance is
@@ -126,11 +140,11 @@ contract UniStakerInvariants is Test, UnitTestBase {
     // with defining the assertion as "within some acceptable range" is that if the depth of the invariant tests are
     // increased, one would expect the "invariant" here to eventually be broken. For now, we leave this somewhat hacky
     // "invariant" in place to make sure we're avoiding an actual, unexpected bug.
-    uint256 ACCEPTABLE_DEFAULT_DEPOSIT_SHORTFALL = 1000; // 1x10^-15 UNI
+    uint256 ACCEPTABLE_DEFAULT_DEPOSIT_SHORTFALL = 1000; // 1x10^-15 GOV
 
     // first, get the balance of the default deposit -- very easy!
-    IUniStaker.DepositIdentifier defaultDepositId = lst.depositForDelegatee(defaultDelegatee);
-    (uint256 _defaultDepositBalance,,,) = staker.deposits(defaultDepositId);
+    GovernanceStaker.DepositIdentifier defaultDepositId = lst.depositForDelegatee(defaultDelegatee);
+    (uint256 _defaultDepositBalance,,,,,,) = staker.deposits(defaultDepositId);
 
     // The following assignments use accumulators that read the depositId from the public state var `currentId`, so we
     // set the `currentId` to the default deposit id.
@@ -146,9 +160,9 @@ contract UniStakerInvariants is Test, UnitTestBase {
     );
   }
 
-  /// @notice The LST contract never holds a stake token balance (assuming none are never transferred directly to it).
+  /// @notice The LST contract never holds a stake token balance (assuming none are never transferred directly to it.
   /// @dev Note: adding this invariant ensures we haven't built a system that leaves spare wei sitting in the contract
-  /// when doing `withdraw` and `stakeMore` calls to UniStaker.
+  /// when doing `withdraw` and `stakeMore` calls to Staker.
   function invariant_lstBalanceNeverHoldsStakeTokenBalance() public view {
     assertEq(stakeToken.balanceOf(address(lst)), 0);
   }
@@ -177,8 +191,8 @@ contract UniStakerInvariants is Test, UnitTestBase {
 
   function accumulateBalanceForCurrentDepositId(uint256 _balance, address _holder) external view returns (uint256) {
     if (
-      IUniStaker.DepositIdentifier.unwrap(_depositIdForHolder(_holder))
-        == IUniStaker.DepositIdentifier.unwrap(currentId)
+      GovernanceStaker.DepositIdentifier.unwrap(_depositIdForHolder(_holder))
+        == GovernanceStaker.DepositIdentifier.unwrap(currentId)
     ) {
       return _balance + lst.balanceOf(_holder);
     }
@@ -191,8 +205,8 @@ contract UniStakerInvariants is Test, UnitTestBase {
     returns (uint256)
   {
     if (
-      IUniStaker.DepositIdentifier.unwrap(_depositIdForHolder(_holder))
-        == IUniStaker.DepositIdentifier.unwrap(currentId)
+      GovernanceStaker.DepositIdentifier.unwrap(_depositIdForHolder(_holder))
+        == GovernanceStaker.DepositIdentifier.unwrap(currentId)
     ) {
       return _balance + lst.balanceCheckpoint(_holder);
     }
@@ -204,10 +218,10 @@ contract UniStakerInvariants is Test, UnitTestBase {
     view
     returns (uint256)
   {
-    uint256 _currentId = IUniStaker.DepositIdentifier.unwrap(currentId);
+    uint256 _currentId = GovernanceStaker.DepositIdentifier.unwrap(currentId);
     if (
-      IUniStaker.DepositIdentifier.unwrap(_depositIdForHolder(_holder)) == _currentId
-        && _currentId != IUniStaker.DepositIdentifier.unwrap(lst.DEFAULT_DEPOSIT_ID())
+      GovernanceStaker.DepositIdentifier.unwrap(_depositIdForHolder(_holder)) == _currentId
+        && _currentId != GovernanceStaker.DepositIdentifier.unwrap(lst.DEFAULT_DEPOSIT_ID())
     ) {
       uint256 _undelegatedBalance;
       if (lst.balanceOf(_holder) >= lst.balanceCheckpoint(_holder)) {
@@ -220,12 +234,12 @@ contract UniStakerInvariants is Test, UnitTestBase {
     return _balance;
   }
 
-  function sumUserBalancesForDepositId(uint256 _sum, IUniStaker.DepositIdentifier id) external returns (uint256) {
+  function sumUserBalancesForDepositId(uint256 _sum, GovernanceStaker.DepositIdentifier id) external returns (uint256) {
     currentId = id;
     return _sum + handler.reduceHolders(0, this.accumulateBalanceForCurrentDepositId);
   }
 
-  function sumUserBalanceCheckpointsForDepositId(uint256 _sum, IUniStaker.DepositIdentifier id)
+  function sumUserBalanceCheckpointsForDepositId(uint256 _sum, GovernanceStaker.DepositIdentifier id)
     external
     returns (uint256)
   {
@@ -233,22 +247,25 @@ contract UniStakerInvariants is Test, UnitTestBase {
     return _sum + handler.reduceHolders(0, this.accumulateBalanceCheckpointsForCurrentDepositId);
   }
 
-  function sumUndelegatedBalanceForDepositId(uint256 _sum, IUniStaker.DepositIdentifier id) external returns (uint256) {
+  function sumUndelegatedBalanceForDepositId(uint256 _sum, GovernanceStaker.DepositIdentifier id)
+    external
+    returns (uint256)
+  {
     currentId = id;
     return _sum + handler.reduceHolders(0, this.accumulateUndelegatedBalanceForCurrentDepositId);
   }
 
-  function assertSumUserBalanceCheckpointsForDepositId(IUniStaker.DepositIdentifier id) external {
+  function assertSumUserBalanceCheckpointsForDepositId(GovernanceStaker.DepositIdentifier id) external {
     // Ignore the default deposit, for which this assertion is not assumed to hold
-    uint256 _defaultDepositId = IUniStaker.DepositIdentifier.unwrap(handler.lst().DEFAULT_DEPOSIT_ID());
-    if (IUniStaker.DepositIdentifier.unwrap(id) == _defaultDepositId) {
+    uint256 _defaultDepositId = GovernanceStaker.DepositIdentifier.unwrap(handler.lst().DEFAULT_DEPOSIT_ID());
+    if (GovernanceStaker.DepositIdentifier.unwrap(id) == _defaultDepositId) {
       return;
     }
     // we only want holders that match the depositId
     currentId = id;
-    // console2.log("Checking depositId: %s", IUniStaker.DepositIdentifier.unwrap(id));
+    // console2.log("Checking depositId: %s", GovernanceStaker.DepositIdentifier.unwrap(id));
     uint256 _sumOfCheckpoints = handler.reduceHolders(0, this.accumulateBalanceCheckpointsForCurrentDepositId);
-    (uint256 _stakerDepositBalance,,,) = staker.deposits(id);
+    (uint256 _stakerDepositBalance,,,,,,) = staker.deposits(id);
     assertGe(_stakerDepositBalance, _sumOfCheckpoints);
     // console2.log("staker deposit balance", _stakerDepositBalance, "sum of checkpoints", _sumOfCheckpoints);
   }

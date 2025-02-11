@@ -3,17 +3,18 @@ pragma solidity 0.8.28;
 
 import {ERC20Permit} from "openzeppelin/token/ERC20/extensions/ERC20Permit.sol";
 import {ERC20} from "openzeppelin/token/ERC20/ERC20.sol";
-import {UniLst, IUniStaker} from "src/UniLst.sol";
+import {GovLst} from "src/GovLst.sol";
+import {GovernanceStaker} from "@staker/src/GovernanceStaker.sol";
 import {Ownable} from "openzeppelin/access/Ownable.sol";
 
-/// @title WrappedUniLst
+/// @title WrappedGovLst
 /// @author [ScopeLift](https://scopelift.co)
 /// @notice A wrapper contract for the liquid stake token. Whereas the LST is a rebasing token, the wrapper token
 /// has a fixed balance. While the balance is fixed, it is not 1:1 with the underlying token. As rewards are
 /// distributed to the LST contracts, the amount of liquid staked tokens that 1 wrapped token can be exchanged for
 /// increases. The voting weight for all tokens held by a given wrapper deployment is assigned to a singled delegatee,
 /// which is controlled by the wrapper's owner.
-contract WrappedUniLst is ERC20Permit, Ownable {
+contract WrappedGovLst is ERC20Permit, Ownable {
   /// @notice Emitted when a holder wraps liquid stake tokens.
   event Wrapped(address indexed holder, uint256 lstAmount, uint256 wrappedAmount);
 
@@ -24,23 +25,23 @@ contract WrappedUniLst is ERC20Permit, Ownable {
   event DelegateeSet(address indexed oldDelegatee, address indexed newDelegatee);
 
   /// @notice Emitted when a holder tries to wrap or unwrap 0 liquid stake tokens.
-  error WrappedUniLst__InvalidAmount();
+  error WrappedGovLst__InvalidAmount();
 
   /// @notice The address of the LST contract which will be wrapped.
-  UniLst public immutable LST;
+  GovLst public immutable LST;
 
   /// @notice Local copy of the LST's scale factor that is stored at deployment for use in wrapper calculations.
   uint256 internal immutable SHARE_SCALE_FACTOR;
 
-  /// @notice The UniStaker deposit identifier which holds the wrapper's underlying tokens.
-  IUniStaker.DepositIdentifier public depositId;
+  /// @notice The Staker deposit identifier which holds the wrapper's underlying tokens.
+  GovernanceStaker.DepositIdentifier public depositId;
 
   /// @param _name The name of the wrapper token.
   /// @param _symbol The symbol of the wrapper token.
   /// @param _lst The contract of the liquid stake token being wrapped.
   /// @param _delegatee The initial delegatee to whom the wrapper's voting weight will be delegated.
   /// @param _initialOwner The initial owner of the wrapper contract.
-  constructor(string memory _name, string memory _symbol, UniLst _lst, address _delegatee, address _initialOwner)
+  constructor(string memory _name, string memory _symbol, GovLst _lst, address _delegatee, address _initialOwner)
     ERC20Permit(_name)
     ERC20(_name, _symbol)
     Ownable(_initialOwner)
@@ -62,7 +63,7 @@ contract WrappedUniLst is ERC20Permit, Ownable {
   /// wrap may not be zero.
   function wrap(uint256 _lstAmountToWrap) external returns (uint256 _wrappedAmount) {
     if (_lstAmountToWrap == 0) {
-      revert WrappedUniLst__InvalidAmount();
+      revert WrappedGovLst__InvalidAmount();
     }
 
     uint256 _initialShares = LST.sharesOf(address(this));
@@ -85,7 +86,7 @@ contract WrappedUniLst is ERC20Permit, Ownable {
     _lstAmountUnwrapped = LST.stakeForShares(_wrappedAmount * SHARE_SCALE_FACTOR);
 
     if (_lstAmountUnwrapped == 0) {
-      revert WrappedUniLst__InvalidAmount();
+      revert WrappedGovLst__InvalidAmount();
     }
 
     // The number of shares moved back to the caller may actually be less than the number specified by the
