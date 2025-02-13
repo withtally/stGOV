@@ -75,6 +75,9 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// @notice Emitted when a deposit delegatee is overridden to the default delegatee.
   event OverrideEnacted(GovernanceStaker.DepositIdentifier depositId, address tipReceiver, uint160 tipShares);
 
+  /// @notice Emitted when an overidden deposit delegatee is set back to the original delegatee.
+  event OverrideRevoked(GovernanceStaker.DepositIdentifier depositId, address tipReceiver, uint160 tipShares);
+
   ///@notice Emitted when a reward is distributed by an MEV searcher who claims the LST's stake rewards in exchange
   /// for providing the payout amount of the stake token to the LST.
   event RewardDistributed(
@@ -846,6 +849,49 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     holderStates[_tipReceiver].shares += SafeCast.toUint128(_tipShares);
 
     emit OverrideEnacted(_depositId, _tipReceiver, _tipShares);
+  }
+
+  /// @notice An open method which allows anyone to reset a deposit with an overridden delegatee to the original
+  /// deposit delegatee if the deposit's earning power is above the minimum qualifying earning power. The caller will
+  /// receive shares valued at the requested tip. These new shares will dilute existing depositor's shares.
+  /// @param _depositId The id of the deposit in the override state.
+  /// @param _tipReceiver The address that receives the reward for carrying out the revoke action.
+  /// @param _requestedTip The amount to reward the tip receiver for carrying out the revoke action.
+  function revokeOverride(
+    GovernanceStaker.DepositIdentifier _depositId,
+    address _originalDelegatee,
+    address _tipReceiver,
+    uint160 _requestedTip
+  ) external {
+    _revertIfGreaterThanMaxTip(_requestedTip);
+    if (!_isSameDepositId(storedDepositIdForDelegatee[_originalDelegatee], _depositId) || !isOverridden[_depositId]) {
+      revert GovLst__InvalidOverride();
+    }
+
+    // Move the deposit's delegatee back to the original
+    STAKER.alterDelegatee(_depositId, _originalDelegatee);
+
+    (uint96 _balance,, uint96 _earningPower,,,,) = STAKER.deposits(_depositId);
+    if (_balance == 0) {
+      revert GovLst__InvalidOverride();
+    }
+
+    // Make sure earning power is above min earning power
+    bool _isBelowMin = uint256(_earningPower) * BIPS < minQualifyingEarningPowerBips * _balance;
+    if (_isBelowMin) {
+      revert GovLst__EarningPowerNotQualified(
+        uint256(_earningPower) * BIPS, uint256(minQualifyingEarningPowerBips) * _balance
+      );
+    }
+
+    isOverridden[_depositId] = false;
+
+    Totals memory _totals = totals;
+    uint160 _tipShares = _calcFeeShares(_requestedTip, _totals.supply, _totals.shares);
+    totals.shares += _tipShares;
+    holderStates[_tipReceiver].shares += SafeCast.toUint128(_tipShares);
+
+    emit OverrideRevoked(_depositId, _tipReceiver, _tipShares);
   }
 
   /// @notice Sets the reward parameters including payout amount, fee in bips, and fee collector.
