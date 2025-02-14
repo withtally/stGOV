@@ -4,9 +4,7 @@ pragma solidity 0.8.28;
 import {GasReport} from "test/gas-reports/GasReport.sol";
 import {GovLst} from "src/GovLst.sol";
 import {WithdrawGate} from "src/WithdrawGate.sol";
-import {IWETH9} from "src/interfaces/IWETH9.sol";
-import {GovernanceStaker} from "@staker/src/GovernanceStaker.sol";
-import {UnitTestBase} from "test/UnitTestBase.sol";
+import {Staker} from "staker/Staker.sol";
 import {GovLstTest} from "test/GovLst.t.sol";
 
 contract GovLstGasReport is GovLstTest, GasReport {
@@ -31,7 +29,7 @@ contract GovLstGasReport is GovLstTest, GasReport {
     address _staker;
     address _delegatee;
     uint256 _stakeAmount;
-    GovernanceStaker.DepositIdentifier _depositId;
+    Staker.DepositIdentifier _depositId;
     uint80 _rewardAmount;
 
     //-------------------------------------------------------------------------------------------//
@@ -960,7 +958,7 @@ contract GovLstGasReport is GovLstTest, GasReport {
       _stakeAmount = 100e18;
       _rewardAmount = 5000e18;
       _mintAndStake(_staker, _stakeAmount);
-      GovernanceStaker.DepositIdentifier _depositIdLocal = lst.depositIdForHolder(_staker);
+      Staker.DepositIdentifier _depositIdLocal = lst.depositIdForHolder(_staker);
       (uint96 _balance,,,,,,) = staker.deposits(_depositIdLocal);
       _distributeReward(_rewardAmount, _depositIdLocal, _toPercentage(_balance, staker.totalStaked()));
 
@@ -977,7 +975,7 @@ contract GovLstGasReport is GovLstTest, GasReport {
       _stakeAmount = 100e18;
       _rewardAmount = 5000e18;
       _mintAndStake(_staker, _stakeAmount);
-      GovernanceStaker.DepositIdentifier _depositIdLocal = lst.depositIdForHolder(_staker);
+      Staker.DepositIdentifier _depositIdLocal = lst.depositIdForHolder(_staker);
       (uint96 _balance,,,,,,) = staker.deposits(_depositIdLocal);
       _distributeReward(_rewardAmount, _depositIdLocal, _toPercentage(_balance, staker.totalStaked()));
 
@@ -996,7 +994,7 @@ contract GovLstGasReport is GovLstTest, GasReport {
       _rewardAmount = 5000e18;
       _delegatee = makeScenarioAddr("Delegatee");
       _mintUpdateDelegateeAndStake(_staker, _stakeAmount, _delegatee);
-      GovernanceStaker.DepositIdentifier _depositIdLocal = lst.depositIdForHolder(_staker);
+      Staker.DepositIdentifier _depositIdLocal = lst.depositIdForHolder(_staker);
       (uint96 _balance,,,,,,) = staker.deposits(_depositIdLocal);
       _distributeReward(_rewardAmount, _depositIdLocal, _toPercentage(_balance, staker.totalStaked()));
 
@@ -1014,7 +1012,7 @@ contract GovLstGasReport is GovLstTest, GasReport {
       _rewardAmount = 5000e18;
       _delegatee = makeScenarioAddr("Delegatee");
       _mintUpdateDelegateeAndStake(_staker, _stakeAmount, _delegatee);
-      GovernanceStaker.DepositIdentifier _depositIdLocal = lst.depositIdForHolder(_staker);
+      Staker.DepositIdentifier _depositIdLocal = lst.depositIdForHolder(_staker);
       (uint96 _balance,,,,,,) = staker.deposits(_depositIdLocal);
       _distributeReward(_rewardAmount, _depositIdLocal, _toPercentage(_balance, staker.totalStaked()));
 
@@ -1037,7 +1035,7 @@ contract GovLstGasReport is GovLstTest, GasReport {
       _staker = makeScenarioAddr("Staker 2");
       _mintUpdateDelegateeAndStake(_staker, _stakeAmount, _delegatee);
       // Rewards are distributed
-      GovernanceStaker.DepositIdentifier _depositIdLocal = lst.depositIdForHolder(_staker);
+      Staker.DepositIdentifier _depositIdLocal = lst.depositIdForHolder(_staker);
       (uint96 _balance,,,,,,) = staker.deposits(_depositIdLocal);
       _distributeReward(_rewardAmount, _depositIdLocal, _toPercentage(_balance, staker.totalStaked()));
 
@@ -1061,7 +1059,7 @@ contract GovLstGasReport is GovLstTest, GasReport {
       _staker = makeScenarioAddr("Staker 2");
       _mintUpdateDelegateeAndStake(_staker, _stakeAmount, _delegatee);
       // Rewards are distributed
-      GovernanceStaker.DepositIdentifier _depositIdLocal = lst.depositIdForHolder(_staker);
+      Staker.DepositIdentifier _depositIdLocal = lst.depositIdForHolder(_staker);
       (uint96 _balance,,,,,,) = staker.deposits(_depositIdLocal);
       _distributeReward(_rewardAmount, _depositIdLocal, _toPercentage(_balance, staker.totalStaked()));
 
@@ -1079,7 +1077,7 @@ contract GovLstGasReport is GovLstTest, GasReport {
       _stakeAmount = 100e18;
       _rewardAmount = 5000e18;
       _mintAndStake(_staker, _stakeAmount);
-      GovernanceStaker.DepositIdentifier _depositIdLocal = lst.depositIdForHolder(_staker);
+      Staker.DepositIdentifier _depositIdLocal = lst.depositIdForHolder(_staker);
       (uint96 _balance,,,,,,) = staker.deposits(_depositIdLocal);
       _distributeReward(_rewardAmount, _depositIdLocal, _toPercentage(_balance, staker.totalStaked()));
 
@@ -1098,7 +1096,7 @@ contract GovLstGasReport is GovLstTest, GasReport {
       _rewardAmount = 5000e18;
       _delegatee = makeScenarioAddr("Delegatee");
       _mintUpdateDelegateeAndStake(_staker, _stakeAmount, _delegatee);
-      GovernanceStaker.DepositIdentifier _depositIdLocal = lst.depositIdForHolder(_staker);
+      Staker.DepositIdentifier _depositIdLocal = lst.depositIdForHolder(_staker);
       (uint96 _balance,,,,,,) = staker.deposits(_depositIdLocal);
       _distributeReward(_rewardAmount, _depositIdLocal, _toPercentage(_balance, staker.totalStaked()));
 
@@ -1135,7 +1133,7 @@ contract GovLstGasReport is GovLstTest, GasReport {
       _mintAndStake(_staker, _stakeAmount);
       _distributeStakerReward(_rewardAmount);
 
-      GovernanceStaker.DepositIdentifier _depositIdLocal = lst.depositIdForHolder(_staker);
+      Staker.DepositIdentifier _depositIdLocal = lst.depositIdForHolder(_staker);
       (uint96 _balance,,,,,,) = staker.deposits(_depositIdLocal);
 
       vm.startPrank(_claimer);
@@ -1169,7 +1167,7 @@ contract GovLstGasReport is GovLstTest, GasReport {
       // Configure the fee parameters.
       _setRewardParameters(_rewardAmount, _feeBips, _feeCollector);
 
-      GovernanceStaker.DepositIdentifier _depositIdLocal = lst.depositIdForHolder(_feeCollector);
+      Staker.DepositIdentifier _depositIdLocal = lst.depositIdForHolder(_feeCollector);
       (uint96 _balance,,,,,,) = staker.deposits(_depositIdLocal);
 
       vm.startPrank(_claimer);
@@ -1246,7 +1244,7 @@ contract GovLstGasReport is GovLstTest, GasReport {
       _stakeAmount = 100e18;
       _rewardAmount = 5000e18;
       _mintAndStake(_staker, _stakeAmount);
-      GovernanceStaker.DepositIdentifier _depositIdLocal = lst.depositIdForHolder(_staker);
+      Staker.DepositIdentifier _depositIdLocal = lst.depositIdForHolder(_staker);
       (uint96 _balance,,,,,,) = staker.deposits(_depositIdLocal);
       _distributeReward(_rewardAmount, _depositIdLocal, _toPercentage(_balance, staker.totalStaked()));
       _delegatee = makeScenarioAddr("Delegatee");
@@ -1265,7 +1263,7 @@ contract GovLstGasReport is GovLstTest, GasReport {
       _stakeAmount = 100e18;
       _rewardAmount = 5000e18;
       _mintUpdateDelegateeAndStake(_staker, _stakeAmount, _delegatee);
-      GovernanceStaker.DepositIdentifier _depositIdLocal = lst.depositIdForHolder(_staker);
+      Staker.DepositIdentifier _depositIdLocal = lst.depositIdForHolder(_staker);
       (uint96 _balance,,,,,,) = staker.deposits(_depositIdLocal);
       _distributeReward(_rewardAmount, _depositIdLocal, _toPercentage(_balance, staker.totalStaked()));
       _delegatee = makeScenarioAddr("Updated Delegatee");

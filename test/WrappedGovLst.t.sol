@@ -3,7 +3,7 @@ pragma solidity 0.8.28;
 
 import {console2} from "forge-std/Test.sol";
 import {GovLstTest, GovLst} from "test/GovLst.t.sol";
-import {GovernanceStaker} from "@staker/src/GovernanceStaker.sol";
+import {Staker} from "staker/Staker.sol";
 import {WrappedGovLst, Ownable} from "src/WrappedGovLst.sol";
 import {IERC20Errors} from "openzeppelin/interfaces/draft-IERC6093.sol";
 
@@ -92,7 +92,7 @@ contract Constructor is WrappedGovLstTest {
     assertEq(_wrappedLst.name(), _name);
     assertEq(_wrappedLst.symbol(), _symbol);
     assertEq(address(_wrappedLst.LST()), _lst);
-    assertEq(GovernanceStaker.DepositIdentifier.unwrap(_wrappedLst.depositId()), _depositId);
+    assertEq(Staker.DepositIdentifier.unwrap(_wrappedLst.depositId()), _depositId);
     assertEq(_wrappedLst.owner(), _owner);
   }
 }
@@ -319,7 +319,7 @@ contract Unwrap is WrappedGovLstTest {
     _wrap(_otherHolder, lst.balanceOf(_otherHolder));
 
     // A reward is distributed
-    GovernanceStaker.DepositIdentifier _depositId2 = lst.depositIdForHolder(address(lst));
+    Staker.DepositIdentifier _depositId2 = lst.depositIdForHolder(address(lst));
     _distributeReward(_rewardAmount, _depositId2, _toPercentage(_stakeAmount, _stakeAmount + _otherWrapAmount));
 
     // The holder wraps some amount of their LST tokens

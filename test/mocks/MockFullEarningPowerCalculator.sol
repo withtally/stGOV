@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {IEarningPowerCalculator} from "@staker/src/interfaces/IEarningPowerCalculator.sol";
+import {IEarningPowerCalculator} from "staker/interfaces/IEarningPowerCalculator.sol";
 
 contract MockFullEarningPowerCalculator is IEarningPowerCalculator {
   uint256 public multiplierBips = 10_000;

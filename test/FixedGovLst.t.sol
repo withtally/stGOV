@@ -2,8 +2,8 @@
 pragma solidity 0.8.28;
 
 import {console2, stdStorage, StdStorage, stdError, Vm} from "forge-std/Test.sol";
-import {GovLstTest, GovLst} from "test/GovLst.t.sol";
-import {GovernanceStaker} from "@staker/src/GovernanceStaker.sol";
+import {GovLstTest} from "test/GovLst.t.sol";
+import {Staker} from "staker/Staker.sol";
 import {FixedGovLst} from "src/FixedGovLst.sol";
 import {FixedLstAddressAlias} from "src/FixedLstAddressAlias.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -23,7 +23,7 @@ contract FixedGovLstTest is GovLstTest {
   }
 
   function _updateFixedDelegatee(address _holder, address _delegatee) internal {
-    GovernanceStaker.DepositIdentifier _depositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+    Staker.DepositIdentifier _depositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
 
     vm.prank(_holder);
     fixedLst.updateDeposit(_depositId);
@@ -176,7 +176,7 @@ contract UpdateDeposit is FixedGovLstTest {
   {
     _assumeSafeHolder(_holder);
     _assumeSafeDelegatee(_delegatee);
-    GovernanceStaker.DepositIdentifier _depositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+    Staker.DepositIdentifier _depositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
 
     vm.expectEmit();
     emit FixedGovLst.DepositUpdated(_holder, _depositId);
@@ -443,11 +443,11 @@ contract UpdateDepositOnBehalf is FixedGovLstTest {
 
     // Sign the message
     _setNonce(address(fixedLst), _holder, _nonce);
-    GovernanceStaker.DepositIdentifier _depositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+    Staker.DepositIdentifier _depositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
     bytes memory _signature = _signFixedMessage(
       fixedLst.UPDATE_DEPOSIT_TYPEHASH(),
       _holder,
-      GovernanceStaker.DepositIdentifier.unwrap(_depositId),
+      Staker.DepositIdentifier.unwrap(_depositId),
       ERC20Permit(address(fixedLst)).nonces(_holder),
       _expiry,
       _holderPrivateKey
@@ -474,11 +474,11 @@ contract UpdateDepositOnBehalf is FixedGovLstTest {
 
     // Sign the message
     _setNonce(address(fixedLst), _holder, _nonce);
-    GovernanceStaker.DepositIdentifier _depositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+    Staker.DepositIdentifier _depositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
     bytes memory _signature = _signFixedMessage(
       fixedLst.UPDATE_DEPOSIT_TYPEHASH(),
       _holder,
-      GovernanceStaker.DepositIdentifier.unwrap(_depositId),
+      Staker.DepositIdentifier.unwrap(_depositId),
       ERC20Permit(address(fixedLst)).nonces(_holder),
       _expiry,
       _holderPrivateKey
@@ -505,11 +505,11 @@ contract UpdateDepositOnBehalf is FixedGovLstTest {
 
     // Sign the message
     _setNonce(address(fixedLst), _holder, _nonce);
-    GovernanceStaker.DepositIdentifier _depositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+    Staker.DepositIdentifier _depositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
     bytes memory _signature = _signFixedMessage(
       fixedLst.UPDATE_DEPOSIT_TYPEHASH(),
       _holder,
-      GovernanceStaker.DepositIdentifier.unwrap(_depositId),
+      Staker.DepositIdentifier.unwrap(_depositId),
       ERC20Permit(address(fixedLst)).nonces(_holder),
       _expiry,
       _wrongPrivateKey
@@ -534,11 +534,11 @@ contract UpdateDepositOnBehalf is FixedGovLstTest {
 
     // Sign the message
     _setNonce(address(fixedLst), _holder, _nonce);
-    GovernanceStaker.DepositIdentifier _depositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+    Staker.DepositIdentifier _depositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
     bytes memory _signature = _signFixedMessage(
       fixedLst.UPDATE_DEPOSIT_TYPEHASH(),
       _holder,
-      GovernanceStaker.DepositIdentifier.unwrap(_depositId),
+      Staker.DepositIdentifier.unwrap(_depositId),
       ERC20Permit(address(fixedLst)).nonces(_holder),
       _expiry,
       _holderPrivateKey
@@ -565,11 +565,11 @@ contract UpdateDepositOnBehalf is FixedGovLstTest {
 
     // Sign the message
     _setNonce(address(fixedLst), _holder, _currentNonce);
-    GovernanceStaker.DepositIdentifier _depositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+    Staker.DepositIdentifier _depositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
     bytes memory _signature = _signFixedMessage(
       fixedLst.UPDATE_DEPOSIT_TYPEHASH(),
       _holder,
-      GovernanceStaker.DepositIdentifier.unwrap(_depositId),
+      Staker.DepositIdentifier.unwrap(_depositId),
       _suppliedNonce,
       _expiry,
       _holderPrivateKey
@@ -596,11 +596,11 @@ contract UpdateDepositOnBehalf is FixedGovLstTest {
 
     // Sign the message
     _setNonce(address(fixedLst), _holder, _nonce);
-    GovernanceStaker.DepositIdentifier _depositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+    Staker.DepositIdentifier _depositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
     bytes memory _signature = _signFixedMessage(
       fixedLst.UPDATE_DEPOSIT_TYPEHASH(),
       _holder,
-      GovernanceStaker.DepositIdentifier.unwrap(_depositId),
+      Staker.DepositIdentifier.unwrap(_depositId),
       ERC20Permit(address(fixedLst)).nonces(_holder),
       _expiry,
       _holderPrivateKey
@@ -1584,11 +1584,10 @@ contract Multicall is FixedGovLstTest {
     vm.prank(_actor);
     stakeToken.approve(address(fixedLst), _stakeAmount);
 
-    GovernanceStaker.DepositIdentifier _depositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+    Staker.DepositIdentifier _depositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
     bytes[] memory _calls = new bytes[](3);
     _calls[0] = abi.encodeWithSelector(fixedLst.stake.selector, _stakeAmount);
-    _calls[1] =
-      abi.encodeWithSelector(fixedLst.updateDeposit.selector, GovernanceStaker.DepositIdentifier.unwrap(_depositId));
+    _calls[1] = abi.encodeWithSelector(fixedLst.updateDeposit.selector, Staker.DepositIdentifier.unwrap(_depositId));
     _calls[2] = abi.encodeWithSelector(fixedLst.transfer.selector, _receiver, _transferAmount);
 
     vm.prank(_actor);
@@ -2720,7 +2719,7 @@ contract Delegate is FixedGovLstTest {
   {
     _assumeSafeHolder(_holder);
     _assumeSafeDelegatee(_delegatee);
-    GovernanceStaker.DepositIdentifier _depositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+    Staker.DepositIdentifier _depositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
 
     _amount = _boundToReasonableStakeTokenAmount(_amount);
     _mintStakeToken(_holder, _amount);

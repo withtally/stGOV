@@ -3,7 +3,7 @@ pragma solidity 0.8.28;
 
 import {GovLst} from "src/GovLst.sol";
 import {FixedLstAddressAlias} from "src/FixedLstAddressAlias.sol";
-import {GovernanceStaker} from "@staker/src/GovernanceStaker.sol";
+import {Staker} from "staker/Staker.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/interfaces/IERC20Metadata.sol";
@@ -40,7 +40,7 @@ contract FixedGovLst is IERC20, IERC20Metadata, Multicall, EIP712, Nonces {
   /// weight.
   /// @param holder The address of the account updating their deposit.
   /// @param depositId The new deposit identifier that will receive the holder's voting weight.
-  event DepositUpdated(address indexed holder, GovernanceStaker.DepositIdentifier depositId);
+  event DepositUpdated(address indexed holder, Staker.DepositIdentifier depositId);
 
   /// @notice Emitted when governance tokens are staked to receive fixed LST tokens.
   /// @param account The address of the account staking tokens.
@@ -171,7 +171,7 @@ contract FixedGovLst is IERC20, IERC20Metadata, Multicall, EIP712, Nonces {
   /// by specifying the deposit identifier associated with that delegatee.
   /// @param _newDepositId The identifier of a deposit which must be one owned by the rebasing LST. Underlying tokens
   /// staked in the fixed LST will be moved into this deposit.
-  function updateDeposit(GovernanceStaker.DepositIdentifier _newDepositId) public {
+  function updateDeposit(Staker.DepositIdentifier _newDepositId) public {
     _updateDeposit(msg.sender, _newDepositId);
   }
 
@@ -235,7 +235,7 @@ contract FixedGovLst is IERC20, IERC20Metadata, Multicall, EIP712, Nonces {
   /// @notice Allow a depositor to change the address they are delegating their staked tokens.
   /// @param _delegatee The address where voting is delegated.
   function delegate(address _delegatee) public virtual {
-    GovernanceStaker.DepositIdentifier _depositId = LST.fetchOrInitializeDepositForDelegatee(_delegatee);
+    Staker.DepositIdentifier _depositId = LST.fetchOrInitializeDepositForDelegatee(_delegatee);
     updateDeposit(_depositId);
   }
 
@@ -312,18 +312,13 @@ contract FixedGovLst is IERC20, IERC20Metadata, Multicall, EIP712, Nonces {
   /// @param _signature The signed message authorizing this deposit update, signed by the account.
   function updateDepositOnBehalf(
     address _account,
-    GovernanceStaker.DepositIdentifier _newDepositId,
+    Staker.DepositIdentifier _newDepositId,
     uint256 _nonce,
     uint256 _deadline,
     bytes memory _signature
   ) external {
     _validateSignature(
-      _account,
-      GovernanceStaker.DepositIdentifier.unwrap(_newDepositId),
-      _nonce,
-      _deadline,
-      _signature,
-      UPDATE_DEPOSIT_TYPEHASH
+      _account, Staker.DepositIdentifier.unwrap(_newDepositId), _nonce, _deadline, _signature, UPDATE_DEPOSIT_TYPEHASH
     );
     _updateDeposit(_account, _newDepositId);
   }
@@ -453,7 +448,7 @@ contract FixedGovLst is IERC20, IERC20Metadata, Multicall, EIP712, Nonces {
   /// @dev The deposit identifier determines which delegatee receives the voting weight of the holder's staked tokens.
   /// @param _newDepositId The identifier of a deposit which must be one owned by the rebasing LST. Underlying tokens
   /// staked in the fixed LST will be moved into this deposit.
-  function _updateDeposit(address _account, GovernanceStaker.DepositIdentifier _newDepositId) internal virtual {
+  function _updateDeposit(address _account, Staker.DepositIdentifier _newDepositId) internal virtual {
     LST.updateFixedDeposit(_account, _newDepositId);
     emit DepositUpdated(_account, _newDepositId);
   }

@@ -5,17 +5,16 @@ import {console2, stdStorage, StdStorage, stdError} from "forge-std/Test.sol";
 import {IERC20} from "openzeppelin/token/ERC20/IERC20.sol";
 import {ERC20Votes} from "openzeppelin/token/ERC20/extensions/ERC20Votes.sol";
 import {ERC20Permit} from "openzeppelin/token/ERC20/extensions/ERC20Permit.sol";
-import {GovernanceStaker} from "@staker/src/GovernanceStaker.sol";
-import {IERC20Staking} from "@staker/src/interfaces/IERC20Staking.sol";
+import {Staker} from "staker/Staker.sol";
+import {IERC20Staking} from "staker/interfaces/IERC20Staking.sol";
 import {GovLst, Ownable} from "src/GovLst.sol";
-import {IWETH9} from "src/interfaces/IWETH9.sol";
 import {WithdrawGate} from "src/WithdrawGate.sol";
 import {UnitTestBase} from "test/UnitTestBase.sol";
 import {TestHelpers} from "test/helpers/TestHelpers.sol";
 import {Eip712Helper} from "test/helpers/Eip712Helper.sol";
 import {PercentAssertions} from "test/helpers/PercentAssertions.sol";
 import {MockFullEarningPowerCalculator} from "test/mocks/MockFullEarningPowerCalculator.sol";
-import {FakeGovernanceStaker} from "test/fakes/FakeGovernanceStaker.sol";
+import {FakeStaker} from "test/fakes/FakeStaker.sol";
 import {Nonces} from "openzeppelin/utils/Nonces.sol";
 import {Vm} from "forge-std/Vm.sol";
 import {IERC20Errors} from "openzeppelin/interfaces/draft-IERC6093.sol";
@@ -26,7 +25,7 @@ contract GovLstTest is UnitTestBase, PercentAssertions, TestHelpers, Eip712Helpe
   bytes32 constant PERMIT_TYPEHASH =
     keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
 
-  FakeGovernanceStaker staker;
+  FakeStaker staker;
   MockFullEarningPowerCalculator earningPowerCalculator;
   GovLst lst;
   WithdrawGate withdrawGate;
@@ -59,7 +58,7 @@ contract GovLstTest is UnitTestBase, PercentAssertions, TestHelpers, Eip712Helpe
 
     earningPowerCalculator = new MockFullEarningPowerCalculator();
 
-    staker = new FakeGovernanceStaker(
+    staker = new FakeStaker(
       IERC20(address(rewardToken)),
       IERC20Staking(address(stakeToken)),
       earningPowerCalculator,
@@ -145,7 +144,7 @@ contract GovLstTest is UnitTestBase, PercentAssertions, TestHelpers, Eip712Helpe
   }
 
   // Bound to a reasonable value for the amount of the reward token that should be distributed in the underlying
-  // staker implementation. For GoveranceStaker, this is a quantity of ETH.
+  // staker implementation. For Staker, this is a quantity of ETH.
   function _boundToReasonableRewardTokenAmount(uint256 _amount) internal pure returns (uint80) {
     // Bound to within 1/1,000,000th of an ETH and the maximum value of uint80
     return uint80(bound(_amount, 0.000001e18, type(uint80).max));
@@ -193,13 +192,13 @@ contract GovLstTest is UnitTestBase, PercentAssertions, TestHelpers, Eip712Helpe
     rewardToken.deposit{value: _amount}();
   }
 
-  function _updateDeposit(address _holder, GovernanceStaker.DepositIdentifier _depositId) internal {
+  function _updateDeposit(address _holder, Staker.DepositIdentifier _depositId) internal {
     vm.prank(_holder);
     lst.updateDeposit(_depositId);
   }
 
   function _updateDelegatee(address _holder, address _delegatee) internal {
-    GovernanceStaker.DepositIdentifier _depositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+    Staker.DepositIdentifier _depositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
 
     vm.prank(_holder);
     lst.updateDeposit(_depositId);
@@ -282,7 +281,7 @@ contract GovLstTest is UnitTestBase, PercentAssertions, TestHelpers, Eip712Helpe
     address _claimer,
     uint256 _rewardTokenAmount,
     address _rewardTokenRecipient,
-    GovernanceStaker.DepositIdentifier _depositId
+    Staker.DepositIdentifier _depositId
   ) internal {
     // Puts reward token in the staker.
     _distributeStakerReward(_rewardTokenAmount);
@@ -294,17 +293,15 @@ contract GovLstTest is UnitTestBase, PercentAssertions, TestHelpers, Eip712Helpe
     vm.stopPrank();
   }
 
-  function _distributeReward(uint80 _payoutAmount, GovernanceStaker.DepositIdentifier _depositId) internal {
+  function _distributeReward(uint80 _payoutAmount, Staker.DepositIdentifier _depositId) internal {
     _setRewardParameters(_payoutAmount, 0, address(1));
     _mintStakeToken(claimer, _payoutAmount);
     _approveLstAndClaimAndDistributeReward(claimer, rewardTokenAmount, claimer, _depositId);
   }
 
-  function _distributeReward(
-    uint80 _payoutAmount,
-    GovernanceStaker.DepositIdentifier _depositId,
-    uint256 _percentOfAmount
-  ) internal {
+  function _distributeReward(uint80 _payoutAmount, Staker.DepositIdentifier _depositId, uint256 _percentOfAmount)
+    internal
+  {
     _setRewardParameters(_payoutAmount, 0, address(1));
 
     _mintStakeToken(claimer, _payoutAmount);
@@ -323,9 +320,7 @@ contract GovLstTest is UnitTestBase, PercentAssertions, TestHelpers, Eip712Helpe
     address _claimer = makeAddr("Claimer");
     uint256 _rewardTokenAmount = 10e18; // arbitrary amount of reward token
     _mintStakeToken(_claimer, _payoutAmount);
-    _approveLstAndClaimAndDistributeReward(
-      _claimer, _rewardTokenAmount, _claimer, GovernanceStaker.DepositIdentifier.wrap(1)
-    );
+    _approveLstAndClaimAndDistributeReward(_claimer, _rewardTokenAmount, _claimer, Staker.DepositIdentifier.wrap(1));
   }
 
   function _approve(address _staker, address _caller, uint256 _amount) internal {
@@ -401,7 +396,7 @@ contract Constructor is GovLstTest {
   }
 
   function test_CreatesDepositForTheDefaultDelegatee() public view {
-    assertTrue(GovernanceStaker.DepositIdentifier.unwrap(lst.depositForDelegatee(defaultDelegatee)) != 0);
+    assertTrue(Staker.DepositIdentifier.unwrap(lst.depositForDelegatee(defaultDelegatee)) != 0);
   }
 
   function testFuzz_DeploysTheContractWithArbitraryValuesForParameters(
@@ -417,19 +412,13 @@ contract Constructor is GovLstTest {
     vm.assume(_lstOwner != address(0) && _lstOwner != address(0) && _defaultDelegatee != address(0));
 
     GovLst _lst = new GovLst(
-      _tokenName,
-      _tokenSymbol,
-      GovernanceStaker(staker),
-      _defaultDelegatee,
-      _lstOwner,
-      _payoutAmount,
-      _delegateeGuardian
+      _tokenName, _tokenSymbol, Staker(staker), _defaultDelegatee, _lstOwner, _payoutAmount, _delegateeGuardian
     );
     assertEq(address(_lst.STAKER()), address(staker));
     assertEq(address(_lst.STAKE_TOKEN()), address(staker.STAKE_TOKEN()));
     assertEq(address(_lst.REWARD_TOKEN()), address(staker.REWARD_TOKEN()));
     assertEq(_lst.defaultDelegatee(), _defaultDelegatee);
-    assertEq(GovernanceStaker.DepositIdentifier.unwrap(_lst.depositForDelegatee(_defaultDelegatee)), 2);
+    assertEq(Staker.DepositIdentifier.unwrap(_lst.depositForDelegatee(_defaultDelegatee)), 2);
     assertEq(_lst.payoutAmount(), _payoutAmount);
     assertEq(_lst.owner(), _lstOwner);
     assertEq(_lst.delegateeGuardian(), _delegateeGuardian);
@@ -483,25 +472,25 @@ contract Delegate is GovLstTest {
 
 contract DepositForDelegatee is GovLstTest {
   function test_ReturnsTheDefaultDepositIdForTheZeroAddress() public view {
-    GovernanceStaker.DepositIdentifier _depositId = lst.depositForDelegatee(address(0));
+    Staker.DepositIdentifier _depositId = lst.depositForDelegatee(address(0));
     assertEq(_depositId, lst.DEFAULT_DEPOSIT_ID());
   }
 
   function test_ReturnsTheDefaultDepositIdForTheDefaultDelegatee() public view {
-    GovernanceStaker.DepositIdentifier _depositId = lst.depositForDelegatee(defaultDelegatee);
+    Staker.DepositIdentifier _depositId = lst.depositForDelegatee(defaultDelegatee);
     assertEq(_depositId, lst.DEFAULT_DEPOSIT_ID());
   }
 
   function testFuzz_ReturnsZeroAddressForAnUninitializedDelegatee(address _delegatee) public view {
     _assumeSafeDelegatee(_delegatee);
-    GovernanceStaker.DepositIdentifier _depositId = lst.depositForDelegatee(_delegatee);
-    assertEq(_depositId, GovernanceStaker.DepositIdentifier.wrap(0));
+    Staker.DepositIdentifier _depositId = lst.depositForDelegatee(_delegatee);
+    assertEq(_depositId, Staker.DepositIdentifier.wrap(0));
   }
 
   function testFuzz_ReturnsTheStoredDepositIdForAnInitializedDelegatee(address _delegatee) public {
     _assumeSafeDelegatee(_delegatee);
-    GovernanceStaker.DepositIdentifier _initializedDepositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
-    GovernanceStaker.DepositIdentifier _depositId = lst.depositForDelegatee(_delegatee);
+    Staker.DepositIdentifier _initializedDepositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+    Staker.DepositIdentifier _depositId = lst.depositForDelegatee(_delegatee);
     assertEq(_depositId, _initializedDepositId);
   }
 }
@@ -509,25 +498,25 @@ contract DepositForDelegatee is GovLstTest {
 contract FetchOrInitializeDepositForDelegatee is GovLstTest {
   function testFuzz_CreatesANewDepositForAnUninitializedDelegatee(address _delegatee) public {
     _assumeSafeDelegatee(_delegatee);
-    GovernanceStaker.DepositIdentifier _depositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+    Staker.DepositIdentifier _depositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
     (,,, address _depositDelegatee,,,) = staker.deposits(_depositId);
     assertEq(_depositDelegatee, _delegatee);
   }
 
   function testFuzz_ReturnsTheExistingDepositIdForAPreviouslyInitializedDelegatee(address _delegatee) public {
     _assumeSafeDelegatee(_delegatee);
-    GovernanceStaker.DepositIdentifier _depositIdFirstCall = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
-    GovernanceStaker.DepositIdentifier _depositIdSecondCall = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+    Staker.DepositIdentifier _depositIdFirstCall = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+    Staker.DepositIdentifier _depositIdSecondCall = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
     assertEq(_depositIdFirstCall, _depositIdSecondCall);
   }
 
   function test_ReturnsTheDefaultDepositIdForTheZeroAddress() public {
-    GovernanceStaker.DepositIdentifier _depositId = lst.fetchOrInitializeDepositForDelegatee(address(0));
+    Staker.DepositIdentifier _depositId = lst.fetchOrInitializeDepositForDelegatee(address(0));
     assertEq(_depositId, lst.DEFAULT_DEPOSIT_ID());
   }
 
   function test_ReturnsTheDefaultDepositIdForTheDefaultDelegatee() public {
-    GovernanceStaker.DepositIdentifier _depositId = lst.fetchOrInitializeDepositForDelegatee(defaultDelegatee);
+    Staker.DepositIdentifier _depositId = lst.fetchOrInitializeDepositForDelegatee(defaultDelegatee);
     assertEq(_depositId, lst.DEFAULT_DEPOSIT_ID());
   }
 
@@ -538,12 +527,12 @@ contract FetchOrInitializeDepositForDelegatee is GovLstTest {
 
     vm.expectEmit();
     // We did the 0th deposit in setUp() and the 1st deposit for the default deposit, so the next should be the 2nd
-    emit GovLst.DepositInitialized(_delegatee1, GovernanceStaker.DepositIdentifier.wrap(2));
+    emit GovLst.DepositInitialized(_delegatee1, Staker.DepositIdentifier.wrap(2));
     lst.fetchOrInitializeDepositForDelegatee(_delegatee1);
 
     vm.expectEmit();
     // Initialize another deposit to make sure the identifier in the event increments to track the deposit identifier
-    emit GovLst.DepositInitialized(_delegatee2, GovernanceStaker.DepositIdentifier.wrap(3));
+    emit GovLst.DepositInitialized(_delegatee2, Staker.DepositIdentifier.wrap(3));
     lst.fetchOrInitializeDepositForDelegatee(_delegatee2);
   }
 }
@@ -556,8 +545,8 @@ contract UpdateDeposit is GovLstTest {
   ) public {
     _assumeSafeHolder(_holder);
     _assumeSafeDelegatees(_delegatee1, _delegatee2);
-    GovernanceStaker.DepositIdentifier _depositId1 = lst.fetchOrInitializeDepositForDelegatee(_delegatee1);
-    GovernanceStaker.DepositIdentifier _depositId2 = lst.fetchOrInitializeDepositForDelegatee(_delegatee2);
+    Staker.DepositIdentifier _depositId1 = lst.fetchOrInitializeDepositForDelegatee(_delegatee1);
+    Staker.DepositIdentifier _depositId2 = lst.fetchOrInitializeDepositForDelegatee(_delegatee2);
 
     _updateDeposit(_holder, _depositId1);
     assertEq(lst.delegateeForHolder(_holder), _delegatee1);
@@ -569,10 +558,10 @@ contract UpdateDeposit is GovLstTest {
   function testFuzz_EmitsDepositUpdatedEvent(address _holder, address _delegatee) public {
     _assumeSafeHolder(_holder);
     _assumeSafeDelegatee(_delegatee);
-    GovernanceStaker.DepositIdentifier _depositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+    Staker.DepositIdentifier _depositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
 
     vm.expectEmit();
-    emit GovLst.DepositUpdated(_holder, GovernanceStaker.DepositIdentifier.wrap(1), _depositId);
+    emit GovLst.DepositUpdated(_holder, Staker.DepositIdentifier.wrap(1), _depositId);
     _updateDeposit(_holder, _depositId);
   }
 
@@ -586,7 +575,7 @@ contract UpdateDeposit is GovLstTest {
     _assumeSafeDelegatee(_initialDelegatee);
     _assumeSafeDelegatee(_newDelegatee);
     _amount = _boundToReasonableStakeTokenAmount(_amount);
-    GovernanceStaker.DepositIdentifier _newDepositId = lst.fetchOrInitializeDepositForDelegatee(_newDelegatee);
+    Staker.DepositIdentifier _newDepositId = lst.fetchOrInitializeDepositForDelegatee(_newDelegatee);
 
     // The user is first staking to a particular delegate.
     _mintUpdateDelegateeAndStake(_holder, _amount, _initialDelegatee);
@@ -610,7 +599,7 @@ contract UpdateDeposit is GovLstTest {
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
     _mintUpdateDelegateeAndStake(_holder, _stakeAmount, _initialDelegatee);
     _rewardAmount = _boundToReasonableStakeTokenReward(_rewardAmount);
-    GovernanceStaker.DepositIdentifier _newDepositId = lst.fetchOrInitializeDepositForDelegatee(_newDelegatee);
+    Staker.DepositIdentifier _newDepositId = lst.fetchOrInitializeDepositForDelegatee(_newDelegatee);
     _distributeReward(_rewardAmount, lst.depositIdForHolder(_holder));
 
     // Interim assertions after setup phase:
@@ -641,7 +630,7 @@ contract UpdateDeposit is GovLstTest {
     _mintAndStake(_holder, _stakeAmount);
     _rewardAmount = _boundToReasonableStakeTokenReward(_rewardAmount);
     _distributeReward(_rewardAmount);
-    GovernanceStaker.DepositIdentifier _newDepositId = lst.fetchOrInitializeDepositForDelegatee(_newDelegatee);
+    Staker.DepositIdentifier _newDepositId = lst.fetchOrInitializeDepositForDelegatee(_newDelegatee);
 
     // Interim assertions after setup phase:
     // The amount staked by the user plus the rewards all go to the default delegatee
@@ -670,7 +659,7 @@ contract UpdateDeposit is GovLstTest {
     _rewardAmount = _boundToReasonableStakeTokenReward(_rewardAmount);
     _distributeReward(_rewardAmount, lst.depositIdForHolder(_holder));
     // Returns the default deposit ID.
-    GovernanceStaker.DepositIdentifier _newDepositId = lst.depositForDelegatee(address(0));
+    Staker.DepositIdentifier _newDepositId = lst.depositForDelegatee(address(0));
 
     // Interim assertions after setup phase:
     // The amount staked by the user goes to their designated delegatee
@@ -698,7 +687,7 @@ contract UpdateDeposit is GovLstTest {
     _assumeSafeDelegatees(_delegatee1, _delegatee2);
     _stakeAmount1 = _boundToReasonableStakeTokenAmount(_stakeAmount1);
     _stakeAmount2 = _boundToReasonableStakeTokenAmount(_stakeAmount2);
-    GovernanceStaker.DepositIdentifier _depositId2 = lst.fetchOrInitializeDepositForDelegatee(_delegatee2);
+    Staker.DepositIdentifier _depositId2 = lst.fetchOrInitializeDepositForDelegatee(_delegatee2);
 
     // Two holders stake to the same delegatee
     _mintUpdateDelegateeAndStake(_holder1, _stakeAmount1, _delegatee1);
@@ -725,7 +714,7 @@ contract UpdateDeposit is GovLstTest {
     _stakeAmount1 = _boundToReasonableStakeTokenAmount(_stakeAmount1);
     _stakeAmount2 = _boundToReasonableStakeTokenAmount(_stakeAmount2);
     _rewardAmount = _boundToReasonableStakeTokenReward(_rewardAmount);
-    GovernanceStaker.DepositIdentifier _depositId2 = lst.fetchOrInitializeDepositForDelegatee(_delegatee2);
+    Staker.DepositIdentifier _depositId2 = lst.fetchOrInitializeDepositForDelegatee(_delegatee2);
 
     // Two users stake to the same delegatee
     _mintUpdateDelegateeAndStake(_holder1, _stakeAmount1, _delegatee1);
@@ -750,12 +739,8 @@ contract UpdateDeposit is GovLstTest {
   function testFuzz_RevertIf_TheDepositIdProvidedDoesNotBelongToTheLstContract(address _holder) public {
     _assumeSafeHolder(_holder);
 
-    vm.expectRevert(
-      abi.encodeWithSelector(
-        GovernanceStaker.GovernanceStaker__Unauthorized.selector, bytes32("not owner"), address(lst)
-      )
-    );
-    _updateDeposit(_holder, GovernanceStaker.DepositIdentifier.wrap(0));
+    vm.expectRevert(abi.encodeWithSelector(Staker.Staker__Unauthorized.selector, bytes32("not owner"), address(lst)));
+    _updateDeposit(_holder, Staker.DepositIdentifier.wrap(0));
   }
 }
 
@@ -765,7 +750,7 @@ contract SubsidizeDeposit is GovLstTest {
     _assumeSafeDelegatee(_delegatee);
     _amount = _boundToReasonableStakeTokenAmount(_amount);
 
-    GovernanceStaker.DepositIdentifier _depositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+    Staker.DepositIdentifier _depositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
 
     _mintStakeToken(_subsidizer, _amount);
 
@@ -795,7 +780,7 @@ contract SubsidizeDeposit is GovLstTest {
     _assumeSafeDelegatee(_delegatee);
     _amount = _boundToReasonableStakeTokenAmount(_amount);
 
-    GovernanceStaker.DepositIdentifier _depositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+    Staker.DepositIdentifier _depositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
 
     vm.startPrank(_subsidizer);
     stakeToken.approve(address(lst), _amount);
@@ -812,11 +797,11 @@ contract SubsidizeDeposit is GovLstTest {
   function testFuzz_RevertIf_StakeMoreToNonOwnedDeposit(
     address _subsidizer,
     uint256 _amount,
-    GovernanceStaker.DepositIdentifier _depositId
+    Staker.DepositIdentifier _depositId
   ) public {
     _assumeSafeHolder(_subsidizer);
     _amount = _boundToReasonableStakeTokenAmount(_amount);
-    vm.assume(GovernanceStaker.DepositIdentifier.unwrap(_depositId) != 0);
+    vm.assume(Staker.DepositIdentifier.unwrap(_depositId) != 0);
 
     // Ensure the deposit is not owned by the LST
     (, address _owner,,,,,) = staker.deposits(_depositId);
@@ -834,12 +819,8 @@ contract SubsidizeDeposit is GovLstTest {
       abi.encode(true)
     );
 
-    // Expect revert from GoveranceStaker when trying to stakeMore to a non-owned deposit
-    vm.expectRevert(
-      abi.encodeWithSelector(
-        GovernanceStaker.GovernanceStaker__Unauthorized.selector, bytes32("not owner"), address(lst)
-      )
-    );
+    // Expect revert from Staker when trying to stakeMore to a non-owned deposit
+    vm.expectRevert(abi.encodeWithSelector(Staker.Staker__Unauthorized.selector, bytes32("not owner"), address(lst)));
     lst.subsidizeDeposit(_depositId, _amount);
     vm.stopPrank();
   }
@@ -865,7 +846,7 @@ contract EnactOverride is GovLstTest {
     _setMinQualifyingEarningPowerBips(_minQualifyingEarningPowerBips);
 
     // Set deposit earning power below threshold
-    GovernanceStaker.DepositIdentifier _depositId = lst.depositForDelegatee(_delegatee);
+    Staker.DepositIdentifier _depositId = lst.depositForDelegatee(_delegatee);
     (uint96 _depositBalance,,,,,,) = staker.deposits(_depositId);
     _earningPower = bound(_earningPower, 0, (_minQualifyingEarningPowerBips * _depositBalance) / 1e4);
     earningPowerCalculator.__setEarningPowerForDelegatee(_delegatee, _earningPower);
@@ -900,7 +881,7 @@ contract EnactOverride is GovLstTest {
     _mintUpdateDelegateeAndStake(_holder, _amount, _delegatee);
 
     // Set deposit earning power below threshold
-    GovernanceStaker.DepositIdentifier _depositId = lst.depositForDelegatee(_delegatee);
+    Staker.DepositIdentifier _depositId = lst.depositForDelegatee(_delegatee);
     (uint96 _depositBalance,,,,,,) = staker.deposits(_depositId);
     _earningPower = bound(_earningPower, 0, (_minQualifyingEarningPowerBips * _depositBalance) / 1e4);
     earningPowerCalculator.__setEarningPowerForDelegatee(_delegatee, _earningPower);
@@ -937,7 +918,7 @@ contract EnactOverride is GovLstTest {
     _mintUpdateDelegateeAndStake(_holder, _amount, _delegatee);
 
     // Set deposit earning power below threshold
-    GovernanceStaker.DepositIdentifier _depositId = lst.depositForDelegatee(_delegatee);
+    Staker.DepositIdentifier _depositId = lst.depositForDelegatee(_delegatee);
     (uint96 _depositBalance,,,,,,) = staker.deposits(_depositId);
     _earningPower = bound(_earningPower, 0, (_minQualifyingEarningPowerBips * _depositBalance) / 1e4);
     earningPowerCalculator.__setEarningPowerForDelegatee(_delegatee, _earningPower);
@@ -964,7 +945,7 @@ contract EnactOverride is GovLstTest {
     _tipAmount = uint160(bound(_tipAmount, 0, maxTip));
     _setMaxOverrideTip();
 
-    GovernanceStaker.DepositIdentifier _depositId = lst.depositForDelegatee(lst.defaultDelegatee());
+    Staker.DepositIdentifier _depositId = lst.depositForDelegatee(lst.defaultDelegatee());
 
     vm.expectRevert(GovLst.GovLst__InvalidOverride.selector);
     lst.enactOverride(_depositId, _tipReceiver, _tipAmount);
@@ -976,7 +957,7 @@ contract EnactOverride is GovLstTest {
     _tipAmount = uint160(bound(_tipAmount, 0, maxTip));
     _setMaxOverrideTip();
 
-    GovernanceStaker.DepositIdentifier _depositId = lst.depositForDelegatee(_holder);
+    Staker.DepositIdentifier _depositId = lst.depositForDelegatee(_holder);
 
     vm.expectRevert(GovLst.GovLst__InvalidOverride.selector);
     lst.enactOverride(_depositId, _tipReceiver, _tipAmount);
@@ -1001,7 +982,7 @@ contract EnactOverride is GovLstTest {
     _setMinQualifyingEarningPowerBips(_minQualifyingEarningPowerBips);
 
     // Make sure earning power is below threshold for first override
-    GovernanceStaker.DepositIdentifier _depositId = lst.depositForDelegatee(_delegatee);
+    Staker.DepositIdentifier _depositId = lst.depositForDelegatee(_delegatee);
     (uint96 _depositBalance,,,,,,) = staker.deposits(_depositId);
     _earningPower = bound(_earningPower, 0, (_minQualifyingEarningPowerBips * _depositBalance) / 1e4);
     earningPowerCalculator.__setEarningPowerForDelegatee(_delegatee, _earningPower);
@@ -1030,7 +1011,7 @@ contract EnactOverride is GovLstTest {
     _mintUpdateDelegateeAndStake(_holder, _amount, _holder);
     _setMaxOverrideTip();
 
-    GovernanceStaker.DepositIdentifier _depositId = lst.depositForDelegatee(_holder);
+    Staker.DepositIdentifier _depositId = lst.depositForDelegatee(_holder);
 
     vm.expectRevert(GovLst.GovLst__GreaterThanMaxTip.selector);
     lst.enactOverride(_depositId, _tipReceiver, _tipAmount);
@@ -1055,7 +1036,7 @@ contract EnactOverride is GovLstTest {
     _setMinQualifyingEarningPowerBips(_minQualifyingEarningPowerBips);
 
     // Make sure earning power is above threshold
-    GovernanceStaker.DepositIdentifier _depositId = lst.depositForDelegatee(_delegatee);
+    Staker.DepositIdentifier _depositId = lst.depositForDelegatee(_delegatee);
     (uint96 _depositBalance,,,,,,) = staker.deposits(_depositId);
     _earningPower =
       bound(_earningPower, ((_minQualifyingEarningPowerBips * _depositBalance) / 1e4) + 1, type(uint96).max);
@@ -1091,13 +1072,13 @@ contract UpdateDepositOnBehalf is GovLstTest {
     _assumeSafeDelegatee(_delegatee);
     _assumeFutureExpiry(_expiry);
 
-    GovernanceStaker.DepositIdentifier _newDepositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+    Staker.DepositIdentifier _newDepositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
     uint256 _nonce = lst.nonces(_staker);
 
     bytes memory signature = _signMessage(
       lst.UPDATE_DEPOSIT_TYPEHASH(),
       _staker,
-      GovernanceStaker.DepositIdentifier.unwrap(_newDepositId),
+      Staker.DepositIdentifier.unwrap(_newDepositId),
       _nonce,
       _expiry,
       _stakerPrivateKey
@@ -1123,20 +1104,20 @@ contract UpdateDepositOnBehalf is GovLstTest {
     _assumeSafeDelegatee(_delegatee);
     _assumeFutureExpiry(_expiry);
 
-    GovernanceStaker.DepositIdentifier _newDepositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+    Staker.DepositIdentifier _newDepositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
     uint256 _nonce = lst.nonces(_staker);
 
     bytes memory signature = _signMessage(
       lst.UPDATE_DEPOSIT_TYPEHASH(),
       _staker,
-      GovernanceStaker.DepositIdentifier.unwrap(_newDepositId),
+      Staker.DepositIdentifier.unwrap(_newDepositId),
       _nonce,
       _expiry,
       _stakerPrivateKey
     );
 
     vm.expectEmit();
-    emit GovLst.DepositUpdated(_staker, GovernanceStaker.DepositIdentifier.wrap(1), _newDepositId);
+    emit GovLst.DepositUpdated(_staker, Staker.DepositIdentifier.wrap(1), _newDepositId);
 
     vm.prank(_sender);
     lst.updateDepositOnBehalf(_staker, _newDepositId, _nonce, _expiry, signature);
@@ -1156,7 +1137,7 @@ contract UpdateDepositOnBehalf is GovLstTest {
     _assumeSafeDelegatee(_delegatee);
     _assumeFutureExpiry(_expiry);
 
-    GovernanceStaker.DepositIdentifier _newDepositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+    Staker.DepositIdentifier _newDepositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
     uint256 _nonce = lst.nonces(_staker);
 
     bytes memory _invalidSignature = new bytes(65);
@@ -1182,13 +1163,13 @@ contract UpdateDepositOnBehalf is GovLstTest {
     // Set expiry to a past timestamp
     _expiry = bound(_expiry, 0, block.timestamp - 1);
 
-    GovernanceStaker.DepositIdentifier _newDepositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+    Staker.DepositIdentifier _newDepositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
     uint256 _nonce = lst.nonces(_staker);
 
     bytes memory signature = _signMessage(
       lst.UPDATE_DEPOSIT_TYPEHASH(),
       _staker,
-      GovernanceStaker.DepositIdentifier.unwrap(_newDepositId),
+      Staker.DepositIdentifier.unwrap(_newDepositId),
       _nonce,
       _expiry,
       _stakerPrivateKey
@@ -1213,13 +1194,13 @@ contract UpdateDepositOnBehalf is GovLstTest {
     _assumeSafeDelegatee(_delegatee);
     _assumeFutureExpiry(_expiry);
 
-    GovernanceStaker.DepositIdentifier _newDepositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+    Staker.DepositIdentifier _newDepositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
     uint256 _nonce = lst.nonces(_staker);
 
     bytes memory signature = _signMessage(
       lst.UPDATE_DEPOSIT_TYPEHASH(),
       _staker,
-      GovernanceStaker.DepositIdentifier.unwrap(_newDepositId),
+      Staker.DepositIdentifier.unwrap(_newDepositId),
       _nonce,
       _expiry,
       _stakerPrivateKey
@@ -1246,7 +1227,7 @@ contract Stake is GovLstTest {
 
     _updateDelegateeAndStake(_holder, _amount, _delegatee);
 
-    assertTrue(GovernanceStaker.DepositIdentifier.unwrap(lst.depositForDelegatee(_delegatee)) != 0);
+    assertTrue(Staker.DepositIdentifier.unwrap(lst.depositForDelegatee(_delegatee)) != 0);
   }
 
   function testFuzz_AddsEachStakedAmountToTheTotalSupply(
@@ -2399,7 +2380,7 @@ contract BalanceOf is GovLstTest {
     _mintUpdateDelegateeAndStake(_holder1, _stakeAmount1, _delegatee1);
     _mintUpdateDelegateeAndStake(_holder2, _stakeAmount2, _delegatee2);
     // A reward is distributed
-    GovernanceStaker.DepositIdentifier _depositId2 = lst.depositIdForHolder(_holder2);
+    Staker.DepositIdentifier _depositId2 = lst.depositIdForHolder(_holder2);
     _distributeReward(_rewardAmount, _depositId2, 40);
 
     // Because the first user staked 40% of the test token, they should have earned 40% of rewards
@@ -2473,7 +2454,7 @@ contract BalanceOf is GovLstTest {
     _mintUpdateDelegateeAndStake(_holder2, _stakeAmount2, _delegatee2);
 
     // The second user stakes
-    GovernanceStaker.DepositIdentifier _depositId2 = lst.depositIdForHolder(_holder2);
+    Staker.DepositIdentifier _depositId2 = lst.depositIdForHolder(_holder2);
     _distributeReward(_rewardAmount2, _depositId2, 66);
 
     // The first holder received all of the first reward and ~33% of the second reward
@@ -2933,7 +2914,7 @@ contract Transfer is GovLstTest {
     _mintUpdateDelegateeAndStake(_sender, _stakeAmount1, _senderDelegatee);
     _mintUpdateDelegateeAndStake(_receiver, _stakeAmount2, _receiverDelegatee);
     // A reward is distributed
-    GovernanceStaker.DepositIdentifier _depositId2 = lst.depositIdForHolder(_sender);
+    Staker.DepositIdentifier _depositId2 = lst.depositIdForHolder(_sender);
     _distributeReward(_rewardAmount, _depositId2, 39);
 
     // The send amount must be less than the sender's balance after the reward distribution
@@ -2985,7 +2966,7 @@ contract Transfer is GovLstTest {
     _mintUpdateDelegateeAndStake(_sender, _stakeAmount1, _senderDelegatee);
     _mintUpdateDelegateeAndStake(_receiver, _stakeAmount2, _receiverDelegatee);
     // A reward is distributed
-    GovernanceStaker.DepositIdentifier _depositId2 = lst.depositIdForHolder(_sender);
+    Staker.DepositIdentifier _depositId2 = lst.depositIdForHolder(_sender);
     _distributeReward(_rewardAmount, _depositId2, 39);
 
     // The send amount must be less than the sender's balance after the reward distribution
@@ -3030,7 +3011,7 @@ contract Transfer is GovLstTest {
     _mintUpdateDelegateeAndStake(_sender1, _stakeAmount1, _sender1Delegatee);
     _mintUpdateDelegateeAndStake(_sender2, _stakeAmount2, _sender2Delegatee);
     // A reward is distributed
-    GovernanceStaker.DepositIdentifier _depositId2 = lst.depositIdForHolder(address(_sender2));
+    Staker.DepositIdentifier _depositId2 = lst.depositIdForHolder(address(_sender2));
     _distributeReward(_rewardAmount, _depositId2, _stake2PercentOfTotalStake);
 
     // Remember the the sender balances after they receive their reward
@@ -3502,7 +3483,7 @@ contract ClaimAndDistributeReward is GovLstTest {
     _mintStakeToken(_claimer, _payoutAmount);
     vm.startPrank(_claimer);
     stakeToken.approve(address(lst), _payoutAmount);
-    GovernanceStaker.DepositIdentifier _depositId = lst.depositIdForHolder(_claimer);
+    Staker.DepositIdentifier _depositId = lst.depositIdForHolder(_claimer);
     vm.expectRevert(GovLst.GovLst__InsufficientRewards.selector);
     lst.claimAndDistributeReward(_recipient, _minExpectedReward, _depositId);
     vm.stopPrank();
@@ -4153,7 +4134,7 @@ contract UpdateFixedDeposit is GovLstTest {
   function testFuzz_RevertIf_CallerIsNotTheFixedLstContract(
     address _caller,
     address _account,
-    GovernanceStaker.DepositIdentifier _newDepositId
+    Staker.DepositIdentifier _newDepositId
   ) public {
     vm.assume(_caller != address(lst.FIXED_LST()));
     vm.expectRevert(GovLst.GovLst__Unauthorized.selector);

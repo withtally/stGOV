@@ -1,20 +1,20 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {IERC20Metadata} from "@openzeppelin/contracts/interfaces/IERC20Metadata.sol";
-import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
-import {GovernanceStaker} from "@staker/src/GovernanceStaker.sol";
-import {IWETH9} from "src/interfaces/IWETH9.sol";
-import {WithdrawGate} from "src/WithdrawGate.sol";
-import {FixedGovLst} from "src/FixedGovLst.sol";
-import {FixedLstAddressAlias} from "src/FixedLstAddressAlias.sol";
+import {IERC20} from "openzeppelin/token/ERC20/IERC20.sol";
+import {IERC20Metadata} from "openzeppelin/interfaces/IERC20Metadata.sol";
+import {IERC20Permit} from "openzeppelin/token/ERC20/extensions/IERC20Permit.sol";
 import {Ownable} from "openzeppelin/access/Ownable.sol";
 import {EIP712} from "openzeppelin/utils/cryptography/EIP712.sol";
 import {SignatureChecker} from "openzeppelin/utils/cryptography/SignatureChecker.sol";
 import {Nonces} from "openzeppelin/utils/Nonces.sol";
 import {Multicall} from "openzeppelin/utils/Multicall.sol";
 import {SafeCast} from "openzeppelin/utils/math/SafeCast.sol";
+import {Staker} from "staker/Staker.sol";
+import {IWETH9} from "src/interfaces/IWETH9.sol";
+import {WithdrawGate} from "src/WithdrawGate.sol";
+import {FixedGovLst} from "src/FixedGovLst.sol";
+import {FixedLstAddressAlias} from "src/FixedLstAddressAlias.sol";
 
 /// @title GovLst
 /// @author [ScopeLift](https://scopelift.co)
@@ -57,13 +57,11 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   );
 
   /// @notice Emitted when a stake deposit is initialized for a new delegatee.
-  event DepositInitialized(address indexed delegatee, GovernanceStaker.DepositIdentifier depositId);
+  event DepositInitialized(address indexed delegatee, Staker.DepositIdentifier depositId);
 
   /// @notice Emitted when a user updates their stake deposit, moving their staked tokens accordingly.
   event DepositUpdated(
-    address indexed holder,
-    GovernanceStaker.DepositIdentifier oldDepositId,
-    GovernanceStaker.DepositIdentifier newDepositId
+    address indexed holder, Staker.DepositIdentifier oldDepositId, Staker.DepositIdentifier newDepositId
   );
 
   /// @notice Emitted when a user stakes tokens in exchange for liquid staked tokens.
@@ -73,7 +71,7 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   event Unstaked(address indexed account, uint256 amount);
 
   /// @notice Emitted when a deposit delegatee is overridden to the default delegatee.
-  event OverrideEnacted(GovernanceStaker.DepositIdentifier depositId, address tipReceiver, uint160 tipShares);
+  event OverrideEnacted(Staker.DepositIdentifier depositId, address tipReceiver, uint160 tipShares);
 
   ///@notice Emitted when a reward is distributed by an MEV searcher who claims the LST's stake rewards in exchange
   /// for providing the payout amount of the stake token to the LST.
@@ -99,12 +97,10 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   }
 
   /// @notice Emitted when a user stakes and attributes their staking action to a referrer address.
-  event StakedWithAttribution(
-    GovernanceStaker.DepositIdentifier _depositId, uint256 _amount, address indexed _referrer
-  );
+  event StakedWithAttribution(Staker.DepositIdentifier _depositId, uint256 _amount, address indexed _referrer);
 
   /// @notice Emitted when someone irrevocably adds stake tokens to a deposit without receiving liquid tokens.
-  event DepositSubsidized(GovernanceStaker.DepositIdentifier indexed depositId, uint256 amount);
+  event DepositSubsidized(Staker.DepositIdentifier indexed depositId, uint256 amount);
 
   /// @notice Thrown when an operation to change the default delegatee or its guardian is attempted by an account that
   /// does not have permission to alter it.
@@ -144,7 +140,7 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   error GovLst__EarningPowerNotQualified(uint256 earningPower, uint256 thresholdEarningPower);
 
   /// @notice The Staker instance in which staked tokens will be deposited to earn rewards.
-  GovernanceStaker public immutable STAKER;
+  Staker public immutable STAKER;
 
   /// @notice The governance token used by the staking system.
   IERC20 public immutable STAKE_TOKEN;
@@ -164,7 +160,7 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   FixedGovLst public immutable FIXED_LST;
 
   /// @notice The deposit identifier of the default deposit.
-  GovernanceStaker.DepositIdentifier public immutable DEFAULT_DEPOSIT_ID;
+  Staker.DepositIdentifier public immutable DEFAULT_DEPOSIT_ID;
 
   /// @notice Scale factor applied to the stake token before converting it to shares, which are tracked internally and
   /// used to
@@ -255,7 +251,7 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// @notice Mapping of delegatee address to the delegate's GovLST-created Staker deposit identifier. The
   /// delegatee for a given deposit can not change. All LST holders who choose the same delegatee will have their
   /// tokens staked in the corresponding deposit. Each delegatee can only have a single deposit.
-  mapping(address delegatee => GovernanceStaker.DepositIdentifier depositId) internal storedDepositIdForDelegatee;
+  mapping(address delegatee => Staker.DepositIdentifier depositId) internal storedDepositIdForDelegatee;
 
   /// @notice Mapping of holder addresses to the data pertaining to their holdings.
   mapping(address holder => HolderState state) private holderStates;
@@ -265,7 +261,7 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   mapping(address holder => mapping(address spender => uint256 amount)) public allowance;
 
   /// @notice A mapping used to determine if a deposit's delegatee has been overridden to the default delegatee.
-  mapping(GovernanceStaker.DepositIdentifier depositId => bool isOverridden) public isOverridden;
+  mapping(Staker.DepositIdentifier depositId => bool isOverridden) public isOverridden;
 
   /// @param _name The name for the liquid stake token.
   /// @param _symbol The symbol for the liquid stake token.
@@ -277,7 +273,7 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   constructor(
     string memory _name,
     string memory _symbol,
-    GovernanceStaker _staker,
+    Staker _staker,
     address _initialDefaultDelegatee,
     address _initialOwner,
     uint80 _initialPayoutAmount,
@@ -391,7 +387,7 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// @notice The stake deposit identifier associated with a given delegatee address.
   /// @param _delegatee The delegatee in question.
   /// @return The deposit identifier of the deposit in question.
-  function depositForDelegatee(address _delegatee) public view returns (GovernanceStaker.DepositIdentifier) {
+  function depositForDelegatee(address _delegatee) public view returns (Staker.DepositIdentifier) {
     if (_delegatee == defaultDelegatee || _delegatee == address(0)) {
       return DEFAULT_DEPOSIT_ID;
     } else {
@@ -401,7 +397,7 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
 
   /// @notice Returns the stake deposit identifier a given LST holder address is currently assigned to. If the
   /// address has not set a deposit identifier, it returns the default deposit.
-  function depositIdForHolder(address _holder) external view returns (GovernanceStaker.DepositIdentifier) {
+  function depositIdForHolder(address _holder) external view returns (Staker.DepositIdentifier) {
     HolderState memory _holderState = holderStates[_holder];
     return _calcDepositId(_holderState);
   }
@@ -439,10 +435,10 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// previously initialized.
   /// @param _delegatee The address of the delegatee.
   /// @return The deposit identifier of the existing, or newly created, stake deposit for this delegatee.
-  function fetchOrInitializeDepositForDelegatee(address _delegatee) public returns (GovernanceStaker.DepositIdentifier) {
-    GovernanceStaker.DepositIdentifier _depositId = depositForDelegatee(_delegatee);
+  function fetchOrInitializeDepositForDelegatee(address _delegatee) public returns (Staker.DepositIdentifier) {
+    Staker.DepositIdentifier _depositId = depositForDelegatee(_delegatee);
 
-    if (GovernanceStaker.DepositIdentifier.unwrap(_depositId) != 0) {
+    if (Staker.DepositIdentifier.unwrap(_depositId) != 0) {
       return _depositId;
     }
 
@@ -461,8 +457,8 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// calling this method again, even with their existing deposit identifier.
   /// @param _newDepositId The stake deposit identifier to which this holder's staked tokens will be moved to and
   /// kept in henceforth.
-  function updateDeposit(GovernanceStaker.DepositIdentifier _newDepositId) public {
-    GovernanceStaker.DepositIdentifier _oldDepositId = _updateDeposit(msg.sender, _newDepositId);
+  function updateDeposit(Staker.DepositIdentifier _newDepositId) public {
+    Staker.DepositIdentifier _oldDepositId = _updateDeposit(msg.sender, _newDepositId);
     _emitDepositUpdatedEvent(msg.sender, _oldDepositId, _newDepositId);
   }
 
@@ -477,18 +473,13 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// @return _oldDepositId The stake deposit identifier which was previously assigned to this holder's staked.
   function updateDepositOnBehalf(
     address _account,
-    GovernanceStaker.DepositIdentifier _newDepositId,
+    Staker.DepositIdentifier _newDepositId,
     uint256 _nonce,
     uint256 _deadline,
     bytes memory _signature
-  ) external returns (GovernanceStaker.DepositIdentifier _oldDepositId) {
+  ) external returns (Staker.DepositIdentifier _oldDepositId) {
     _validateSignature(
-      _account,
-      GovernanceStaker.DepositIdentifier.unwrap(_newDepositId),
-      _nonce,
-      _deadline,
-      _signature,
-      UPDATE_DEPOSIT_TYPEHASH
+      _account, Staker.DepositIdentifier.unwrap(_newDepositId), _nonce, _deadline, _signature, UPDATE_DEPOSIT_TYPEHASH
     );
     _oldDepositId = _updateDeposit(_account, _newDepositId);
     _emitDepositUpdatedEvent(_account, _oldDepositId, _newDepositId);
@@ -514,7 +505,7 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// @param _referrer The address the holder is declaring has referred them to the LST. It will be emitted in an
   /// attribution event, but not otherwise used.
   function stakeWithAttribution(uint256 _amount, address _referrer) external returns (uint256) {
-    GovernanceStaker.DepositIdentifier _depositId = _calcDepositId(holderStates[msg.sender]);
+    Staker.DepositIdentifier _depositId = _calcDepositId(holderStates[msg.sender]);
     emit StakedWithAttribution(_depositId, _amount, _referrer);
     // UNI reverts on failure so it's not necessary to check return value.
     STAKE_TOKEN.transferFrom(msg.sender, address(this), _amount);
@@ -734,11 +725,9 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// the caller will accept in exchange for providing the payout amount of stake token. If the amount claimed is less
   /// than this, the transaction will revert. This parameter is a last line of defense against the MEV caller losing
   /// funds because they've been frontrun by another searcher.
-  function claimAndDistributeReward(
-    address _recipient,
-    uint256 _minExpectedReward,
-    GovernanceStaker.DepositIdentifier _depositId
-  ) external {
+  function claimAndDistributeReward(address _recipient, uint256 _minExpectedReward, Staker.DepositIdentifier _depositId)
+    external
+  {
     RewardParameters memory _rewardParams = rewardParams;
 
     uint256 _feeAmount = _calcFeeAmount(_rewardParams);
@@ -787,7 +776,7 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// @notice Allow a depositor to change the address they are delegating their staked tokens.
   /// @param _delegatee The address where voting is delegated.
   /// @return _depositId The deposit identifier for the delegatee.
-  function delegate(address _delegatee) public virtual returns (GovernanceStaker.DepositIdentifier _depositId) {
+  function delegate(address _delegatee) public virtual returns (Staker.DepositIdentifier _depositId) {
     _depositId = fetchOrInitializeDepositForDelegatee(_delegatee);
     updateDeposit(_depositId);
   }
@@ -802,7 +791,7 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// @param _amount The quantity of stake tokens that will be sent to the deposit.
   /// @dev Caller must approve the LST contract for at least the `_amount` on the stake token before calling this
   /// method.
-  function subsidizeDeposit(GovernanceStaker.DepositIdentifier _depositId, uint256 _amount) external {
+  function subsidizeDeposit(Staker.DepositIdentifier _depositId, uint256 _amount) external {
     STAKE_TOKEN.transferFrom(msg.sender, address(this), _amount);
 
     // This will revert if the deposit is not owned by this contract
@@ -817,12 +806,10 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// @param _depositId The id of the deposit to override the delegatee.
   /// @param _tipReceiver The address that receives the reward for carrying out the override action.
   /// @param _requestedTip The amount to reward the tip receiver for carrying out the override action.
-  function enactOverride(GovernanceStaker.DepositIdentifier _depositId, address _tipReceiver, uint160 _requestedTip)
-    external
-  {
+  function enactOverride(Staker.DepositIdentifier _depositId, address _tipReceiver, uint160 _requestedTip) external {
     _revertIfGreaterThanMaxTip(_requestedTip);
     (uint96 _balance,, uint96 _earningPower,,,,) = STAKER.deposits(_depositId);
-    GovernanceStaker.DepositIdentifier _defaultDepositId = depositForDelegatee(defaultDelegatee);
+    Staker.DepositIdentifier _defaultDepositId = depositForDelegatee(defaultDelegatee);
 
     if (_isSameDepositId(_depositId, _defaultDepositId) || isOverridden[_depositId] || _balance == 0) {
       revert GovLst__InvalidOverride();
@@ -897,9 +884,9 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// moved to and kept in henceforth.
   /// @return _oldDepositId The stake deposit identifier from which this holder's fixed LST staked tokens were
   /// moved.
-  function updateFixedDeposit(address _account, GovernanceStaker.DepositIdentifier _newDepositId)
+  function updateFixedDeposit(address _account, Staker.DepositIdentifier _newDepositId)
     external
-    returns (GovernanceStaker.DepositIdentifier _oldDepositId)
+    returns (Staker.DepositIdentifier _oldDepositId)
   {
     _revertIfNotFixedLst();
     _oldDepositId = _updateDeposit(_account.fixedAlias(), _newDepositId);
@@ -1061,11 +1048,11 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
 
   /// @notice Internal helper method that takes the metadata representing an LST holder and returns the staker
   /// deposit identifier that holder has assigned his voting weight to.
-  function _calcDepositId(HolderState memory _holder) internal view returns (GovernanceStaker.DepositIdentifier) {
+  function _calcDepositId(HolderState memory _holder) internal view returns (Staker.DepositIdentifier) {
     if (_holder.depositId == 0) {
       return DEFAULT_DEPOSIT_ID;
     } else {
-      return GovernanceStaker.DepositIdentifier.wrap(_holder.depositId);
+      return Staker.DepositIdentifier.wrap(_holder.depositId);
     }
   }
 
@@ -1080,9 +1067,9 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// @notice Internal convenience method which performs deposit update operations.
   /// @dev This method must only be called after proper authorization has been completed.
   /// @dev See public updateDeposit methods for additional documentation.
-  function _updateDeposit(address _account, GovernanceStaker.DepositIdentifier _newDepositId)
+  function _updateDeposit(address _account, Staker.DepositIdentifier _newDepositId)
     internal
-    returns (GovernanceStaker.DepositIdentifier _oldDepositId)
+    returns (Staker.DepositIdentifier _oldDepositId)
   {
     // Read required state from storage once.
     Totals memory _totals = totals;
@@ -1141,8 +1128,8 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// @notice Internal helper method that emits a DepositUpdated event with the parameters provided.
   function _emitDepositUpdatedEvent(
     address _account,
-    GovernanceStaker.DepositIdentifier _oldDepositId,
-    GovernanceStaker.DepositIdentifier _newDepositId
+    Staker.DepositIdentifier _oldDepositId,
+    Staker.DepositIdentifier _newDepositId
   ) internal {
     emit DepositUpdated(_account, _oldDepositId, _newDepositId);
   }
@@ -1504,19 +1491,19 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// @param _depositIdA The first deposit identifier.
   /// @param _depositIdB The second deposit identifier.
   /// @return True if the deposit identifiers are equal, false if they are different.
-  function _isSameDepositId(
-    GovernanceStaker.DepositIdentifier _depositIdA,
-    GovernanceStaker.DepositIdentifier _depositIdB
-  ) internal pure returns (bool) {
-    return
-      GovernanceStaker.DepositIdentifier.unwrap(_depositIdA) == GovernanceStaker.DepositIdentifier.unwrap(_depositIdB);
+  function _isSameDepositId(Staker.DepositIdentifier _depositIdA, Staker.DepositIdentifier _depositIdB)
+    internal
+    pure
+    returns (bool)
+  {
+    return Staker.DepositIdentifier.unwrap(_depositIdA) == Staker.DepositIdentifier.unwrap(_depositIdB);
   }
 
   /// @notice Internal helper function to convert a Staker DepositIdentifier to a uint32
   /// @param _depositId The DepositIdentifier to convert
   /// @return The uint32 representation of the DepositIdentifier
-  function _depositIdToUInt32(GovernanceStaker.DepositIdentifier _depositId) private pure returns (uint32) {
-    return SafeCast.toUint32(GovernanceStaker.DepositIdentifier.unwrap(_depositId));
+  function _depositIdToUInt32(Staker.DepositIdentifier _depositId) private pure returns (uint32) {
+    return SafeCast.toUint32(Staker.DepositIdentifier.unwrap(_depositId));
   }
 
   /// @notice Internal helper that returns the lesser of the two parameters passed.
