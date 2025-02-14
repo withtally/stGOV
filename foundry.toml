@@ -6,7 +6,7 @@
   ]
   ignored_warnings_from = ["src/interfaces/IWETH9.sol"]
   optimizer = true
-  optimizer_runs = 31_000
+  optimizer_runs = 200
   remappings = [
     "lib/staker:src=lib/staker/src/",
     "@staker/=lib/staker/",

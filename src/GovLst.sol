@@ -48,6 +48,14 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// @notice Emitted when the delegatee guardian is updated by the owner or guardian itself.
   event DelegateeGuardianSet(address oldDelegatee, address newDelegatee);
 
+  /// @notice Emitted when the max override tip is set.
+  event MaxOverrideTipSet(uint256 _oldMaxOverrideTip, uint256 _newMaxOverrideTip);
+
+  /// @notice Emitted when the minimum qualifying earning power bips is set.
+  event MinQualifyingEarningPowerBipsSet(
+    uint256 _oldMinQualifyingEarningPowerBips, uint256 _newMinQualifyingEarningPowerBips
+  );
+
   /// @notice Emitted when a stake deposit is initialized for a new delegatee.
   event DepositInitialized(address indexed delegatee, GovernanceStaker.DepositIdentifier depositId);
 
@@ -63,6 +71,9 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
 
   /// @notice Emitted when a user exchanges their liquid staked tokens for the underlying staked token.
   event Unstaked(address indexed account, uint256 amount);
+
+  /// @notice Emitted when a deposit delegatee is overridden to the default delegatee.
+  event OverrideEnacted(GovernanceStaker.DepositIdentifier depositId, address tipReceiver, uint160 tipShares);
 
   ///@notice Emitted when a reward is distributed by an MEV searcher who claims the LST's stake rewards in exchange
   /// for providing the payout amount of the stake token to the LST.
@@ -120,6 +131,17 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
 
   /// @notice Thrown when attempting to set the fee collector to the zero address.
   error GovLst__FeeCollectorCannotBeZeroAddress();
+
+  /// @notice Thrown when attempting to improperly override a deposit's delegatee.
+  error GovLst__InvalidOverride();
+
+  /// @notice Thrown when an overrider requests a tip greater than the max tip.
+  error GovLst__GreaterThanMaxTip();
+
+  /// @notice Thrown when a deposit does not have the required amount of earning power for a certain action to be taken.
+  /// An example of this is an attempted override of a deposit that has an earning power above the minimum earning power
+  /// threshold.
+  error GovLst__EarningPowerNotQualified(uint256 earningPower, uint256 thresholdEarningPower);
 
   /// @notice The Staker instance in which staked tokens will be deposited to earn rewards.
   GovernanceStaker public immutable STAKER;
@@ -183,6 +205,9 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// @notice The symbol of the LST token.
   string private SYMBOL;
 
+  /// @notice The denominator for a basis point which is 1/100 of a percentage point.
+  uint16 public constant BIPS = 1e4;
+
   /// @notice Maximum allowable fee in basis points (20%).
   uint16 public constant MAX_FEE_BIPS = 2000;
 
@@ -218,6 +243,12 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// the default delegatee and the guardian address can only be changed by the guardian itself.
   bool public isGuardianControlled;
 
+  /// @notice The max tip an overrider can request.
+  uint256 public maxOverrideTip;
+
+  /// @notice The minimum qualifying earning amount in bips (1/10,000).
+  uint256 public minQualifyingEarningPowerBips;
+
   /// @notice Struct to store reward-related parameters.
   RewardParameters internal rewardParams;
 
@@ -232,6 +263,9 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// @notice Mapping used to determine the amount of LST tokens the spender has been approved to transfer on the
   /// holder's behalf.
   mapping(address holder => mapping(address spender => uint256 amount)) public allowance;
+
+  /// @notice A mapping used to determine if a deposit's delegatee has been overridden to the default delegatee.
+  mapping(GovernanceStaker.DepositIdentifier depositId => bool isOverridden) public isOverridden;
 
   /// @param _name The name for the liquid stake token.
   /// @param _symbol The symbol for the liquid stake token.
@@ -722,7 +756,7 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
       // as feeAmount = (feeShares * newTotalSupply) / newTotalShares, where the newTotalShares is equal to the sum of
       // the fee shares and the total existing shares. In this equation, all the terms are known except the fee shares.
       // Solving for the fee shares yields the following calculation.
-      _feeShares = uint160((uint256(_feeAmount) * uint256(_totals.shares)) / (_newTotalSupply - _feeAmount));
+      _feeShares = _calcFeeShares(_feeAmount, _newTotalSupply, _totals.shares);
 
       // By issuing these new shares to the `feeCollector` we effectively give the it `feeAmount` of the reward by
       // slightly diluting all other LST holders.
@@ -777,11 +811,65 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     emit DepositSubsidized(_depositId, _amount);
   }
 
+  /// @notice An open method which allows anyone to override the delegatee of a deposit to the default delegatee
+  /// if the deposit's earning power is below the minimum qualifying earning power. The caller will receive shares
+  /// valued at the requested tip. These new shares will dilute existing depositor's shares.
+  /// @param _depositId The id of the deposit to override the delegatee.
+  /// @param _tipReceiver The address that receives the reward for carrying out the override action.
+  /// @param _requestedTip The amount to reward the tip receiver for carrying out the override action.
+  function enactOverride(GovernanceStaker.DepositIdentifier _depositId, address _tipReceiver, uint160 _requestedTip)
+    external
+  {
+    _revertIfGreaterThanMaxTip(_requestedTip);
+    (uint96 _balance,, uint96 _earningPower,,,,) = STAKER.deposits(_depositId);
+    GovernanceStaker.DepositIdentifier _defaultDepositId = depositForDelegatee(defaultDelegatee);
+
+    if (_isSameDepositId(_depositId, _defaultDepositId) || isOverridden[_depositId] || _balance == 0) {
+      revert GovLst__InvalidOverride();
+    }
+
+    bool _isAboveMin = uint256(_earningPower) * BIPS > minQualifyingEarningPowerBips * _balance;
+    if (_isAboveMin) {
+      revert GovLst__EarningPowerNotQualified(
+        uint256(_earningPower) * BIPS, uint256(minQualifyingEarningPowerBips) * _balance
+      );
+    }
+
+    // Move the deposit delegatee to the default delegatee
+    STAKER.alterDelegatee(_depositId, defaultDelegatee);
+
+    isOverridden[_depositId] = true;
+
+    Totals memory _totals = totals;
+    uint160 _tipShares = _calcFeeShares(_requestedTip, _totals.supply, _totals.shares);
+    totals.shares += _tipShares;
+    holderStates[_tipReceiver].shares += SafeCast.toUint128(_tipShares);
+
+    emit OverrideEnacted(_depositId, _tipReceiver, _tipShares);
+  }
+
   /// @notice Sets the reward parameters including payout amount, fee in bips, and fee collector.
   /// @param _params The new reward parameters.
   function setRewardParameters(RewardParameters memory _params) external {
     _checkOwner();
     _setRewardParams(_params.payoutAmount, _params.feeBips, _params.feeCollector);
+  }
+
+  /// @notice Sets the maximum override tip.
+  /// @param _maxOverrideTip The new maximum requested tip an overrider can request.
+  /// @dev Keep in mind that this value is in tokens and must be converted into shares. The conversion into shares can
+  /// lead to overflow errors if the maximum tip is too high.
+  function setMaxOverrideTip(uint256 _maxOverrideTip) external {
+    _checkOwner();
+    _setMaxOverrideTip(_maxOverrideTip);
+  }
+
+  /// @notice Sets the minimum qualifying earning power amount in bips (1/10,000). This value determines whether a
+  /// deposits delegatee needs to be overridden because it isn't earning enough of its possible staking rewards.
+  /// @param _minQualifyingEarningPowerBips The new minimum qualifying earning power amount in bips (1/10,000).
+  function setMinQualifyingEarningPowerBips(uint256 _minQualifyingEarningPowerBips) external {
+    _checkOwner();
+    _setMinQualifyingEarningPowerBips(_minQualifyingEarningPowerBips);
   }
 
   /// @notice Update the default delegatee. Can only be called by the delegatee guardian or by the LST owner. Once the
@@ -979,6 +1067,14 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     } else {
       return GovernanceStaker.DepositIdentifier.wrap(_holder.depositId);
     }
+  }
+
+  function _calcFeeShares(uint256 _feeAmount, uint256 _newTotalSupply, uint256 _totalShares)
+    internal
+    pure
+    returns (uint160)
+  {
+    return SafeCast.toUint160((uint256(_feeAmount) * _totalShares) / (_newTotalSupply - _feeAmount));
   }
 
   /// @notice Internal convenience method which performs deposit update operations.
@@ -1304,6 +1400,18 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     emit RewardParametersSet(_payoutAmount, _feeBips, _feeCollector);
   }
 
+  /// @notice Internal helper method that sets the max override tip and emits an event.
+  function _setMaxOverrideTip(uint256 _maxOverrideTip) internal {
+    emit MaxOverrideTipSet(maxOverrideTip, _maxOverrideTip);
+    maxOverrideTip = _maxOverrideTip;
+  }
+
+  /// @notice Internal helper method that sets the min qualifying earning power and emits an event.
+  function _setMinQualifyingEarningPowerBips(uint256 _minQualifyingEarningPowerBips) internal {
+    emit MinQualifyingEarningPowerBipsSet(minQualifyingEarningPowerBips, _minQualifyingEarningPowerBips);
+    minQualifyingEarningPowerBips = _minQualifyingEarningPowerBips;
+  }
+
   /// @notice Internal helper method that sets the delegatee and emits an event.
   function _setDefaultDelegatee(address _newDelegatee) internal {
     emit DefaultDelegateeSet(defaultDelegatee, _newDelegatee);
@@ -1377,11 +1485,19 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     }
   }
 
+  /// @notice Internal helper which reverts if the tip is greater than the max tip.
+  /// @param _tip The tip amount to check against the max tip.
+  function _revertIfGreaterThanMaxTip(uint256 _tip) internal view {
+    if (_tip > maxOverrideTip) {
+      revert GovLst__GreaterThanMaxTip();
+    }
+  }
+
   /// @notice Internal helper function to calculate the fee amount based on the payout amount and fee percentage.
   /// @param _rewardParams The reward parameters containing payout amount and fee percentage.
   /// @return The calculated fee amount.
   function _calcFeeAmount(RewardParameters memory _rewardParams) internal pure returns (uint256) {
-    return (uint256(_rewardParams.payoutAmount) * uint256(_rewardParams.feeBips)) / 1e4;
+    return (uint256(_rewardParams.payoutAmount) * uint256(_rewardParams.feeBips)) / BIPS;
   }
 
   /// @notice Internal convenience helper for comparing the equality of two staker DepositIdentifiers.
