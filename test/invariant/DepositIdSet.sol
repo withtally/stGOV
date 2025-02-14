@@ -1,22 +1,22 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 pragma solidity 0.8.28;
 
-import {GovernanceStaker} from "@staker/src/GovernanceStaker.sol";
+import {Staker} from "staker/Staker.sol";
 
 struct DepositIdSet {
-  GovernanceStaker.DepositIdentifier[] ids;
-  mapping(GovernanceStaker.DepositIdentifier => bool) saved;
+  Staker.DepositIdentifier[] ids;
+  mapping(Staker.DepositIdentifier => bool) saved;
 }
 
 library LibDepositIdSet {
-  function add(DepositIdSet storage s, GovernanceStaker.DepositIdentifier id) internal {
+  function add(DepositIdSet storage s, Staker.DepositIdentifier id) internal {
     if (!s.saved[id]) {
       s.ids.push(id);
       s.saved[id] = true;
     }
   }
 
-  function contains(DepositIdSet storage s, GovernanceStaker.DepositIdentifier id) internal view returns (bool) {
+  function contains(DepositIdSet storage s, Staker.DepositIdentifier id) internal view returns (bool) {
     return s.saved[id];
   }
 
@@ -24,15 +24,15 @@ library LibDepositIdSet {
     return s.ids.length;
   }
 
-  function rand(DepositIdSet storage s, uint256 seed) internal view returns (GovernanceStaker.DepositIdentifier) {
+  function rand(DepositIdSet storage s, uint256 seed) internal view returns (Staker.DepositIdentifier) {
     if (s.ids.length > 0) {
       return s.ids[seed % s.ids.length];
     } else {
-      return GovernanceStaker.DepositIdentifier.wrap(0);
+      return Staker.DepositIdentifier.wrap(0);
     }
   }
 
-  function forEach(DepositIdSet storage s, function(GovernanceStaker.DepositIdentifier) external func) internal {
+  function forEach(DepositIdSet storage s, function(Staker.DepositIdentifier) external func) internal {
     for (uint256 i; i < s.ids.length; ++i) {
       func(s.ids[i]);
     }
@@ -41,7 +41,7 @@ library LibDepositIdSet {
   function reduce(
     DepositIdSet storage s,
     uint256 acc,
-    function(uint256,GovernanceStaker.DepositIdentifier) external returns (uint256) func
+    function(uint256,Staker.DepositIdentifier) external returns (uint256) func
   ) internal returns (uint256) {
     for (uint256 i; i < s.ids.length; ++i) {
       acc = func(acc, s.ids[i]);

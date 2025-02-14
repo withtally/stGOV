@@ -9,8 +9,7 @@ import {AddressSet, LibAddressSet} from "./AddressSet.sol";
 import {DepositIdSet, LibDepositIdSet} from "./DepositIdSet.sol";
 import {GovLst} from "src/GovLst.sol";
 import {IERC20} from "openzeppelin/token/ERC20/IERC20.sol";
-import {GovernanceStaker} from "@staker/src/GovernanceStaker.sol";
-import {FakeGovernanceStaker} from "test/fakes/FakeGovernanceStaker.sol";
+import {Staker} from "staker/Staker.sol";
 
 contract GovLstHandler is CommonBase, StdCheats, StdUtils {
   using LibAddressSet for AddressSet;
@@ -18,7 +17,7 @@ contract GovLstHandler is CommonBase, StdCheats, StdUtils {
 
   // system setup
   GovLst public lst;
-  GovernanceStaker public staker;
+  Staker public staker;
   IERC20 public stakeToken;
   IERC20 public rewardToken;
   address public admin;
@@ -151,7 +150,7 @@ contract GovLstHandler is CommonBase, StdCheats, StdUtils {
     vm.assume(_delegatee != address(0));
 
     vm.startPrank(_actor);
-    GovernanceStaker.DepositIdentifier _id = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+    Staker.DepositIdentifier _id = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
     vm.stopPrank();
 
     depositIds.add(_id);
@@ -159,7 +158,7 @@ contract GovLstHandler is CommonBase, StdCheats, StdUtils {
 
   function updateDeposit(uint256 _actorSeed, uint256 _depositSeed) public countCall("updateDeposit") {
     address _holder = _useActor(holders, _actorSeed);
-    GovernanceStaker.DepositIdentifier _id = depositIds.rand(_depositSeed);
+    Staker.DepositIdentifier _id = depositIds.rand(_depositSeed);
 
     vm.startPrank(_holder);
     lst.updateDeposit(_id);
@@ -180,7 +179,7 @@ contract GovLstHandler is CommonBase, StdCheats, StdUtils {
     address _actor,
     address _recipient,
     uint256 _minExpectedAmount,
-    GovernanceStaker.DepositIdentifier _depositId
+    Staker.DepositIdentifier _depositId
   ) public countCall("claimAndDistributeReward") {
     vm.assume(_actor != address(0));
     vm.assume(_recipient != address(0));
@@ -227,14 +226,14 @@ contract GovLstHandler is CommonBase, StdCheats, StdUtils {
     holders.forEach(func);
   }
 
-  function reduceDepositIds(
-    uint256 acc,
-    function(uint256,GovernanceStaker.DepositIdentifier) external returns (uint256) func
-  ) public returns (uint256) {
+  function reduceDepositIds(uint256 acc, function(uint256,Staker.DepositIdentifier) external returns (uint256) func)
+    public
+    returns (uint256)
+  {
     return depositIds.reduce(acc, func);
   }
 
-  function forEachDepositId(function(GovernanceStaker.DepositIdentifier) external func) external {
+  function forEachDepositId(function(Staker.DepositIdentifier) external func) external {
     depositIds.forEach(func);
   }
 

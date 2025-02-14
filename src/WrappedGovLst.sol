@@ -4,7 +4,7 @@ pragma solidity 0.8.28;
 import {ERC20Permit} from "openzeppelin/token/ERC20/extensions/ERC20Permit.sol";
 import {ERC20} from "openzeppelin/token/ERC20/ERC20.sol";
 import {GovLst} from "src/GovLst.sol";
-import {GovernanceStaker} from "@staker/src/GovernanceStaker.sol";
+import {Staker} from "staker/Staker.sol";
 import {Ownable} from "openzeppelin/access/Ownable.sol";
 
 /// @title WrappedGovLst
@@ -34,7 +34,7 @@ contract WrappedGovLst is ERC20Permit, Ownable {
   uint256 internal immutable SHARE_SCALE_FACTOR;
 
   /// @notice The Staker deposit identifier which holds the wrapper's underlying tokens.
-  GovernanceStaker.DepositIdentifier public depositId;
+  Staker.DepositIdentifier public depositId;
 
   /// @param _name The name of the wrapper token.
   /// @param _symbol The symbol of the wrapper token.
