@@ -306,8 +306,12 @@ contract GovLstTest is UnitTestBase, PercentAssertions, TestHelpers, Eip712Helpe
     // Approve the LST and claim the reward.
     vm.startPrank(_claimer);
     stakeToken.approve(address(lst), lst.payoutAmount());
+
+    Staker.DepositIdentifier[] memory _deposits = new Staker.DepositIdentifier[](1);
+    _deposits[0] = _depositId;
+
     // Min expected rewards parameter is one less than reward amount due to truncation.
-    lst.claimAndDistributeReward(_rewardTokenRecipient, _rewardTokenAmount - 1, _depositId);
+    lst.claimAndDistributeReward(_rewardTokenRecipient, _rewardTokenAmount - 1, _deposits);
     vm.stopPrank();
   }
 
@@ -328,8 +332,12 @@ contract GovLstTest is UnitTestBase, PercentAssertions, TestHelpers, Eip712Helpe
     // Approve the LST and claim the reward.
     vm.startPrank(claimer);
     stakeToken.approve(address(lst), lst.payoutAmount());
+
+    Staker.DepositIdentifier[] memory _deposits = new Staker.DepositIdentifier[](1);
+    _deposits[0] = _depositId;
+
     // Min expected rewards parameter is one less than reward amount due to truncation.
-    lst.claimAndDistributeReward(claimer, _percentOf(rewardTokenAmount - 1, _percentOfAmount), _depositId);
+    lst.claimAndDistributeReward(claimer, _percentOf(rewardTokenAmount - 1, _percentOfAmount), _deposits);
     vm.stopPrank();
   }
 
@@ -3766,6 +3774,166 @@ contract ClaimAndDistributeReward is GovLstTest {
     assertLteWithinOneUnit(rewardToken.balanceOf(_recipient), _rewardAmount);
   }
 
+  function testFuzz_SendsStakerRewardsFromMultipleDepositsToRewardRecipient(
+    address _claimer,
+    address _recipient,
+    uint80 _rewardAmount,
+    uint256 _payoutAmount,
+    address _holder1,
+    address _holder2,
+    uint256 _stakeAmount1,
+    uint256 _stakeAmount2,
+    uint16 _feeBips,
+    address _feeCollector
+  ) public {
+    _assumeSafeHolders(_holder1, _holder2);
+    _assumeSafeHolder(_claimer);
+    vm.assume(_claimer != _holder1 && _claimer != _holder2);
+    vm.assume(
+      _feeCollector != address(0) && _feeCollector != _claimer && _feeCollector != _holder1 && _feeCollector != _holder2
+    );
+    _rewardAmount = _boundToReasonableRewardTokenAmount(_rewardAmount);
+    _payoutAmount = _boundToReasonableStakeTokenReward(_payoutAmount);
+    _feeBips = uint16(bound(_feeBips, 0, lst.MAX_FEE_BIPS()));
+    _setRewardParameters(uint80(_payoutAmount), _feeBips, _feeCollector);
+    _mintStakeToken(_claimer, _payoutAmount);
+
+    // Two depositors stake with different delegatees (themselves) ensuring they will have unique
+    // deposits
+    _stakeAmount1 = _boundToReasonableStakeTokenAmount(_stakeAmount1);
+    _stakeAmount2 = _boundToReasonableStakeTokenAmount(_stakeAmount2);
+    _mintUpdateDelegateeAndStake(_holder1, _stakeAmount1, _holder1);
+    _mintUpdateDelegateeAndStake(_holder2, _stakeAmount2, _holder2);
+
+    Staker.DepositIdentifier[] memory _deposits = new Staker.DepositIdentifier[](2);
+    _deposits[0] = lst.depositIdForHolder(_holder1);
+    _deposits[1] = lst.depositIdForHolder(_holder2);
+
+    // Puts reward token in the staker.
+    _distributeStakerReward(_rewardAmount);
+
+    vm.startPrank(_claimer);
+    // Approve the LST to pull the payout token amount
+    stakeToken.approve(address(lst), lst.payoutAmount());
+    // Claim rewards, where min reward amount may be up to 2 wei less due to 1 wei truncation for
+    // _each_ deposit reward claim.
+    lst.claimAndDistributeReward(_recipient, _rewardAmount - 2, _deposits);
+    vm.stopPrank();
+
+    assertApproxEqAbs(rewardToken.balanceOf(_recipient), _rewardAmount, 2);
+    assertLe(rewardToken.balanceOf(_recipient), _rewardAmount);
+  }
+
+  function testFuzz_DoesNotDistributeExtraRewardsIfTheClaimerDuplicatesADepositIdentifier(
+    address _claimer,
+    address _recipient,
+    uint80 _rewardAmount,
+    uint256 _payoutAmount,
+    address _holder1,
+    address _holder2,
+    uint256 _stakeAmount1,
+    uint256 _stakeAmount2,
+    uint16 _feeBips,
+    address _feeCollector
+  ) public {
+    _assumeSafeHolders(_holder1, _holder2);
+    _assumeSafeHolder(_claimer);
+    vm.assume(_claimer != _holder1 && _claimer != _holder2);
+    vm.assume(
+      _feeCollector != address(0) && _feeCollector != _claimer && _feeCollector != _holder1 && _feeCollector != _holder2
+    );
+    _rewardAmount = _boundToReasonableRewardTokenAmount(_rewardAmount);
+    _payoutAmount = _boundToReasonableStakeTokenReward(_payoutAmount);
+    _feeBips = uint16(bound(_feeBips, 0, lst.MAX_FEE_BIPS()));
+    _setRewardParameters(uint80(_payoutAmount), _feeBips, _feeCollector);
+    _mintStakeToken(_claimer, _payoutAmount);
+
+    // Two depositors stake with different delegatees (themselves) ensuring they will have unique
+    // deposits
+    _stakeAmount1 = _boundToReasonableStakeTokenAmount(_stakeAmount1);
+    _stakeAmount2 = _boundToReasonableStakeTokenAmount(_stakeAmount2);
+    _mintUpdateDelegateeAndStake(_holder1, _stakeAmount1, _holder1);
+    _mintUpdateDelegateeAndStake(_holder2, _stakeAmount2, _holder2);
+
+    Staker.DepositIdentifier[] memory _deposits = new Staker.DepositIdentifier[](3);
+    _deposits[0] = lst.depositIdForHolder(_holder1);
+    _deposits[1] = lst.depositIdForHolder(_holder2);
+    _deposits[2] = _deposits[0]; // first deposit is repeated twice
+
+    // Puts reward token in the staker.
+    _distributeStakerReward(_rewardAmount);
+
+    vm.startPrank(_claimer);
+    // Approve the LST to pull the payout token amount
+    stakeToken.approve(address(lst), lst.payoutAmount());
+    // Claim rewards, where min reward amount may be up to 2 wei less due to 1 wei truncation for
+    // _each_ deposit reward claim.
+    lst.claimAndDistributeReward(_recipient, _rewardAmount - 2, _deposits);
+    vm.stopPrank();
+
+    // Rewards received by the recipient are the same despite a deposit being included twice
+    assertApproxEqAbs(rewardToken.balanceOf(_recipient), _rewardAmount, 2);
+    assertLe(rewardToken.balanceOf(_recipient), _rewardAmount);
+  }
+
+  function testFuzz_SendsStakerOnlyStakerRewardsFromSpecifiedDepositsToToRewardRecipient(
+    address _claimer,
+    address _recipient,
+    uint80 _rewardAmount,
+    uint256 _payoutAmount,
+    address _holder1,
+    address _holder2,
+    address _holder3,
+    uint256 _stakeAmount,
+    uint16 _feeBips,
+    address _feeCollector
+  ) public {
+    _assumeSafeHolders(_holder1, _holder2);
+    _assumeSafeHolders(_holder3, _claimer);
+    vm.assume(_holder3 != _holder1 && _holder3 != _holder2);
+    vm.assume(_claimer != _holder1 && _claimer != _holder2);
+    vm.assume(
+      _feeCollector != address(0) && _feeCollector != _claimer && _feeCollector != _holder1 && _feeCollector != _holder2
+        && _feeCollector != _holder3
+    );
+    //vm.assume(_holder1 != address(staker) && _holder2 != address(staker) && _holder3 != address(staker));
+    vm.assume(_recipient != address(staker));
+    _rewardAmount = _boundToReasonableRewardTokenAmount(_rewardAmount);
+    _payoutAmount = _boundToReasonableStakeTokenReward(_payoutAmount);
+    _feeBips = uint16(bound(_feeBips, 0, lst.MAX_FEE_BIPS()));
+    _setRewardParameters(uint80(_payoutAmount), _feeBips, _feeCollector);
+    _mintStakeToken(_claimer, _payoutAmount);
+
+    // Three depositors stake with different delegatees (themselves) ensuring they will have unique
+    // deposits. They each stake the same amount.
+    _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
+    _mintUpdateDelegateeAndStake(_holder1, _stakeAmount, _holder1);
+    _mintUpdateDelegateeAndStake(_holder2, _stakeAmount, _holder2);
+    _mintUpdateDelegateeAndStake(_holder3, _stakeAmount, _holder3);
+
+    // The claimer will only ask for rewards from two deposits
+    Staker.DepositIdentifier[] memory _deposits = new Staker.DepositIdentifier[](2);
+    _deposits[0] = lst.depositIdForHolder(_holder1);
+    _deposits[1] = lst.depositIdForHolder(_holder3);
+
+    // The expected rewards amount is thus 2/3rds of total rewards paid out to all deposits.
+    uint256 _expectedRewardAmount = (2 * uint256(_rewardAmount)) / 3;
+
+    // Distributes reward token in the staker.
+    _distributeStakerReward(_rewardAmount);
+
+    vm.startPrank(_claimer);
+    // Approve the LST to pull the payout token amount
+    stakeToken.approve(address(lst), lst.payoutAmount());
+    // Claim rewards, where min reward amount may be up to 2 wei less due to 1 wei truncation for
+    // _each_ deposit reward claim.
+    lst.claimAndDistributeReward(_recipient, _expectedRewardAmount - 2, _deposits);
+    vm.stopPrank();
+
+    assertApproxEqAbs(rewardToken.balanceOf(_recipient), _expectedRewardAmount, 2);
+    assertLe(rewardToken.balanceOf(_recipient), _expectedRewardAmount);
+  }
+
   function testFuzz_IncreasesTheTotalSupplyByThePayoutAmount(
     address _claimer,
     address _recipient,
@@ -3846,8 +4014,12 @@ contract ClaimAndDistributeReward is GovLstTest {
     vm.startPrank(_claimer);
     stakeToken.approve(address(lst), _payoutAmount);
     Staker.DepositIdentifier _depositId = lst.depositIdForHolder(_claimer);
+
+    Staker.DepositIdentifier[] memory _deposits = new Staker.DepositIdentifier[](1);
+    _deposits[0] = _depositId;
+
     vm.expectRevert(GovLst.GovLst__InsufficientRewards.selector);
-    lst.claimAndDistributeReward(_recipient, _minExpectedReward, _depositId);
+    lst.claimAndDistributeReward(_recipient, _minExpectedReward, _deposits);
     vm.stopPrank();
   }
 
@@ -3880,10 +4052,17 @@ contract ClaimAndDistributeReward is GovLstTest {
     vm.startPrank(_claimer);
     stakeToken.approve(address(lst), lst.payoutAmount());
 
-    // Min expected rewards parameter is one less than reward amount due to truncation.
-    vm.recordLogs();
-    lst.claimAndDistributeReward(_recipient, _rewardAmount - 1, lst.depositIdForHolder(_claimer));
-    vm.stopPrank();
+    // Local scope to avoid stack to deep in tests
+    {
+      Staker.DepositIdentifier _depositId = lst.depositIdForHolder(_claimer);
+      Staker.DepositIdentifier[] memory _deposits = new Staker.DepositIdentifier[](1);
+      _deposits[0] = _depositId;
+
+      // Min expected rewards parameter is one less than reward amount due to truncation.
+      vm.recordLogs();
+      lst.claimAndDistributeReward(_recipient, _rewardAmount - 1, _deposits);
+      vm.stopPrank();
+    }
 
     Vm.Log[] memory entries = vm.getRecordedLogs();
 
