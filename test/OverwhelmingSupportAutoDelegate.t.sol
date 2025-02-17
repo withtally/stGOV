@@ -9,7 +9,7 @@ contract OverwhelmingSupportAutoDelegateTest is Test {
   OverwhelmingSupportAutoDelegate public autoDelegate;
   GovernorBravoDelegateMock public governor;
   address public owner = makeAddr("Owner");
-  uint256 votingWindow = 100; // Number of blocks
+  uint256 votingWindow = 1000; // Number of blocks
   uint256 subQuorumBips = 7500; // 75% of governor `QuorumVotes`
   uint256 supportThreshold = 7000; // 70%
   uint256 proposalEndBlock = 20_000; // Random proposal end block.
@@ -116,12 +116,14 @@ contract CastVote is OverwhelmingSupportAutoDelegateTest {
 
 contract SetVotingWindow is OverwhelmingSupportAutoDelegateTest {
   function testFuzz_SetsVotingWindow(uint256 _votingWindow) public {
+    _votingWindow = bound(_votingWindow, autoDelegate.MIN_VOTING_WINDOW(), autoDelegate.MAX_VOTING_WINDOW());
     vm.prank(owner);
     autoDelegate.setVotingWindow(_votingWindow);
     assertEq(autoDelegate.votingWindow(), _votingWindow);
   }
 
   function testFuzz_EmitsEventWhenVotingWindowIsSet(uint256 _votingWindow) public {
+    _votingWindow = bound(_votingWindow, autoDelegate.MIN_VOTING_WINDOW(), autoDelegate.MAX_VOTING_WINDOW());
     vm.expectEmit();
     emit OverwhelmingSupportAutoDelegate.VotingWindowSet(autoDelegate.votingWindow(), _votingWindow);
     vm.prank(owner);
@@ -129,9 +131,24 @@ contract SetVotingWindow is OverwhelmingSupportAutoDelegateTest {
   }
 
   function testFuzz_RevertIf_NotOwner(address _actor, uint256 _votingWindow) public {
+    _votingWindow = bound(_votingWindow, autoDelegate.MIN_VOTING_WINDOW(), autoDelegate.MAX_VOTING_WINDOW());
     vm.assume(_actor != owner);
     vm.prank(_actor);
     vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, _actor));
+    autoDelegate.setVotingWindow(_votingWindow);
+  }
+
+  function testFuzz_RevertIf_VotingWindowIsBelowMinimum(uint256 _votingWindow) public {
+    _votingWindow = bound(_votingWindow, 0, autoDelegate.MIN_VOTING_WINDOW() - 1);
+    vm.prank(owner);
+    vm.expectRevert(OverwhelmingSupportAutoDelegate.OverwhelmingSupportAutoDelegate__InvalidVotingWindow.selector);
+    autoDelegate.setVotingWindow(_votingWindow);
+  }
+
+  function testFuzz_RevertIf_VotingWindowIsAboveMaximum(uint256 _votingWindow) public {
+    _votingWindow = bound(_votingWindow, autoDelegate.MAX_VOTING_WINDOW() + 1, type(uint256).max);
+    vm.prank(owner);
+    vm.expectRevert(OverwhelmingSupportAutoDelegate.OverwhelmingSupportAutoDelegate__InvalidVotingWindow.selector);
     autoDelegate.setVotingWindow(_votingWindow);
   }
 }
@@ -150,12 +167,14 @@ contract Clock_Mode is OverwhelmingSupportAutoDelegateTest {
 
 contract SetSubQuorumBips is OverwhelmingSupportAutoDelegateTest {
   function testFuzz_SetsSubQuorumBips(uint256 _subQuorumBips) public {
+    _subQuorumBips = bound(_subQuorumBips, autoDelegate.MIN_SUB_QUORUM_BIPS(), autoDelegate.MAX_SUB_QUORUM_BIPS());
     vm.prank(owner);
     autoDelegate.setSubQuorumBips(_subQuorumBips);
     assertEq(autoDelegate.subQuorumBips(), _subQuorumBips);
   }
 
   function testFuzz_EmitsEventWhenSubQuorumBipsIsSet(uint256 _subQuorumBips) public {
+    _subQuorumBips = bound(_subQuorumBips, autoDelegate.MIN_SUB_QUORUM_BIPS(), autoDelegate.MAX_SUB_QUORUM_BIPS());
     vm.expectEmit();
     emit OverwhelmingSupportAutoDelegate.SubQuorumBipsSet(autoDelegate.subQuorumBips(), _subQuorumBips);
     vm.prank(owner);
@@ -163,9 +182,24 @@ contract SetSubQuorumBips is OverwhelmingSupportAutoDelegateTest {
   }
 
   function testFuzz_RevertIf_NotOwner(address _actor, uint256 _subQuorumBips) public {
+    _subQuorumBips = bound(_subQuorumBips, autoDelegate.MIN_SUB_QUORUM_BIPS(), autoDelegate.MAX_SUB_QUORUM_BIPS());
     vm.assume(_actor != owner);
     vm.prank(_actor);
     vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, _actor));
+    autoDelegate.setSubQuorumBips(_subQuorumBips);
+  }
+
+  function testFuzz_RevertIf_SubQuorumBipsIsBelowMinimum(uint256 _subQuorumBips) public {
+    _subQuorumBips = bound(_subQuorumBips, 0, autoDelegate.MIN_SUB_QUORUM_BIPS() - 1);
+    vm.prank(owner);
+    vm.expectRevert(OverwhelmingSupportAutoDelegate.OverwhelmingSupportAutoDelegate__InvalidSubQuorumBips.selector);
+    autoDelegate.setSubQuorumBips(_subQuorumBips);
+  }
+
+  function testFuzz_RevertIf_SubQuorumBipsIsAboveMaximum(uint256 _subQuorumBips) public {
+    _subQuorumBips = bound(_subQuorumBips, autoDelegate.MAX_SUB_QUORUM_BIPS() + 1, type(uint256).max);
+    vm.prank(owner);
+    vm.expectRevert(OverwhelmingSupportAutoDelegate.OverwhelmingSupportAutoDelegate__InvalidSubQuorumBips.selector);
     autoDelegate.setSubQuorumBips(_subQuorumBips);
   }
 }

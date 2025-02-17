@@ -26,6 +26,14 @@ contract OverwhelmingSupportAutoDelegate is Ownable, IERC6372 {
   /// 95% (9500 BIP).
   error OverwhelmingSupportAutoDelegate__InvalidSupportThreshold();
 
+  /// @notice Error thrown when an invalid voting window is provided.
+  /// @dev This error is thrown when attempting to set a voting window outside the valid range of 300 to 50_400 blocks.
+  error OverwhelmingSupportAutoDelegate__InvalidVotingWindow();
+
+  /// @notice Error thrown when an invalid sub-quorum basis points is provided.
+  /// @dev This error is thrown when attempting to set a sub-quorum BIPs outside the valid range of 1000 to 10_000.
+  error OverwhelmingSupportAutoDelegate__InvalidSubQuorumBips();
+
   /// @notice Emitted when the voting window is changed.
   /// @param oldVotingWindow The previous voting window in blocks.
   /// @param newVotingWindow The new voting window in blocks.
@@ -49,10 +57,22 @@ contract OverwhelmingSupportAutoDelegate is Ownable, IERC6372 {
   uint256 private constant BIP = 10_000;
 
   /// @notice The minimum support threshold required for proposals, set to 5000 basis points (50%).
-  uint256 private constant MIN_SUPPORT_THRESHOLD = 5000;
+  uint256 public constant MIN_SUPPORT_THRESHOLD = 5000;
 
   /// @notice The maximum support threshold allowed for proposals, set to 9500 basis points (95%).
-  uint256 private constant MAX_SUPPORT_THRESHOLD = 9500;
+  uint256 public constant MAX_SUPPORT_THRESHOLD = 9500;
+
+  /// @notice The minimum voting window allowed for proposals, set to 300 blocks about 1 hour at 12s.
+  uint256 public constant MIN_VOTING_WINDOW = 300;
+
+  /// @notice The maximum voting window allowed for proposals, set to 50_400 blocks about 1 week at 12s.
+  uint256 public constant MAX_VOTING_WINDOW = 50_400;
+
+  /// @notice The minimum sub-quorum basis points allowed for proposals, set to 1000 basis points (10%).
+  uint256 public constant MIN_SUB_QUORUM_BIPS = 1000;
+
+  /// @notice The maximum sub-quorum basis points allowed for proposals, set to 10_000 basis points (100%).
+  uint256 public constant MAX_SUB_QUORUM_BIPS = 10_000;
 
   /// @notice The number of blocks before a proposal's voting endBlock at which this Auto Delegate can begin casting
   /// votes.
@@ -175,6 +195,9 @@ contract OverwhelmingSupportAutoDelegate is Ownable, IERC6372 {
   /// @notice Internal function to set the voting window.
   /// @param _votingWindow The new voting window value in blocks.
   function _setVotingWindow(uint256 _votingWindow) internal {
+    if (_votingWindow < MIN_VOTING_WINDOW || _votingWindow > MAX_VOTING_WINDOW) {
+      revert OverwhelmingSupportAutoDelegate__InvalidVotingWindow();
+    }
     emit VotingWindowSet(votingWindow, _votingWindow);
     votingWindow = _votingWindow;
   }
@@ -182,6 +205,9 @@ contract OverwhelmingSupportAutoDelegate is Ownable, IERC6372 {
   /// @notice Internal function to set the sub-quorum votes percentage.
   /// @param _subQuorumBips The new percentage of the live quorum that's required to be FOR votes.
   function _setSubQuorumBips(uint256 _subQuorumBips) internal {
+    if (_subQuorumBips < MIN_SUB_QUORUM_BIPS || _subQuorumBips > MAX_SUB_QUORUM_BIPS) {
+      revert OverwhelmingSupportAutoDelegate__InvalidSubQuorumBips();
+    }
     emit SubQuorumBipsSet(subQuorumBips, _subQuorumBips);
     subQuorumBips = _subQuorumBips;
   }
