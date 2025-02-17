@@ -1135,11 +1135,13 @@ contract GovLstGasReport is GovLstTest, GasReport {
 
       Staker.DepositIdentifier _depositIdLocal = lst.depositIdForHolder(_staker);
       (uint96 _balance,,,,,,) = staker.deposits(_depositIdLocal);
+      Staker.DepositIdentifier[] memory _depositsLocal = new Staker.DepositIdentifier[](1);
+      _depositsLocal[0] = _depositIdLocal;
 
       vm.startPrank(_claimer);
       stakeToken.approve(address(lst), _payoutAmount);
       lst.claimAndDistributeReward(
-        _recipient, _percentOf(_rewardAmount, _toPercentage(_balance, staker.totalStaked())), _depositIdLocal
+        _recipient, _percentOf(_rewardAmount, _toPercentage(_balance, staker.totalStaked())), _depositsLocal
       );
       recordScenarioGasResult();
       vm.stopPrank();
@@ -1169,11 +1171,13 @@ contract GovLstGasReport is GovLstTest, GasReport {
 
       Staker.DepositIdentifier _depositIdLocal = lst.depositIdForHolder(_feeCollector);
       (uint96 _balance,,,,,,) = staker.deposits(_depositIdLocal);
+      Staker.DepositIdentifier[] memory _depositsLocal = new Staker.DepositIdentifier[](1);
+      _depositsLocal[0] = _depositIdLocal;
 
       vm.startPrank(_claimer);
       stakeToken.approve(address(lst), _payoutAmount);
       lst.claimAndDistributeReward(
-        _recipient, _percentOf(_rewardAmount, _toPercentage(_balance, staker.totalStaked())), _depositIdLocal
+        _recipient, _percentOf(_rewardAmount, _toPercentage(_balance, staker.totalStaked())), _depositsLocal
       );
       recordScenarioGasResult();
       vm.stopPrank();

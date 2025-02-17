@@ -738,9 +738,12 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// the caller will accept in exchange for providing the payout amount of stake token. If the amount claimed is less
   /// than this, the transaction will revert. This parameter is a last line of defense against the MEV caller losing
   /// funds because they've been frontrun by another searcher.
-  function claimAndDistributeReward(address _recipient, uint256 _minExpectedReward, Staker.DepositIdentifier _depositId)
-    external
-  {
+  /// @param _depositIds List of deposits owned by the LST from which rewards will be claimed by the caller.
+  function claimAndDistributeReward(
+    address _recipient,
+    uint256 _minExpectedReward,
+    Staker.DepositIdentifier[] calldata _depositIds
+  ) external {
     RewardParameters memory _rewardParams = rewardParams;
 
     uint256 _feeAmount = _calcFeeAmount(_rewardParams);
@@ -771,8 +774,13 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     STAKE_TOKEN.transferFrom(msg.sender, address(this), _rewardParams.payoutAmount);
     // Stake the rewards with the default delegatee
     STAKER.stakeMore(DEFAULT_DEPOSIT_ID, _rewardParams.payoutAmount);
-    // Claim the reward tokens earned by the LST
-    uint256 _rewards = STAKER.claimReward(_depositId);
+
+    // Claim the reward tokens earned by the LST for each deposit
+    uint256 _rewards;
+    for (uint256 _index = 0; _index < _depositIds.length; _index++) {
+      _rewards += STAKER.claimReward(_depositIds[_index]);
+    }
+
     // Ensure rewards distributed meet the claimers expectations; provides protection from frontrunning resulting in
     // loss of funds for the MEV racers.
     if (_rewards < _minExpectedReward) {

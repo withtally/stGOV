@@ -183,6 +183,10 @@ contract GovLstHandler is CommonBase, StdCheats, StdUtils {
   ) public countCall("claimAndDistributeReward") {
     vm.assume(_actor != address(0));
     vm.assume(_recipient != address(0));
+
+    Staker.DepositIdentifier[] memory _deposits = new Staker.DepositIdentifier[](1);
+    _deposits[0] = _depositId;
+
     // in REWARD_TOKEN
     _minExpectedAmount = _bound(_minExpectedAmount, 0, staker.unclaimedReward(_depositId));
     uint256 _payoutAmount = lst.payoutAmount();
@@ -190,7 +194,7 @@ contract GovLstHandler is CommonBase, StdCheats, StdUtils {
     vm.startPrank(_actor);
     // we give STAKE_TOKEN to get REWARD_TOKEN
     stakeToken.approve(address(lst), _payoutAmount);
-    lst.claimAndDistributeReward(_recipient, _minExpectedAmount, _depositId);
+    lst.claimAndDistributeReward(_recipient, _minExpectedAmount, _deposits);
     vm.stopPrank();
 
     // If distributing this reward would result in the raw total supply being greater than the raw
