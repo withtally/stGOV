@@ -3,6 +3,7 @@
   evm_version = "cancun"
   fs_permissions = [
     { access = "write", path = "./test/gas-reports/lst-gas-report.json" },
+    { access = "write", path = "./test/gas-reports/fixedLst-gas-report.json" },
   ]
   ignored_warnings_from = ["src/interfaces/IWETH9.sol"]
   optimizer = true
@@ -19,6 +20,9 @@
 [profile.ci]
   fuzz = { runs = 3000 }
   invariant = { runs = 1000 }
+
+[profile.prod]
+  via-ir = true
 
 [profile.coverage]
   fuzz = { runs = 100 }

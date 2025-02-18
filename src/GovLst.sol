@@ -34,6 +34,7 @@ import {FixedLstAddressAlias} from "src/FixedLstAddressAlias.sol";
 /// shortfalls in the default deposit, which can be subsidized to remain solvent.
 contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP712, Nonces {
   using FixedLstAddressAlias for address;
+  using SafeCast for uint256;
 
   /// @notice Emitted when the LST owner updates the payout amount required for the MEV reward game in
   /// `claimAndDistributeReward`.
@@ -60,6 +61,8 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   event DepositInitialized(address indexed delegatee, Staker.DepositIdentifier depositId);
 
   /// @notice Emitted when a user updates their stake deposit, moving their staked tokens accordingly.
+  /// @dev This event must be combined with the `DepositUpdated` event on the FixedGovLst for an accurate picture all
+  /// deposit ids for a given holder.
   event DepositUpdated(
     address indexed holder, Staker.DepositIdentifier oldDepositId, Staker.DepositIdentifier newDepositId
   );
@@ -277,13 +280,14 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     address _initialDefaultDelegatee,
     address _initialOwner,
     uint80 _initialPayoutAmount,
-    address _initialDelegateeGuardian
-  ) Ownable(_initialOwner) EIP712("GovLst", "1") {
+    address _initialDelegateeGuardian,
+    uint256 _stakeToBurn
+  ) Ownable(_initialOwner) EIP712(_name, "1") {
     STAKER = _staker;
     STAKE_TOKEN = IERC20(_staker.STAKE_TOKEN());
     REWARD_TOKEN = IWETH9(payable(address(_staker.REWARD_TOKEN())));
-    NAME = _name;
-    SYMBOL = _symbol;
+    NAME = string.concat("Rebased ", _name);
+    SYMBOL = string.concat("r", _symbol);
 
     _setDefaultDelegatee(_initialDefaultDelegatee);
     _setRewardParams(_initialPayoutAmount, 0, _initialOwner);
@@ -293,12 +297,12 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     STAKE_TOKEN.approve(address(_staker), type(uint256).max);
     // Create initial deposit for default so other methods can assume it exists.
     DEFAULT_DEPOSIT_ID = STAKER.stake(0, _initialDefaultDelegatee);
+    STAKE_TOKEN.transferFrom(msg.sender, address(this), _stakeToBurn);
+    _stake(address(this), _stakeToBurn);
 
     // Deploy the WithdrawGate
     WITHDRAW_GATE = new WithdrawGate(_initialOwner, address(this), address(STAKE_TOKEN), 0);
-    FIXED_LST = new FixedGovLst(
-      string.concat("Fixed ", _name), string.concat("f", _symbol), this, STAKE_TOKEN, SHARE_SCALE_FACTOR
-    );
+    FIXED_LST = new FixedGovLst(_name, _symbol, this, STAKE_TOKEN, SHARE_SCALE_FACTOR);
   }
 
   /// @notice The name of the liquid stake token.
@@ -494,6 +498,7 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     // UNI reverts on failure so it's not necessary to check return value.
     STAKE_TOKEN.transferFrom(msg.sender, address(this), _amount);
     _emitStakedEvent(msg.sender, _amount);
+    _emitTransferEvent(address(0), msg.sender, _amount);
     return _stake(msg.sender, _amount);
   }
 
@@ -510,6 +515,7 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     // UNI reverts on failure so it's not necessary to check return value.
     STAKE_TOKEN.transferFrom(msg.sender, address(this), _amount);
     _emitStakedEvent(msg.sender, _amount);
+    _emitTransferEvent(address(0), msg.sender, _amount);
     return _stake(msg.sender, _amount);
   }
 
@@ -531,6 +537,7 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     // UNI reverts on failure so it's not necessary to check return value.
     STAKE_TOKEN.transferFrom(_account, address(this), _amount);
     _emitStakedEvent(_account, _amount);
+    _emitTransferEvent(address(0), msg.sender, _amount);
     return _stake(_account, _amount);
   }
 
@@ -550,6 +557,7 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     // UNI reverts on failure so it's not necessary to check return value.
     STAKE_TOKEN.transferFrom(msg.sender, address(this), _amount);
     _emitStakedEvent(msg.sender, _amount);
+    _emitTransferEvent(address(0), msg.sender, _amount);
     return _stake(msg.sender, _amount);
   }
 
@@ -559,6 +567,7 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// @dev The amount of tokens actually unstaked may be slightly less than the amount specified due to rounding.
   function unstake(uint256 _amount) external returns (uint256) {
     _emitUnstakedEvent(msg.sender, _amount);
+    _emitTransferEvent(msg.sender, address(0), _amount);
     return _unstake(msg.sender, _amount);
   }
 
@@ -580,6 +589,7 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   ) external returns (uint256) {
     _validateSignature(_account, _amount, _nonce, _deadline, _signature, UNSTAKE_TYPEHASH);
     _emitUnstakedEvent(_account, _amount);
+    _emitTransferEvent(msg.sender, address(0), _amount);
     return _unstake(_account, _amount);
   }
 
@@ -904,6 +914,7 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     // Externally, we model this as the Fixed LST contract staking on behalf of the account in question, so we emit
     // an event that shows the Fixed LST contract as the staker.
     _emitStakedEvent(address(FIXED_LST), _amount);
+    _emitTransferEvent(address(0), address(FIXED_LST), _amount);
 
     // We assume that the stake tokens have already been transferred to this contract by the FixedLst.
     _stake(_account.fixedAlias(), _amount);
@@ -982,6 +993,7 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     // Externally, we model this as the fixed LST unstaking on behalf of the account in question, so we emit
     // an event that shows the Fixed LST contract as the unstaker.
     _emitUnstakedEvent(address(FIXED_LST), _amountUnfixed);
+    _emitTransferEvent(address(FIXED_LST), address(0), _amount);
 
     return _unstake(_account, _amountUnfixed);
   }
@@ -1148,10 +1160,10 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
 
     // cast is safe because we have transferred token amount
     _totals.supply = _totals.supply + uint96(_amount);
-    // sharesForStake would fail if overflowed
+    // _newShares cast to uint128 later would fail if overflowed
     _totals.shares = _totals.shares + uint160(_newShares);
 
-    _holderState.shares = _holderState.shares + uint128(_newShares);
+    _holderState.shares = _holderState.shares + _newShares.toUint128();
     uint256 _balanceDiff = _calcBalanceOf(_holderState, _totals) - _initialBalance;
     if (!_isSameDepositId(_calcDepositId(_holderState), DEFAULT_DEPOSIT_ID)) {
       _holderState.balanceCheckpoint =
@@ -1163,7 +1175,6 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     holderStates[_account] = _holderState;
 
     STAKER.stakeMore(_calcDepositId(_holderState), uint96(_amount));
-    _emitTransferEvent(address(0), _account, _amount);
     return _balanceDiff;
   }
 
@@ -1190,11 +1201,11 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
 
     // Decreases the holder's balance by the amount being withdrawn
     uint256 _sharesDestroyed = _calcSharesForStakeUp(_amount, _totals);
-    _holderState.shares -= uint128(_sharesDestroyed);
+    _holderState.shares -= _sharesDestroyed.toUint128();
 
     // cast is safe because we've validated user has sufficient balance
     _totals.supply = _totals.supply - uint96(_amount);
-    // cast is safe because we've subtracted the shares from user
+    // cast is safe because shares fits into uint128
     _totals.shares = _totals.shares - uint160(_sharesDestroyed);
 
     uint256 _delegatedBalance = _holderState.balanceCheckpoint;
@@ -1237,7 +1248,6 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     }
 
     STAKE_TOKEN.transfer(_withdrawalTarget, _amount);
-    _emitTransferEvent(_account, address(0), _amount);
     return _amount;
   }
 

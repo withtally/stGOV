@@ -38,9 +38,14 @@ contract FixedGovLst is IERC20, IERC20Metadata, Multicall, EIP712, Nonces {
 
   /// @notice Emitted when a holder updates their deposit identifier, which determines the delegatee of their voting
   /// weight.
+  /// @dev This event must be combined with the `DepositUpdated` event on the UniLst for an accurate picture all deposit
+  /// ids for a given holder.
   /// @param holder The address of the account updating their deposit.
-  /// @param depositId The new deposit identifier that will receive the holder's voting weight.
-  event DepositUpdated(address indexed holder, Staker.DepositIdentifier depositId);
+  /// @param oldDepositId The old deposit identifier that loses the holder's voting weight.
+  /// @param newDepositId The new deposit identifier that will receive the holder's voting weight.
+  event DepositUpdated(
+    address indexed holder, Staker.DepositIdentifier oldDepositId, Staker.DepositIdentifier newDepositId
+  );
 
   /// @notice Emitted when governance tokens are staked to receive fixed LST tokens.
   /// @param account The address of the account staking tokens.
@@ -56,11 +61,6 @@ contract FixedGovLst is IERC20, IERC20Metadata, Multicall, EIP712, Nonces {
   /// @param account The address of the account converting their tokens.
   /// @param amount The number of rebasing LST tokens received.
   event Unfixed(address indexed account, uint256 amount);
-
-  /// @notice Emitted when fixed LST tokens are unstaked to receive governance tokens.
-  /// @param account The address of the account unstaking tokens.
-  /// @param amount The number of governance tokens received.
-  event Unstaked(address indexed account, uint256 amount);
 
   /// @notice Emitted when rebasing LST tokens mistakenly sent to a fixed holder alias address are rescued.
   /// @param account The address of the account rescuing their tokens.
@@ -449,8 +449,8 @@ contract FixedGovLst is IERC20, IERC20Metadata, Multicall, EIP712, Nonces {
   /// @param _newDepositId The identifier of a deposit which must be one owned by the rebasing LST. Underlying tokens
   /// staked in the fixed LST will be moved into this deposit.
   function _updateDeposit(address _account, Staker.DepositIdentifier _newDepositId) internal virtual {
-    LST.updateFixedDeposit(_account, _newDepositId);
-    emit DepositUpdated(_account, _newDepositId);
+    Staker.DepositIdentifier _oldDepositId = LST.updateFixedDeposit(_account, _newDepositId);
+    emit DepositUpdated(_account, _oldDepositId, _newDepositId);
   }
 
   /// @notice Internal convenience method which performs the stake operation.
@@ -465,7 +465,7 @@ contract FixedGovLst is IERC20, IERC20Metadata, Multicall, EIP712, Nonces {
     totalShares += _shares;
     uint256 _fixedTokens = _scaleDown(_shares);
     emit IERC20.Transfer(address(0), _account, _fixedTokens);
-    emit Staked(_account, _stakeTokens);
+    emit Fixed(_account, _stakeTokens);
     return _fixedTokens;
   }
 
@@ -480,7 +480,7 @@ contract FixedGovLst is IERC20, IERC20Metadata, Multicall, EIP712, Nonces {
     totalShares -= _shares;
     emit IERC20.Transfer(_account, address(0), _amount);
     uint256 _stakeTokens = LST.convertToRebasingAndUnstake(_account, _shares);
-    emit Unstaked(_account, _stakeTokens);
+    emit Unfixed(_account, _stakeTokens);
     return _stakeTokens;
   }
 

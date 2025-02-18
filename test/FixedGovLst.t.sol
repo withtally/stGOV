@@ -7,6 +7,7 @@ import {Staker} from "staker/Staker.sol";
 import {FixedGovLst} from "src/FixedGovLst.sol";
 import {FixedLstAddressAlias} from "src/FixedLstAddressAlias.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20} from "openzeppelin/token/ERC20/IERC20.sol";
 import {ERC20Votes} from "openzeppelin/token/ERC20/extensions/ERC20Votes.sol";
 import {ERC20Permit} from "openzeppelin/token/ERC20/extensions/ERC20Permit.sol";
 import {Nonces} from "openzeppelin/utils/Nonces.sol";
@@ -35,6 +36,12 @@ contract FixedGovLstTest is GovLstTest {
     uint256 _fixedTokens = fixedLst.stake(_amount);
     vm.stopPrank();
     return _fixedTokens;
+  }
+
+  function _fixedApprove(address _staker, address _caller, uint256 _amount) internal {
+    vm.startPrank(_staker);
+    fixedLst.approve(_caller, _amount);
+    vm.stopPrank();
   }
 
   function _mintAndStakeFixed(address _holder, uint256 _amount) internal returns (uint256) {
@@ -139,8 +146,8 @@ contract Constructor is FixedGovLstTest {
     assertEq(address(fixedLst.LST()), address(lst));
     assertEq(address(fixedLst.STAKE_TOKEN()), address(lst.STAKE_TOKEN()));
     assertEq(fixedLst.SHARE_SCALE_FACTOR(), lst.SHARE_SCALE_FACTOR());
-    assertEq(fixedLst.name(), string.concat("Fixed ", lst.name()));
-    assertEq(fixedLst.symbol(), string.concat("f", lst.symbol()));
+    assertEq(fixedLst.name(), tokenName);
+    assertEq(fixedLst.symbol(), tokenSymbol);
   }
 }
 
@@ -176,12 +183,13 @@ contract UpdateDeposit is FixedGovLstTest {
   {
     _assumeSafeHolder(_holder);
     _assumeSafeDelegatee(_delegatee);
-    Staker.DepositIdentifier _depositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+    Staker.DepositIdentifier _newDepositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+    Staker.DepositIdentifier _oldDepositId = lst.depositIdForHolder(_holder.fixedAlias());
 
     vm.expectEmit();
-    emit FixedGovLst.DepositUpdated(_holder, _depositId);
+    emit FixedGovLst.DepositUpdated(_holder, _oldDepositId, _newDepositId);
     vm.prank(_holder);
-    fixedLst.updateDeposit(_depositId);
+    fixedLst.updateDeposit(_newDepositId);
   }
 }
 
@@ -196,7 +204,7 @@ contract Stake is FixedGovLstTest {
     assertEq(lst.sharesOf(_holder.fixedAlias()) / SHARE_SCALE_FACTOR, fixedLst.balanceOf(_holder));
   }
 
-  function testFuzz_EmitsStakedEvent(address _holder, uint256 _amount) public {
+  function testFuzz_EmitsFixedEvent(address _holder, uint256 _amount) public {
     _assumeSafeHolder(_holder);
     _amount = _boundToReasonableStakeTokenAmount(_amount);
     _mintStakeToken(_holder, _amount);
@@ -204,7 +212,7 @@ contract Stake is FixedGovLstTest {
     stakeToken.approve(address(fixedLst), _amount);
 
     vm.expectEmit();
-    emit FixedGovLst.Staked(_holder, _amount);
+    emit FixedGovLst.Fixed(_holder, _amount);
     vm.prank(_holder);
     fixedLst.stake(_amount);
   }
@@ -474,20 +482,22 @@ contract UpdateDepositOnBehalf is FixedGovLstTest {
 
     // Sign the message
     _setNonce(address(fixedLst), _holder, _nonce);
-    Staker.DepositIdentifier _depositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+    Staker.DepositIdentifier _newDepositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+    Staker.DepositIdentifier _oldDepositId = lst.depositIdForHolder(_holder.fixedAlias());
     bytes memory _signature = _signFixedMessage(
       fixedLst.UPDATE_DEPOSIT_TYPEHASH(),
       _holder,
-      Staker.DepositIdentifier.unwrap(_depositId),
+      Staker.DepositIdentifier.unwrap(_newDepositId),
       ERC20Permit(address(fixedLst)).nonces(_holder),
       _expiry,
       _holderPrivateKey
     );
 
     vm.expectEmit();
-    emit FixedGovLst.DepositUpdated(_holder, _depositId);
+    emit FixedGovLst.DepositUpdated(_holder, _oldDepositId, _newDepositId);
+
     vm.prank(_sender);
-    fixedLst.updateDepositOnBehalf(_holder, _depositId, _nonce, _expiry, _signature);
+    fixedLst.updateDepositOnBehalf(_holder, _newDepositId, _nonce, _expiry, _signature);
   }
 
   function testFuzz_RevertIf_InvalidSignature(
@@ -688,7 +698,7 @@ contract StakeOnBehalf is FixedGovLstTest {
     // Perform the stake on behalf
     vm.prank(_sender);
     vm.expectEmit();
-    emit FixedGovLst.Staked(_staker, _amount);
+    emit FixedGovLst.Fixed(_staker, _amount);
     fixedLst.stakeOnBehalf(_staker, _amount, _nonce, _expiry, signature);
   }
 
@@ -1694,7 +1704,7 @@ contract UnstakeOnBehalf is FixedGovLstTest {
     // Perform the unstake on behalf
     vm.prank(_sender);
     vm.expectEmit();
-    emit FixedGovLst.Unstaked(_staker, _amount);
+    emit FixedGovLst.Unfixed(_staker, _amount);
     fixedLst.unstakeOnBehalf(_staker, _amount, ERC20Permit(address(fixedLst)).nonces(_staker), _expiry, signature);
   }
 
@@ -2470,7 +2480,7 @@ contract Unstake is FixedGovLstTest {
     assertEq(fixedLst.balanceOf(_holder), _initialBalance - _unstakeAmount);
   }
 
-  function testFuzz_EmitsUnstakedEvent(address _holder, uint256 _stakeAmount, address _delegatee) public {
+  function testFuzz_EmitsUnfixedEvent(address _holder, uint256 _stakeAmount, address _delegatee) public {
     _assumeSafeHolder(_holder);
     _assumeSafeDelegatee(_delegatee);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
@@ -2490,7 +2500,7 @@ contract Unstake is FixedGovLstTest {
 
     Vm.Log[] memory _entries = vm.getRecordedLogs();
     uint256 _index = _entries.length - 1;
-    assertEq(_entries[_index].topics[0], keccak256("Unstaked(address,uint256)"));
+    assertEq(_entries[_index].topics[0], keccak256("Unfixed(address,uint256)"));
     assertEq(_entries[_index].topics[1], bytes32(uint256(uint160(_holder))));
     assertEq(abi.decode(_entries[_index].data, (uint256)), _stakeTokens);
   }
