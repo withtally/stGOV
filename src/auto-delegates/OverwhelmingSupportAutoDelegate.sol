@@ -154,6 +154,11 @@ contract OverwhelmingSupportAutoDelegate is Ownable, IERC6372 {
   }
 
   /// @notice Checks if all requirements are met for casting a vote on a proposal.
+  /// @dev Requirements include:
+  /// 1. The governor must be an authorized governor.
+  /// 2. Current block must be within voting window (endBlock - votingWindow).
+  /// 3. FOR votes must meet sub-quorum threshold (percentage of quorum in basis points).
+  /// 4. Support ratio (FOR/(FOR+AGAINST)) must exceed supportThreshold.
   /// @param _governor The Governor contract containing the proposal.
   /// @param _proposalId The ID of the proposal to check
   /// @dev This function reverts if any voting requirement is not met.
