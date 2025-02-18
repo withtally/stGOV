@@ -304,7 +304,7 @@ contract UniLstTest is UnitTestBase, PercentAssertions, TestHelpers, Eip712Helpe
     uint256 _signerPrivateKey
   ) internal view returns (bytes memory) {
     bytes32 structHash = keccak256(abi.encode(_typehash, _account, _amount, _nonce, _expiry));
-    bytes32 hash = _hashTypedDataV4(EIP712_DOMAIN_TYPEHASH, structHash, "UniLst", "1", address(lst));
+    bytes32 hash = _hashTypedDataV4(EIP712_DOMAIN_TYPEHASH, structHash, "Staked Uni", "1", address(lst));
     (uint8 v, bytes32 r, bytes32 s) = vm.sign(_signerPrivateKey, hash);
     return abi.encodePacked(r, s, v);
   }
@@ -322,8 +322,8 @@ contract Constructor is UniLstTest {
     assertEq(lst.defaultDelegatee(), defaultDelegatee);
     assertEq(uint80(lst.payoutAmount()), initialPayoutAmount);
     assertEq(lst.owner(), lstOwner);
-    assertEq(lst.name(), tokenName);
-    assertEq(lst.symbol(), tokenSymbol);
+    assertEq(lst.name(), string.concat("Rebased ", tokenName));
+    assertEq(lst.symbol(), string.concat("r", tokenSymbol));
     assertEq(lst.decimals(), 18);
     assertEq(lst.delegateeGuardian(), delegateeGuardian);
     assertEq(lst.MAX_FEE_BIPS(), 2000); // 20% in bips
@@ -3397,7 +3397,7 @@ contract Permit is UniLstTest {
     uint256 _nonce = lst.nonces(_owner);
     bytes32 structHash = _buildPermitStructHash(_owner, _spender, _value, _nonce, _deadline);
     (uint8 v, bytes32 r, bytes32 s) =
-      vm.sign(_ownerPrivateKey, _hashTypedDataV4(EIP712_DOMAIN_TYPEHASH, structHash, "UniLst", "1", address(lst)));
+      vm.sign(_ownerPrivateKey, _hashTypedDataV4(EIP712_DOMAIN_TYPEHASH, structHash, "Staked Uni", "1", address(lst)));
 
     assertEq(lst.allowance(_owner, _spender), 0);
 
@@ -3424,7 +3424,7 @@ contract Permit is UniLstTest {
     uint256 _nonce = lst.nonces(_owner);
     bytes32 structHash = _buildPermitStructHash(_owner, _spender, _value, _nonce, _deadline);
     (uint8 v, bytes32 r, bytes32 s) =
-      vm.sign(_ownerPrivateKey, _hashTypedDataV4(EIP712_DOMAIN_TYPEHASH, structHash, "UniLst", "1", address(lst)));
+      vm.sign(_ownerPrivateKey, _hashTypedDataV4(EIP712_DOMAIN_TYPEHASH, structHash, "Staked Uni", "1", address(lst)));
 
     vm.prank(_sender);
     vm.expectEmit();
@@ -3455,7 +3455,7 @@ contract Permit is UniLstTest {
     uint256 _nonce = lst.nonces(_owner);
     bytes32 structHash = _buildPermitStructHash(_owner, _spender, _value, _nonce, _deadline);
     (uint8 v, bytes32 r, bytes32 s) =
-      vm.sign(_ownerPrivateKey, _hashTypedDataV4(EIP712_DOMAIN_TYPEHASH, structHash, "UniLst", "1", address(lst)));
+      vm.sign(_ownerPrivateKey, _hashTypedDataV4(EIP712_DOMAIN_TYPEHASH, structHash, "Staked Uni", "1", address(lst)));
 
     vm.prank(_sender);
     vm.expectRevert(UniLst.UniLst__SignatureExpired.selector);
@@ -3481,7 +3481,7 @@ contract Permit is UniLstTest {
     uint256 _nonce = lst.nonces(_owner);
     bytes32 structHash = _buildPermitStructHash(_owner, _spender, _value, _nonce, _deadline);
     (uint8 v, bytes32 r, bytes32 s) =
-      vm.sign(_wrongPrivateKey, _hashTypedDataV4(EIP712_DOMAIN_TYPEHASH, structHash, "UniLst", "1", address(lst)));
+      vm.sign(_wrongPrivateKey, _hashTypedDataV4(EIP712_DOMAIN_TYPEHASH, structHash, "Staked Uni", "1", address(lst)));
 
     vm.prank(_sender);
     vm.expectRevert(UniLst.UniLst__InvalidSignature.selector);
@@ -3504,7 +3504,7 @@ contract Permit is UniLstTest {
     uint256 _nonce = lst.nonces(_owner);
     bytes32 structHash = _buildPermitStructHash(_owner, _spender, _value, _nonce, _deadline);
     (uint8 v, bytes32 r, bytes32 s) =
-      vm.sign(_ownerPrivateKey, _hashTypedDataV4(EIP712_DOMAIN_TYPEHASH, structHash, "UniLst", "1", address(lst)));
+      vm.sign(_ownerPrivateKey, _hashTypedDataV4(EIP712_DOMAIN_TYPEHASH, structHash, "Staked Uni", "1", address(lst)));
 
     vm.prank(_sender);
     lst.permit(_owner, _spender, _value, _deadline, v, r, s);
@@ -3520,7 +3520,7 @@ contract DOMAIN_SEPARATOR is UniLstTest {
     bytes32 _expectedDomainSeparator = keccak256(
       abi.encode(
         keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
-        keccak256("UniLst"),
+        keccak256("Staked Uni"),
         keccak256("1"),
         block.chainid,
         address(lst)

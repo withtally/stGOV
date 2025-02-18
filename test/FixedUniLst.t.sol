@@ -142,8 +142,8 @@ contract Constructor is FixedUniLstTest {
     assertEq(address(fixedLst.LST()), address(lst));
     assertEq(address(fixedLst.STAKE_TOKEN()), address(lst.STAKE_TOKEN()));
     assertEq(fixedLst.SHARE_SCALE_FACTOR(), lst.SHARE_SCALE_FACTOR());
-    assertEq(fixedLst.name(), string.concat("Fixed ", lst.name()));
-    assertEq(fixedLst.symbol(), string.concat("f", lst.symbol()));
+    assertEq(fixedLst.name(), tokenName);
+    assertEq(fixedLst.symbol(), tokenSymbol);
   }
 }
 

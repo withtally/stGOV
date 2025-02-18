@@ -247,12 +247,12 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     address _initialOwner,
     uint80 _initialPayoutAmount,
     address _initialDelegateeGuardian
-  ) Ownable(_initialOwner) EIP712("UniLst", "1") {
+  ) Ownable(_initialOwner) EIP712(_name, "1") {
     STAKER = _staker;
     STAKE_TOKEN = IUni(_staker.STAKE_TOKEN());
     REWARD_TOKEN = IWETH9(payable(_staker.REWARD_TOKEN()));
-    NAME = _name;
-    SYMBOL = _symbol;
+    NAME = string.concat("Rebased ", _name);
+    SYMBOL = string.concat("r", _symbol);
 
     _setDefaultDelegatee(_initialDefaultDelegatee);
     _setRewardParams(_initialPayoutAmount, 0, _initialOwner);
@@ -265,9 +265,7 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
 
     // Deploy the WithdrawGate
     WITHDRAW_GATE = new WithdrawGate(_initialOwner, address(this), address(STAKE_TOKEN), 0);
-    FIXED_LST = new FixedUniLst(
-      string.concat("Fixed ", _name), string.concat("f", _symbol), this, STAKE_TOKEN, SHARE_SCALE_FACTOR
-    );
+    FIXED_LST = new FixedUniLst(_name, _symbol, this, STAKE_TOKEN, SHARE_SCALE_FACTOR);
   }
 
   /// @notice The name of the liquid stake token.
