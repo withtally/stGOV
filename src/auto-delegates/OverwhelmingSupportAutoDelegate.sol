@@ -189,7 +189,7 @@ contract OverwhelmingSupportAutoDelegate is Ownable, IERC6372 {
   /// represents 100%. This calculation determines if the percentage of "For" votes meets the required threshold.
   function _isAboveSupportThreshold(IGovernorBravoDelegate _governor, uint256 _proposalId) internal view returns (bool) {
     (,,,,, uint256 _forVotes, uint256 _againstVotes,,,) = _governor.proposals(_proposalId);
-    return ((_forVotes * BIP) / (_forVotes + _againstVotes)) >= supportThreshold;
+    return _forVotes * BIP >= supportThreshold * (_forVotes + _againstVotes);
   }
 
   /// @notice Internal function to set the voting window.
