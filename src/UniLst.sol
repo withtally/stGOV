@@ -34,6 +34,7 @@ import {SafeCast} from "openzeppelin/utils/math/SafeCast.sol";
 /// shortfalls in the default deposit, which can be subsidized to remain solvent.
 contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP712, Nonces {
   using FixedLstAddressAlias for address;
+  using SafeCast for uint256;
 
   /// @notice Emitted when the LST owner updates the payout amount required for the MEV reward game in
   /// `claimAndDistributeReward`.
@@ -1058,10 +1059,10 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
 
     // cast is safe because we have transferred token amount
     _totals.supply = _totals.supply + uint96(_amount);
-    // sharesForStake would fail if overflowed
+    // _newShares cast to uint128 later would fail if overflowed
     _totals.shares = _totals.shares + uint160(_newShares);
 
-    _holderState.shares = _holderState.shares + uint128(_newShares);
+    _holderState.shares = _holderState.shares + _newShares.toUint128();
     uint256 _balanceDiff = _calcBalanceOf(_holderState, _totals) - _initialBalance;
     if (!_isSameDepositId(_calcDepositId(_holderState), DEFAULT_DEPOSIT_ID)) {
       _holderState.balanceCheckpoint =
@@ -1100,11 +1101,11 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
 
     // Decreases the holder's balance by the amount being withdrawn
     uint256 _sharesDestroyed = _calcSharesForStakeUp(_amount, _totals);
-    _holderState.shares -= uint128(_sharesDestroyed);
+    _holderState.shares -= _sharesDestroyed.toUint128();
 
     // cast is safe because we've validated user has sufficient balance
     _totals.supply = _totals.supply - uint96(_amount);
-    // cast is safe because we've subtracted the shares from user
+    // cast is safe because shares fits into uint128
     _totals.shares = _totals.shares - uint160(_sharesDestroyed);
 
     uint256 _delegatedBalance = _holderState.balanceCheckpoint;
