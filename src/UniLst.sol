@@ -246,7 +246,8 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     address _initialDefaultDelegatee,
     address _initialOwner,
     uint80 _initialPayoutAmount,
-    address _initialDelegateeGuardian
+    address _initialDelegateeGuardian,
+    uint256 _stakeToBurn
   ) Ownable(_initialOwner) EIP712(_name, "1") {
     STAKER = _staker;
     STAKE_TOKEN = IUni(_staker.STAKE_TOKEN());
@@ -262,6 +263,8 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     STAKE_TOKEN.approve(address(_staker), type(uint256).max);
     // Create initial deposit for default so other methods can assume it exists.
     DEFAULT_DEPOSIT_ID = STAKER.stake(0, _initialDefaultDelegatee);
+    STAKE_TOKEN.transferFrom(msg.sender, address(this), _stakeToBurn);
+    _stake(address(this), _stakeToBurn);
 
     // Deploy the WithdrawGate
     WITHDRAW_GATE = new WithdrawGate(_initialOwner, address(this), address(STAKE_TOKEN), 0);

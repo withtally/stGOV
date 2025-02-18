@@ -41,7 +41,7 @@ contract UniStakerInvariants is Test, UnitTestBase {
     staker.setRewardNotifier(stakerAdmin, true);
 
     // Finally, deploy the lst for tests.
-    lst = new UniLst("Uni Lst", "stUni", staker, defaultDelegatee, lstOwner, initialPayoutAmount, delegateeGuardian);
+    lst = new UniLst("Uni Lst", "stUni", staker, defaultDelegatee, lstOwner, initialPayoutAmount, delegateeGuardian, 0);
 
     // Set the withdrawal delay to a non-zero amount
     vm.startPrank(lstOwner);

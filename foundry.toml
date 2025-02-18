@@ -20,6 +20,9 @@
   fuzz = { runs = 3000 }
   invariant = { runs = 1000 }
 
+[profile.prod]
+  via-ir = true
+
 [profile.coverage]
   fuzz = { runs = 100 }
   invariant = { runs = 0 }

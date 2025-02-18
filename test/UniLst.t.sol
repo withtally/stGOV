@@ -59,7 +59,8 @@ contract UniLstTest is UnitTestBase, PercentAssertions, TestHelpers, Eip712Helpe
     staker.setRewardNotifier(stakerAdmin, true);
 
     // Finally, deploy the lst for tests.
-    lst = new UniLst(tokenName, tokenSymbol, staker, defaultDelegatee, lstOwner, initialPayoutAmount, delegateeGuardian);
+    lst =
+      new UniLst(tokenName, tokenSymbol, staker, defaultDelegatee, lstOwner, initialPayoutAmount, delegateeGuardian, 0);
     // Store the withdraw gate for convenience, set a non-zero withdrawal delay
     withdrawGate = lst.WITHDRAW_GATE();
     vm.prank(lstOwner);
@@ -67,6 +68,19 @@ contract UniLstTest is UnitTestBase, PercentAssertions, TestHelpers, Eip712Helpe
 
     // Cache for use throughout tests.
     SHARE_SCALE_FACTOR = lst.SHARE_SCALE_FACTOR();
+  }
+
+  function _computeCreate1Address(address deployer, uint8 nonce) internal pure returns (address) {
+    // RLP = 0xd6 0x94 <address> <1-byte nonce>
+    // 0xd6 = 0xc0 + 0x16 => 22 decimal bytes after
+    // 0x94 => 20 bytes for address
+    // The last byte is the nonce itself (when 1 <= nonce <= 0x7f)
+
+    // Special case for nonce == 0 can be handled if needed
+    bytes memory rlpEncoded = abi.encodePacked(hex"d6", hex"94", deployer, bytes1(nonce));
+
+    bytes32 hash = keccak256(rlpEncoded);
+    return address(uint160(uint256(hash)));
   }
 
   function __dumpGlobalState() public view {
@@ -346,7 +360,8 @@ contract Constructor is UniLstTest {
     address _lstOwner,
     string memory _tokenName,
     string memory _tokenSymbol,
-    address _delegateeGuardian
+    address _delegateeGuardian,
+    uint64 _stakeToBurn
   ) public {
     _assumeSafeMockAddress(_staker);
     _assumeSafeMockAddress(_stakeToken);
@@ -354,19 +369,65 @@ contract Constructor is UniLstTest {
     vm.mockCall(_staker, abi.encodeWithSelector(IUniStaker.STAKE_TOKEN.selector), abi.encode(_stakeToken));
     vm.mockCall(_staker, abi.encodeWithSelector(IUniStaker.REWARD_TOKEN.selector), abi.encode(_rewardToken));
     vm.mockCall(_stakeToken, abi.encodeWithSelector(IUni.approve.selector), abi.encode(true));
+
     // Because there are 2 functions named "stake" on UniStaker, `IUnistaker.stake.selector` does not resolve
     // so we precalculate the 2 arrity selector instead in order to mock it.
     bytes4 _stakeWithArrity2Selector = hex"98f2b576";
+
     vm.mockCall(_staker, abi.encodeWithSelector(_stakeWithArrity2Selector), abi.encode(1));
+    vm.mockCall(_staker, abi.encodeWithSelector(IUniStaker.stakeMore.selector), abi.encode());
+    vm.mockCall(_stakeToken, abi.encodeWithSelector(IUni.transferFrom.selector), abi.encode(true));
 
     UniLst _lst = new UniLst(
-      _tokenName, _tokenSymbol, IUniStaker(_staker), _defaultDelegatee, _lstOwner, _payoutAmount, _delegateeGuardian
+      _tokenName,
+      _tokenSymbol,
+      IUniStaker(_staker),
+      _defaultDelegatee,
+      _lstOwner,
+      _payoutAmount,
+      _delegateeGuardian,
+      _stakeToBurn
     );
     assertEq(address(_lst.STAKER()), _staker);
     assertEq(address(_lst.STAKE_TOKEN()), _stakeToken);
     assertEq(address(_lst.REWARD_TOKEN()), _rewardToken);
     assertEq(_lst.defaultDelegatee(), _defaultDelegatee);
     assertEq(IUniStaker.DepositIdentifier.unwrap(_lst.depositForDelegatee(_defaultDelegatee)), 1);
+    assertEq(_lst.payoutAmount(), _payoutAmount);
+    assertEq(_lst.owner(), _lstOwner);
+    assertEq(_lst.delegateeGuardian(), _delegateeGuardian);
+  }
+
+  function testFuzz_DeploysTheContractWithArbitraryValuesForParametersWithNoMocks(
+    address _defaultDelegatee,
+    uint80 _payoutAmount,
+    address _lstOwner,
+    string memory _tokenName,
+    string memory _tokenSymbol,
+    address _delegateeGuardian,
+    uint64 _stakeToBurn
+  ) public {
+    vm.assume(_lstOwner != address(0) && _defaultDelegatee != address(0));
+
+    address lstAddr = _computeCreate1Address(address(this), uint8(vm.getNonce(address(this))));
+    _mintStakeToken(address(this), _stakeToBurn);
+    stakeToken.approve(address(lstAddr), _stakeToBurn);
+
+    UniLst _lst = new UniLst(
+      _tokenName,
+      _tokenSymbol,
+      IUniStaker(staker),
+      _defaultDelegatee,
+      _lstOwner,
+      _payoutAmount,
+      _delegateeGuardian,
+      _stakeToBurn
+    );
+    assertEq(address(_lst.STAKER()), address(staker));
+    assertEq(address(_lst.STAKE_TOKEN()), address(stakeToken));
+    assertEq(address(_lst.REWARD_TOKEN()), address(rewardToken));
+    assertEq(_lst.defaultDelegatee(), _defaultDelegatee);
+    assertEq(IUniStaker.DepositIdentifier.unwrap(_lst.depositForDelegatee(_defaultDelegatee)), 2);
     assertEq(_lst.payoutAmount(), _payoutAmount);
     assertEq(_lst.owner(), _lstOwner);
     assertEq(_lst.delegateeGuardian(), _delegateeGuardian);
