@@ -78,7 +78,8 @@ contract GovLstTest is UnitTestBase, PercentAssertions, TestHelpers, Eip712Helpe
     staker.setRewardNotifier(stakerAdmin, true);
 
     // Finally, deploy the lst for tests.
-    lst = new GovLst(tokenName, tokenSymbol, staker, defaultDelegatee, lstOwner, initialPayoutAmount, delegateeGuardian);
+    lst =
+      new GovLst(tokenName, tokenSymbol, staker, defaultDelegatee, lstOwner, initialPayoutAmount, delegateeGuardian, 0);
     // Store the withdraw gate for convenience, set a non-zero withdrawal delay
     withdrawGate = lst.WITHDRAW_GATE();
     vm.prank(lstOwner);
@@ -86,6 +87,19 @@ contract GovLstTest is UnitTestBase, PercentAssertions, TestHelpers, Eip712Helpe
 
     // Cache for use throughout tests.
     SHARE_SCALE_FACTOR = lst.SHARE_SCALE_FACTOR();
+  }
+
+  function _computeCreate1Address(address deployer, uint8 nonce) internal pure returns (address) {
+    // RLP = 0xd6 0x94 <address> <1-byte nonce>
+    // 0xd6 = 0xc0 + 0x16 => 22 decimal bytes after
+    // 0x94 => 20 bytes for address
+    // The last byte is the nonce itself (when 1 <= nonce <= 0x7f)
+
+    // Special case for nonce == 0 can be handled if needed
+    bytes memory rlpEncoded = abi.encodePacked(hex"d6", hex"94", deployer, bytes1(nonce));
+
+    bytes32 hash = keccak256(rlpEncoded);
+    return address(uint160(uint256(hash)));
   }
 
   function __dumpGlobalState() public view {
@@ -349,7 +363,7 @@ contract GovLstTest is UnitTestBase, PercentAssertions, TestHelpers, Eip712Helpe
     uint256 _signerPrivateKey
   ) internal view returns (bytes memory) {
     bytes32 structHash = keccak256(abi.encode(_typehash, _account, _amount, _nonce, _expiry));
-    bytes32 hash = _hashTypedDataV4(EIP712_DOMAIN_TYPEHASH, structHash, "GovLst", "1", address(lst));
+    bytes32 hash = _hashTypedDataV4(EIP712_DOMAIN_TYPEHASH, structHash, "Staked Gov", "1", address(lst));
     (uint8 v, bytes32 r, bytes32 s) = vm.sign(_signerPrivateKey, hash);
     return abi.encodePacked(r, s, v);
   }
@@ -384,8 +398,8 @@ contract Constructor is GovLstTest {
     assertEq(lst.defaultDelegatee(), defaultDelegatee);
     assertEq(uint80(lst.payoutAmount()), initialPayoutAmount);
     assertEq(lst.owner(), lstOwner);
-    assertEq(lst.name(), tokenName);
-    assertEq(lst.symbol(), tokenSymbol);
+    assertEq(lst.name(), string.concat("Rebased ", tokenName));
+    assertEq(lst.symbol(), string.concat("r", tokenSymbol));
     assertEq(lst.decimals(), 18);
     assertEq(lst.delegateeGuardian(), delegateeGuardian);
     assertEq(lst.MAX_FEE_BIPS(), 2000); // 20% in bips
@@ -400,23 +414,33 @@ contract Constructor is GovLstTest {
   }
 
   function testFuzz_DeploysTheContractWithArbitraryValuesForParameters(
-    address _stakeToken,
     address _defaultDelegatee,
     uint80 _payoutAmount,
     address _lstOwner,
     string memory _tokenName,
     string memory _tokenSymbol,
-    address _delegateeGuardian
+    address _delegateeGuardian,
+    uint64 _stakeToBurn
   ) public {
-    _assumeSafeMockAddress(_stakeToken);
-    vm.assume(_lstOwner != address(0) && _lstOwner != address(0) && _defaultDelegatee != address(0));
+    vm.assume(_lstOwner != address(0) && _defaultDelegatee != address(0));
+
+    address lstAddr = _computeCreate1Address(address(this), uint8(vm.getNonce(address(this))));
+    _mintStakeToken(address(this), _stakeToBurn);
+    stakeToken.approve(address(lstAddr), _stakeToBurn);
 
     GovLst _lst = new GovLst(
-      _tokenName, _tokenSymbol, Staker(staker), _defaultDelegatee, _lstOwner, _payoutAmount, _delegateeGuardian
+      _tokenName,
+      _tokenSymbol,
+      Staker(staker),
+      _defaultDelegatee,
+      _lstOwner,
+      _payoutAmount,
+      _delegateeGuardian,
+      _stakeToBurn
     );
     assertEq(address(_lst.STAKER()), address(staker));
-    assertEq(address(_lst.STAKE_TOKEN()), address(staker.STAKE_TOKEN()));
-    assertEq(address(_lst.REWARD_TOKEN()), address(staker.REWARD_TOKEN()));
+    assertEq(address(_lst.STAKE_TOKEN()), address(stakeToken));
+    assertEq(address(_lst.REWARD_TOKEN()), address(rewardToken));
     assertEq(_lst.defaultDelegatee(), _defaultDelegatee);
     assertEq(Staker.DepositIdentifier.unwrap(_lst.depositForDelegatee(_defaultDelegatee)), 2);
     assertEq(_lst.payoutAmount(), _payoutAmount);
@@ -3772,7 +3796,7 @@ contract Permit is GovLstTest {
     uint256 _nonce = lst.nonces(_owner);
     bytes32 structHash = _buildPermitStructHash(_owner, _spender, _value, _nonce, _deadline);
     (uint8 v, bytes32 r, bytes32 s) =
-      vm.sign(_ownerPrivateKey, _hashTypedDataV4(EIP712_DOMAIN_TYPEHASH, structHash, "GovLst", "1", address(lst)));
+      vm.sign(_ownerPrivateKey, _hashTypedDataV4(EIP712_DOMAIN_TYPEHASH, structHash, "Staked Gov", "1", address(lst)));
 
     assertEq(lst.allowance(_owner, _spender), 0);
 
@@ -3799,7 +3823,7 @@ contract Permit is GovLstTest {
     uint256 _nonce = lst.nonces(_owner);
     bytes32 structHash = _buildPermitStructHash(_owner, _spender, _value, _nonce, _deadline);
     (uint8 v, bytes32 r, bytes32 s) =
-      vm.sign(_ownerPrivateKey, _hashTypedDataV4(EIP712_DOMAIN_TYPEHASH, structHash, "GovLst", "1", address(lst)));
+      vm.sign(_ownerPrivateKey, _hashTypedDataV4(EIP712_DOMAIN_TYPEHASH, structHash, "Staked Gov", "1", address(lst)));
 
     vm.prank(_sender);
     vm.expectEmit();
@@ -3830,7 +3854,7 @@ contract Permit is GovLstTest {
     uint256 _nonce = lst.nonces(_owner);
     bytes32 structHash = _buildPermitStructHash(_owner, _spender, _value, _nonce, _deadline);
     (uint8 v, bytes32 r, bytes32 s) =
-      vm.sign(_ownerPrivateKey, _hashTypedDataV4(EIP712_DOMAIN_TYPEHASH, structHash, "GovLst", "1", address(lst)));
+      vm.sign(_ownerPrivateKey, _hashTypedDataV4(EIP712_DOMAIN_TYPEHASH, structHash, "Staked Gov", "1", address(lst)));
 
     vm.prank(_sender);
     vm.expectRevert(GovLst.GovLst__SignatureExpired.selector);
@@ -3856,7 +3880,7 @@ contract Permit is GovLstTest {
     uint256 _nonce = lst.nonces(_owner);
     bytes32 structHash = _buildPermitStructHash(_owner, _spender, _value, _nonce, _deadline);
     (uint8 v, bytes32 r, bytes32 s) =
-      vm.sign(_wrongPrivateKey, _hashTypedDataV4(EIP712_DOMAIN_TYPEHASH, structHash, "GovLst", "1", address(lst)));
+      vm.sign(_wrongPrivateKey, _hashTypedDataV4(EIP712_DOMAIN_TYPEHASH, structHash, "Staked Gov", "1", address(lst)));
 
     vm.prank(_sender);
     vm.expectRevert(GovLst.GovLst__InvalidSignature.selector);
@@ -3879,7 +3903,7 @@ contract Permit is GovLstTest {
     uint256 _nonce = lst.nonces(_owner);
     bytes32 structHash = _buildPermitStructHash(_owner, _spender, _value, _nonce, _deadline);
     (uint8 v, bytes32 r, bytes32 s) =
-      vm.sign(_ownerPrivateKey, _hashTypedDataV4(EIP712_DOMAIN_TYPEHASH, structHash, "GovLst", "1", address(lst)));
+      vm.sign(_ownerPrivateKey, _hashTypedDataV4(EIP712_DOMAIN_TYPEHASH, structHash, "Staked Gov", "1", address(lst)));
 
     vm.prank(_sender);
     lst.permit(_owner, _spender, _value, _deadline, v, r, s);
@@ -3895,7 +3919,7 @@ contract DOMAIN_SEPARATOR is GovLstTest {
     bytes32 _expectedDomainSeparator = keccak256(
       abi.encode(
         keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
-        keccak256("GovLst"),
+        keccak256("Staked Gov"),
         keccak256("1"),
         block.chainid,
         address(lst)

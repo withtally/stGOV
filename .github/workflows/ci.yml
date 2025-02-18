@@ -23,7 +23,7 @@ jobs:
       - name: Build contracts
         run: |
           forge --version
-          forge build --sizes
+          FOUNDRY_PROFILE=prod forge build --sizes --skip test script "*.handler.sol"
 
   test:
     runs-on: ubuntu-latest
