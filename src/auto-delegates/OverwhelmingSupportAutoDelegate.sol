@@ -109,15 +109,7 @@ contract OverwhelmingSupportAutoDelegate is Ownable, IERC6372 {
   /// @param _proposalId The ID of the proposal to vote on.
   /// @dev Always votes in favor (1) of the proposal.
   function castVote(IGovernorBravoDelegate _governor, uint256 _proposalId) public {
-    if (!_isWithinVotingWindow(_governor, _proposalId)) {
-      revert OverwhelmingSupportAutoDelegate__OutsideVotingWindow();
-    }
-    if (!_hasReachedSubQuorum(_governor, _proposalId)) {
-      revert OverwhelmingSupportAutoDelegate__InsufficientForVotes();
-    }
-    if (!_isAboveSupportThreshold(_governor, _proposalId)) {
-      revert OverwhelmingSupportAutoDelegate__BelowSupportThreshold();
-    }
+    checkVoteRequirements(_governor, _proposalId);
     _governor.castVote(_proposalId, FOR);
   }
 
@@ -161,34 +153,50 @@ contract OverwhelmingSupportAutoDelegate is Ownable, IERC6372 {
     _setSupportThreshold(_supportThreshold);
   }
 
+  /// @notice Checks if all requirements are met for casting a vote on a proposal.
+  /// @param _governor The Governor contract containing the proposal.
+  /// @param _proposalId The ID of the proposal to check
+  /// @dev This function reverts if any voting requirement is not met.
+  function checkVoteRequirements(IGovernorBravoDelegate _governor, uint256 _proposalId) public view {
+    // Fetch proposal data once
+    (,,,, uint256 endBlock, uint256 forVotes, uint256 againstVotes,,,) = _governor.proposals(_proposalId);
+    uint256 quorumVotes = _governor.quorumVotes();
+
+    if (!_isWithinVotingWindow(endBlock)) {
+      revert OverwhelmingSupportAutoDelegate__OutsideVotingWindow();
+    }
+    if (!_hasReachedSubQuorum(forVotes, quorumVotes)) {
+      revert OverwhelmingSupportAutoDelegate__InsufficientForVotes();
+    }
+    if (!_isAboveSupportThreshold(forVotes, againstVotes)) {
+      revert OverwhelmingSupportAutoDelegate__BelowSupportThreshold();
+    }
+  }
+
   /// @notice Checks if the current block is within the voting window of a proposal's endBlock.
-  /// @param _governor The Governor contract to check the proposal in.
-  /// @param _proposalId The ID of the proposal to check the voting window for.
+  /// @param _endBlock The end block of the proposal.
   /// @return bool Returns true if within the voting window, false otherwise.
-  function _isWithinVotingWindow(IGovernorBravoDelegate _governor, uint256 _proposalId) internal view returns (bool) {
-    (,,,, uint256 endBlock,,,,,) = _governor.proposals(_proposalId);
-    return block.number >= (endBlock - votingWindow);
+  function _isWithinVotingWindow(uint256 _endBlock) internal view returns (bool) {
+    return block.number >= (_endBlock - votingWindow);
   }
 
   /// @notice Checks if a proposal has enough FOR votes to meet the subQuorumBips threshold.
-  /// @param _governor The Governor contract.
-  /// @param _proposalId The ID of the proposal to check.
+  /// @param _forVotes The number of FOR votes.
+  /// @param _quorumVotes The number of quorum votes.
   /// @return bool Returns true if the proposal has received enough "For" votes to meet the subQuorumBips threshold,
   /// false otherwise.
-  function _hasReachedSubQuorum(IGovernorBravoDelegate _governor, uint256 _proposalId) internal view returns (bool) {
-    (,,,,, uint256 _forVotes,,,,) = _governor.proposals(_proposalId);
-    return _forVotes >= ((_governor.quorumVotes() * subQuorumBips) / BIP);
+  function _hasReachedSubQuorum(uint256 _forVotes, uint256 _quorumVotes) internal view returns (bool) {
+    return _forVotes >= ((_quorumVotes * subQuorumBips) / BIP);
   }
 
   /// @notice Checks if a proposal has received sufficient support based on the minimum support percentage threshold.
-  /// @param _governor The address of the Governor contract.
-  /// @param _proposalId The ID of the proposal to check.
+  /// @param _forVotes The number of FOR votes.
+  /// @param _againstVotes The number of AGAINST votes.
   /// @return bool Returns true if the percentage of "For" votes to for + against votes meets or exceeds
   /// supportThreshold, and false otherwise.
   /// @dev The percentage is calculated as (_forVotes / (_forVotes + _againstVotes)) * BIP, where BIP = 10,000
   /// represents 100%. This calculation determines if the percentage of "For" votes meets the required threshold.
-  function _isAboveSupportThreshold(IGovernorBravoDelegate _governor, uint256 _proposalId) internal view returns (bool) {
-    (,,,,, uint256 _forVotes, uint256 _againstVotes,,,) = _governor.proposals(_proposalId);
+  function _isAboveSupportThreshold(uint256 _forVotes, uint256 _againstVotes) internal view returns (bool) {
     return _forVotes * BIP >= supportThreshold * (_forVotes + _againstVotes);
   }
 
