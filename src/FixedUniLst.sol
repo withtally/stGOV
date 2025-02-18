@@ -47,11 +47,6 @@ contract FixedUniLst is IERC20, IERC20Metadata, Multicall, EIP712, Nonces {
     address indexed holder, IUniStaker.DepositIdentifier oldDepositId, IUniStaker.DepositIdentifier newDepositId
   );
 
-  /// @notice Emitted when governance tokens are staked to receive fixed LST tokens.
-  /// @param account The address of the account staking tokens.
-  /// @param amount The number of governance tokens staked.
-  event Staked(address indexed account, uint256 amount);
-
   /// @notice Emitted when rebasing LST tokens are converted to fixed LST tokens.
   /// @param account The address of the account converting their tokens.
   /// @param amount The number of rebasing LST tokens converted to fixed LST tokens.
@@ -61,11 +56,6 @@ contract FixedUniLst is IERC20, IERC20Metadata, Multicall, EIP712, Nonces {
   /// @param account The address of the account converting their tokens.
   /// @param amount The number of rebasing LST tokens received.
   event Unfixed(address indexed account, uint256 amount);
-
-  /// @notice Emitted when fixed LST tokens are unstaked to receive governance tokens.
-  /// @param account The address of the account unstaking tokens.
-  /// @param amount The number of governance tokens received.
-  event Unstaked(address indexed account, uint256 amount);
 
   /// @notice Emitted when rebasing LST tokens mistakenly sent to a fixed holder alias address are rescued.
   /// @param account The address of the account rescuing their tokens.
@@ -475,7 +465,7 @@ contract FixedUniLst is IERC20, IERC20Metadata, Multicall, EIP712, Nonces {
     totalShares += _shares;
     uint256 _fixedTokens = _scaleDown(_shares);
     emit IERC20.Transfer(address(0), _account, _fixedTokens);
-    emit Staked(_account, _stakeTokens);
+    emit Fixed(_account, _stakeTokens);
     return _fixedTokens;
   }
 
@@ -490,7 +480,7 @@ contract FixedUniLst is IERC20, IERC20Metadata, Multicall, EIP712, Nonces {
     totalShares -= _shares;
     emit IERC20.Transfer(_account, address(0), _amount);
     uint256 _stakeTokens = LST.convertToRebasingAndUnstake(_account, _shares);
-    emit Unstaked(_account, _stakeTokens);
+    emit Unfixed(_account, _stakeTokens);
     return _stakeTokens;
   }
 

@@ -200,7 +200,7 @@ contract Stake is FixedUniLstTest {
     assertEq(lst.sharesOf(_holder.fixedAlias()) / SHARE_SCALE_FACTOR, fixedLst.balanceOf(_holder));
   }
 
-  function testFuzz_EmitsStakedEvent(address _holder, uint256 _amount) public {
+  function testFuzz_EmitsFixedEvent(address _holder, uint256 _amount) public {
     _assumeSafeHolder(_holder);
     _amount = _boundToReasonableStakeTokenAmount(_amount);
     _mintStakeToken(_holder, _amount);
@@ -208,7 +208,7 @@ contract Stake is FixedUniLstTest {
     stakeToken.approve(address(fixedLst), _amount);
 
     vm.expectEmit();
-    emit FixedUniLst.Staked(_holder, _amount);
+    emit FixedUniLst.Fixed(_holder, _amount);
     vm.prank(_holder);
     fixedLst.stake(_amount);
   }
@@ -683,7 +683,7 @@ contract StakeOnBehalf is FixedUniLstTest {
     // Perform the stake on behalf
     vm.prank(_sender);
     vm.expectEmit();
-    emit FixedUniLst.Staked(_staker, _amount);
+    emit FixedUniLst.Fixed(_staker, _amount);
     fixedLst.stakeOnBehalf(_staker, _amount, _nonce, _expiry, signature);
   }
 
@@ -1631,7 +1631,7 @@ contract UnstakeOnBehalf is FixedUniLstTest {
     // Perform the unstake on behalf
     vm.prank(_sender);
     vm.expectEmit();
-    emit FixedUniLst.Unstaked(_staker, _amount);
+    emit FixedUniLst.Unfixed(_staker, _amount);
     fixedLst.unstakeOnBehalf(_staker, _amount, fixedLst.nonces(_staker), _expiry, signature);
   }
 
@@ -2405,7 +2405,7 @@ contract Unstake is FixedUniLstTest {
     assertEq(fixedLst.balanceOf(_holder), _initialBalance - _unstakeAmount);
   }
 
-  function testFuzz_EmitsUnstakedEvent(address _holder, uint256 _stakeAmount, address _delegatee) public {
+  function testFuzz_EmitsUnfixedEvent(address _holder, uint256 _stakeAmount, address _delegatee) public {
     _assumeSafeHolder(_holder);
     _assumeSafeDelegatee(_delegatee);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
@@ -2425,7 +2425,7 @@ contract Unstake is FixedUniLstTest {
 
     Vm.Log[] memory _entries = vm.getRecordedLogs();
     uint256 _index = _entries.length - 1;
-    assertEq(_entries[_index].topics[0], keccak256("Unstaked(address,uint256)"));
+    assertEq(_entries[_index].topics[0], keccak256("Unfixed(address,uint256)"));
     assertEq(_entries[_index].topics[1], bytes32(uint256(uint160(_holder))));
     assertEq(abi.decode(_entries[_index].data, (uint256)), _stakeTokens);
   }

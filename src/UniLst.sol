@@ -468,6 +468,7 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     // UNI reverts on failure so it's not necessary to check return value.
     STAKE_TOKEN.transferFrom(msg.sender, address(this), _amount);
     _emitStakedEvent(msg.sender, _amount);
+    _emitTransferEvent(address(0), msg.sender, _amount);
     return _stake(msg.sender, _amount);
   }
 
@@ -484,6 +485,7 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     // UNI reverts on failure so it's not necessary to check return value.
     STAKE_TOKEN.transferFrom(msg.sender, address(this), _amount);
     _emitStakedEvent(msg.sender, _amount);
+    _emitTransferEvent(address(0), msg.sender, _amount);
     return _stake(msg.sender, _amount);
   }
 
@@ -505,6 +507,7 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     // UNI reverts on failure so it's not necessary to check return value.
     STAKE_TOKEN.transferFrom(_account, address(this), _amount);
     _emitStakedEvent(_account, _amount);
+    _emitTransferEvent(address(0), msg.sender, _amount);
     return _stake(_account, _amount);
   }
 
@@ -524,6 +527,7 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     // UNI reverts on failure so it's not necessary to check return value.
     STAKE_TOKEN.transferFrom(msg.sender, address(this), _amount);
     _emitStakedEvent(msg.sender, _amount);
+    _emitTransferEvent(address(0), msg.sender, _amount);
     return _stake(msg.sender, _amount);
   }
 
@@ -533,6 +537,7 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// @dev The amount of tokens actually unstaked may be slightly less than the amount specified due to rounding.
   function unstake(uint256 _amount) external returns (uint256) {
     _emitUnstakedEvent(msg.sender, _amount);
+    _emitTransferEvent(msg.sender, address(0), _amount);
     return _unstake(msg.sender, _amount);
   }
 
@@ -554,6 +559,7 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   ) external returns (uint256) {
     _validateSignature(_account, _amount, _nonce, _deadline, _signature, UNSTAKE_TYPEHASH);
     _emitUnstakedEvent(_account, _amount);
+    _emitTransferEvent(msg.sender, address(0), _amount);
     return _unstake(_account, _amount);
   }
 
@@ -823,6 +829,7 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     // Externally, we model this as the Fixed LST contract staking on behalf of the account in question, so we emit
     // an event that shows the Fixed LST contract as the staker.
     _emitStakedEvent(address(FIXED_LST), _amount);
+    _emitTransferEvent(address(0), address(FIXED_LST), _amount);
 
     // We assume that the stake tokens have already been transferred to this contract by the FixedLst.
     _stake(_account.fixedAlias(), _amount);
@@ -901,6 +908,7 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     // Externally, we model this as the fixed LST unstaking on behalf of the account in question, so we emit
     // an event that shows the Fixed LST contract as the unstaker.
     _emitUnstakedEvent(address(FIXED_LST), _amountUnfixed);
+    _emitTransferEvent(address(FIXED_LST), address(0), _amount);
 
     return _unstake(_account, _amountUnfixed);
   }
@@ -1074,7 +1082,6 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     holderStates[_account] = _holderState;
 
     STAKER.stakeMore(_calcDepositId(_holderState), uint96(_amount));
-    _emitTransferEvent(address(0), _account, _amount);
     return _balanceDiff;
   }
 
@@ -1148,7 +1155,6 @@ contract UniLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     }
 
     STAKE_TOKEN.transfer(_withdrawalTarget, _amount);
-    _emitTransferEvent(_account, address(0), _amount);
     return _amount;
   }
 
