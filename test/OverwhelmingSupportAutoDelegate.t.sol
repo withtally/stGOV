@@ -8,6 +8,7 @@ import {OverwhelmingSupportAutoDelegateBravoGovernorBlockNumberMode} from
   "./mocks/OverwhelmingSupportAutoDelegateBravoGovernorBlockNumberMode.sol";
 import {OverwhelmingSupportAutoDelegateBravoGovernorTimestampMode} from
   "./mocks/OverwhelmingSupportAutoDelegateBravoGovernorTimestampMode.sol";
+import {SafeCast} from "openzeppelin/utils/math/SafeCast.sol";
 
 abstract contract OverwhelmingSupportAutoDelegateTest is Test {
   OverwhelmingSupportAutoDelegate public autoDelegate;
