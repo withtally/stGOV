@@ -4,7 +4,6 @@ pragma solidity ^0.8.23;
 import {Test} from "forge-std/Test.sol";
 import {OverwhelmingSupportAutoDelegate, Ownable} from "src/auto-delegates/OverwhelmingSupportAutoDelegate.sol";
 import {GovernorBravoDelegateMock} from "test/mocks/GovernorBravoDelegateMock.sol";
-import {SafeCast} from "openzeppelin/utils/math/SafeCast.sol";
 import {AutoDelegateTimestampClockMode} from "src/auto-delegates/extensions/AutoDelegateTimestampClockMode.sol";
 
 contract OverwhelmingSupportAutoDelegateTest is Test {
