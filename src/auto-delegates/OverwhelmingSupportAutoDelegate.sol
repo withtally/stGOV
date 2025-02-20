@@ -131,7 +131,7 @@ contract OverwhelmingSupportAutoDelegate is Ownable, IERC6372 {
   /// @dev Indicates that the contract uses block numbers as its time tracking mechanism by default.
   /// @dev Can be overridden to implement timestamp mode.
   /// @return string A machine-readable string describing the clock mode.
-  function CLOCK_MODE() external pure virtual returns (string memory) {
+  function CLOCK_MODE() public pure virtual returns (string memory) {
     return "mode=blocknumber&from=default";
   }
 
@@ -208,15 +208,9 @@ contract OverwhelmingSupportAutoDelegate is Ownable, IERC6372 {
 
   /// @notice Internal function to set the voting window.
   /// @param _votingWindow The new voting window value, same as clock() type.
-  function _setVotingWindow(uint256 _votingWindow) internal {
-    if (clock() == SafeCast.toUint48(block.number)) {
-      if (_votingWindow < MIN_VOTING_WINDOW_IN_BLOCKS || _votingWindow > MAX_VOTING_WINDOW_IN_BLOCKS) {
-        revert OverwhelmingSupportAutoDelegate__InvalidVotingWindow();
-      }
-    } else {
-      if (_votingWindow < MIN_VOTING_WINDOW_IN_BLOCKS * 12 || _votingWindow > MAX_VOTING_WINDOW_IN_BLOCKS * 12) {
-        revert OverwhelmingSupportAutoDelegate__InvalidVotingWindow();
-      }
+  function _setVotingWindow(uint256 _votingWindow) internal virtual {
+    if (_votingWindow < MIN_VOTING_WINDOW_IN_BLOCKS || _votingWindow > MAX_VOTING_WINDOW_IN_BLOCKS) {
+      revert OverwhelmingSupportAutoDelegate__InvalidVotingWindow();
     }
     emit VotingWindowSet(votingWindow, _votingWindow);
     votingWindow = _votingWindow;

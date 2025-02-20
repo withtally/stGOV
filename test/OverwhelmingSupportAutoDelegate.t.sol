@@ -5,6 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {OverwhelmingSupportAutoDelegate, Ownable} from "src/auto-delegates/OverwhelmingSupportAutoDelegate.sol";
 import {GovernorBravoDelegateMock} from "test/mocks/GovernorBravoDelegateMock.sol";
 import {SafeCast} from "openzeppelin/utils/math/SafeCast.sol";
+import {AutoDelegateTimestampClockMode} from "src/auto-delegates/extensions/AutoDelegateTimestampClockMode.sol";
 
 contract OverwhelmingSupportAutoDelegateTest is Test {
   OverwhelmingSupportAutoDelegate public autoDelegate;
@@ -57,17 +58,40 @@ contract OverwhelmingSupportAutoDelegateTest is Test {
   }
 }
 
-contract OverwhelmingSupportAutoDelegateUsingTimestampMode is OverwhelmingSupportAutoDelegate {
+contract OverwhelmingSupportAutoDelegateUsingTimestampMode is
+  OverwhelmingSupportAutoDelegate,
+  AutoDelegateTimestampClockMode
+{
   constructor(address _initialOwner, uint256 _votingWindow, uint256 _subQuorumBips, uint256 _supportThreshold)
     OverwhelmingSupportAutoDelegate(_initialOwner, _votingWindow, _subQuorumBips, _supportThreshold)
   {}
 
-  function clock() public view override returns (uint48) {
-    return SafeCast.toUint48(block.timestamp);
+  function clock()
+    public
+    view
+    virtual
+    override(OverwhelmingSupportAutoDelegate, AutoDelegateTimestampClockMode)
+    returns (uint48)
+  {
+    return AutoDelegateTimestampClockMode.clock();
   }
 
-  function CLOCK_MODE() public pure override returns (string memory) {
-    return "mode=timestamp";
+  function CLOCK_MODE()
+    public
+    pure
+    virtual
+    override(OverwhelmingSupportAutoDelegate, AutoDelegateTimestampClockMode)
+    returns (string memory)
+  {
+    return AutoDelegateTimestampClockMode.CLOCK_MODE();
+  }
+
+  function _setVotingWindow(uint256 _votingWindow)
+    internal
+    virtual
+    override(OverwhelmingSupportAutoDelegate, AutoDelegateTimestampClockMode)
+  {
+    AutoDelegateTimestampClockMode._setVotingWindow(_votingWindow);
   }
 }
 
@@ -160,7 +184,7 @@ contract CastVote is OverwhelmingSupportAutoDelegateTest {
 }
 
 contract SetVotingWindow is OverwhelmingSupportAutoDelegateTest {
-  function boundVotingWindow(uint256 _votingWindow) public returns (uint256) {
+  function boundVotingWindow(uint256 _votingWindow) public view returns (uint256) {
     if (isUsingTimestampMode) {
       return bound(
         _votingWindow, autoDelegate.MIN_VOTING_WINDOW_IN_BLOCKS() * 12, autoDelegate.MAX_VOTING_WINDOW_IN_BLOCKS() * 12
