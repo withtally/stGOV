@@ -55,7 +55,7 @@ contract GovStakerInvariants is Test, UnitTestBase {
     staker.setRewardNotifier(stakerAdmin, true);
 
     // Finally, deploy the lst for tests.
-    lst = new GovLst("Gov Lst", "stGov", staker, defaultDelegatee, lstOwner, initialPayoutAmount, delegateeGuardian);
+    lst = new GovLst("Gov Lst", "stGov", staker, defaultDelegatee, lstOwner, initialPayoutAmount, delegateeGuardian, 0);
 
     // Set the withdrawal delay to a non-zero amount
     vm.startPrank(lstOwner);

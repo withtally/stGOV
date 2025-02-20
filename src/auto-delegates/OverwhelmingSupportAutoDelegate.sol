@@ -4,7 +4,7 @@ pragma solidity 0.8.26;
 import {Ownable} from "openzeppelin/access/Ownable.sol";
 import {IGovernorBravoDelegate} from "src/interfaces/IGovernorBravoDelegate.sol";
 import {SafeCast} from "openzeppelin/utils/math/SafeCast.sol";
-import {IERC6372} from "@openzeppelin/contracts/interfaces/IERC6372.sol";
+import {IERC6372} from "openzeppelin/interfaces/IERC6372.sol";
 
 contract OverwhelmingSupportAutoDelegate is Ownable, IERC6372 {
   /// @notice Error thrown when attempting to cast a vote outside the permitted voting window.
@@ -25,6 +25,14 @@ contract OverwhelmingSupportAutoDelegate is Ownable, IERC6372 {
   /// @dev This error is thrown when attempting to set a support threshold outside the valid range of 50% (5000 BIP) to
   /// 95% (9500 BIP).
   error OverwhelmingSupportAutoDelegate__InvalidSupportThreshold();
+
+  /// @notice Error thrown when an invalid voting window is provided.
+  /// @dev This error is thrown when attempting to set a voting window outside the valid range of 300 to 50_400 blocks.
+  error OverwhelmingSupportAutoDelegate__InvalidVotingWindow();
+
+  /// @notice Error thrown when an invalid sub-quorum basis points is provided.
+  /// @dev This error is thrown when attempting to set a sub-quorum BIPs outside the valid range of 1000 to 10_000.
+  error OverwhelmingSupportAutoDelegate__InvalidSubQuorumBips();
 
   /// @notice Emitted when the voting window is changed.
   /// @param oldVotingWindow The previous voting window in blocks.
@@ -49,10 +57,22 @@ contract OverwhelmingSupportAutoDelegate is Ownable, IERC6372 {
   uint256 private constant BIP = 10_000;
 
   /// @notice The minimum support threshold required for proposals, set to 5000 basis points (50%).
-  uint256 private constant MIN_SUPPORT_THRESHOLD = 5000;
+  uint256 public constant MIN_SUPPORT_THRESHOLD = 5000;
 
   /// @notice The maximum support threshold allowed for proposals, set to 9500 basis points (95%).
-  uint256 private constant MAX_SUPPORT_THRESHOLD = 9500;
+  uint256 public constant MAX_SUPPORT_THRESHOLD = 9500;
+
+  /// @notice The minimum voting window allowed for proposals, set to 300 blocks about 1 hour at 12s.
+  uint256 public constant MIN_VOTING_WINDOW = 300;
+
+  /// @notice The maximum voting window allowed for proposals, set to 50_400 blocks about 1 week at 12s.
+  uint256 public constant MAX_VOTING_WINDOW = 50_400;
+
+  /// @notice The minimum sub-quorum basis points allowed for proposals, set to 1000 basis points (10%).
+  uint256 public constant MIN_SUB_QUORUM_BIPS = 1000;
+
+  /// @notice The maximum sub-quorum basis points allowed for proposals, set to 10_000 basis points (100%).
+  uint256 public constant MAX_SUB_QUORUM_BIPS = 10_000;
 
   /// @notice The number of blocks before a proposal's voting endBlock at which this Auto Delegate can begin casting
   /// votes.
@@ -89,15 +109,7 @@ contract OverwhelmingSupportAutoDelegate is Ownable, IERC6372 {
   /// @param _proposalId The ID of the proposal to vote on.
   /// @dev Always votes in favor (1) of the proposal.
   function castVote(IGovernorBravoDelegate _governor, uint256 _proposalId) public {
-    if (!_isWithinVotingWindow(_governor, _proposalId)) {
-      revert OverwhelmingSupportAutoDelegate__OutsideVotingWindow();
-    }
-    if (!_hasReachedSubQuorum(_governor, _proposalId)) {
-      revert OverwhelmingSupportAutoDelegate__InsufficientForVotes();
-    }
-    if (!_isAboveSupportThreshold(_governor, _proposalId)) {
-      revert OverwhelmingSupportAutoDelegate__BelowSupportThreshold();
-    }
+    checkVoteRequirements(_governor, _proposalId);
     _governor.castVote(_proposalId, FOR);
   }
 
@@ -141,40 +153,64 @@ contract OverwhelmingSupportAutoDelegate is Ownable, IERC6372 {
     _setSupportThreshold(_supportThreshold);
   }
 
+  /// @notice Checks if all requirements are met for casting a vote on a proposal.
+  /// @dev Requirements include:
+  /// 1. The governor must be an authorized governor.
+  /// 2. Current block must be within voting window (endBlock - votingWindow).
+  /// 3. FOR votes must meet sub-quorum threshold (percentage of quorum in basis points).
+  /// 4. Support ratio (FOR/(FOR+AGAINST)) must exceed supportThreshold.
+  /// @param _governor The Governor contract containing the proposal.
+  /// @param _proposalId The ID of the proposal to check
+  /// @dev This function reverts if any voting requirement is not met.
+  function checkVoteRequirements(IGovernorBravoDelegate _governor, uint256 _proposalId) public view {
+    // Fetch proposal data once
+    (,,,, uint256 endBlock, uint256 forVotes, uint256 againstVotes,,,) = _governor.proposals(_proposalId);
+    uint256 quorumVotes = _governor.quorumVotes();
+
+    if (!_isWithinVotingWindow(endBlock)) {
+      revert OverwhelmingSupportAutoDelegate__OutsideVotingWindow();
+    }
+    if (!_hasReachedSubQuorum(forVotes, quorumVotes)) {
+      revert OverwhelmingSupportAutoDelegate__InsufficientForVotes();
+    }
+    if (!_isAboveSupportThreshold(forVotes, againstVotes)) {
+      revert OverwhelmingSupportAutoDelegate__BelowSupportThreshold();
+    }
+  }
+
   /// @notice Checks if the current block is within the voting window of a proposal's endBlock.
-  /// @param _governor The Governor contract to check the proposal in.
-  /// @param _proposalId The ID of the proposal to check the voting window for.
+  /// @param _endBlock The end block of the proposal.
   /// @return bool Returns true if within the voting window, false otherwise.
-  function _isWithinVotingWindow(IGovernorBravoDelegate _governor, uint256 _proposalId) internal view returns (bool) {
-    (,,,, uint256 endBlock,,,,,) = _governor.proposals(_proposalId);
-    return block.number >= (endBlock - votingWindow);
+  function _isWithinVotingWindow(uint256 _endBlock) internal view returns (bool) {
+    return block.number >= (_endBlock - votingWindow);
   }
 
   /// @notice Checks if a proposal has enough FOR votes to meet the subQuorumBips threshold.
-  /// @param _governor The Governor contract.
-  /// @param _proposalId The ID of the proposal to check.
+  /// @param _forVotes The number of FOR votes.
+  /// @param _quorumVotes The number of quorum votes.
   /// @return bool Returns true if the proposal has received enough "For" votes to meet the subQuorumBips threshold,
   /// false otherwise.
-  function _hasReachedSubQuorum(IGovernorBravoDelegate _governor, uint256 _proposalId) internal view returns (bool) {
-    (,,,,, uint256 _forVotes,,,,) = _governor.proposals(_proposalId);
-    return _forVotes >= ((_governor.quorumVotes() * subQuorumBips) / BIP);
+  function _hasReachedSubQuorum(uint256 _forVotes, uint256 _quorumVotes) internal view returns (bool) {
+    return _forVotes >= ((_quorumVotes * subQuorumBips) / BIP);
   }
 
   /// @notice Checks if a proposal has received sufficient support based on the minimum support percentage threshold.
-  /// @param _governor The address of the Governor contract.
-  /// @param _proposalId The ID of the proposal to check.
+  /// @param _forVotes The number of FOR votes.
+  /// @param _againstVotes The number of AGAINST votes.
   /// @return bool Returns true if the percentage of "For" votes to for + against votes meets or exceeds
   /// supportThreshold, and false otherwise.
   /// @dev The percentage is calculated as (_forVotes / (_forVotes + _againstVotes)) * BIP, where BIP = 10,000
   /// represents 100%. This calculation determines if the percentage of "For" votes meets the required threshold.
-  function _isAboveSupportThreshold(IGovernorBravoDelegate _governor, uint256 _proposalId) internal view returns (bool) {
-    (,,,,, uint256 _forVotes, uint256 _againstVotes,,,) = _governor.proposals(_proposalId);
-    return ((_forVotes * BIP) / (_forVotes + _againstVotes)) >= supportThreshold;
+  function _isAboveSupportThreshold(uint256 _forVotes, uint256 _againstVotes) internal view returns (bool) {
+    return _forVotes * BIP >= supportThreshold * (_forVotes + _againstVotes);
   }
 
   /// @notice Internal function to set the voting window.
   /// @param _votingWindow The new voting window value in blocks.
   function _setVotingWindow(uint256 _votingWindow) internal {
+    if (_votingWindow < MIN_VOTING_WINDOW || _votingWindow > MAX_VOTING_WINDOW) {
+      revert OverwhelmingSupportAutoDelegate__InvalidVotingWindow();
+    }
     emit VotingWindowSet(votingWindow, _votingWindow);
     votingWindow = _votingWindow;
   }
@@ -182,6 +218,9 @@ contract OverwhelmingSupportAutoDelegate is Ownable, IERC6372 {
   /// @notice Internal function to set the sub-quorum votes percentage.
   /// @param _subQuorumBips The new percentage of the live quorum that's required to be FOR votes.
   function _setSubQuorumBips(uint256 _subQuorumBips) internal {
+    if (_subQuorumBips < MIN_SUB_QUORUM_BIPS || _subQuorumBips > MAX_SUB_QUORUM_BIPS) {
+      revert OverwhelmingSupportAutoDelegate__InvalidSubQuorumBips();
+    }
     emit SubQuorumBipsSet(subQuorumBips, _subQuorumBips);
     subQuorumBips = _subQuorumBips;
   }
