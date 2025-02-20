@@ -131,7 +131,7 @@ contract OverwhelmingSupportAutoDelegate is Ownable, IERC6372 {
   /// @dev Indicates that the contract uses block numbers as its time tracking mechanism by default.
   /// @dev Can be overridden to implement timestamp mode.
   /// @return string A machine-readable string describing the clock mode.
-  function CLOCK_MODE() public pure virtual returns (string memory) {
+  function CLOCK_MODE() external pure virtual returns (string memory) {
     return "mode=blocknumber&from=default";
   }
 
