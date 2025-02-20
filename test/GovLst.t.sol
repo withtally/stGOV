@@ -194,6 +194,10 @@ contract GovLstTest is UnitTestBase, PercentAssertions, TestHelpers, Eip712Helpe
     return uint80(bound(_payoutAmount, 0.0001e18, type(uint80).max));
   }
 
+  function _boundToValidTipAmount(uint256 _tipAmount) internal returns (uint160) {
+    return uint160(bound(_tipAmount, 0, maxTip));
+  }
+
   function _mintStakeToken(address _to, uint256 _amount) internal {
     deal(address(stakeToken), _to, _amount);
   }
@@ -387,6 +391,39 @@ contract GovLstTest is UnitTestBase, PercentAssertions, TestHelpers, Eip712Helpe
 
   function _calcFeeShares(uint256 _tipAmount) internal view returns (uint160) {
     return uint160((uint256(_tipAmount) * lst.totalShares()) / (lst.totalSupply() - _tipAmount));
+  }
+
+  function _bumpBelowEarningPowerQualifyingThreshold(
+    uint256 _earningPower,
+    uint256 _minQualifyingEarningPowerBips,
+    Staker.DepositIdentifier _depositId
+  ) internal returns (uint256) {
+    (uint96 _depositBalance,,, address _delegatee,,,) = staker.deposits(_depositId);
+    _earningPower = bound(_earningPower, 0, ((_minQualifyingEarningPowerBips * _depositBalance) - 1) / 1e4);
+    earningPowerCalculator.__setEarningPowerForDelegatee(_delegatee, _earningPower);
+
+    // Force the earning power on the deposit to change
+    vm.prank(address(lst));
+    staker.stakeMore(_depositId, 0);
+    return _earningPower;
+  }
+
+  function _bumpAboveEarningPowerQualifyingThreshold(
+    uint256 _earningPower,
+    uint256 _minQualifyingEarningPowerBips,
+    Staker.DepositIdentifier _depositId,
+    address _delegatee
+  ) internal returns (uint256) {
+    (uint96 _depositBalance,,,,,,) = staker.deposits(_depositId);
+    _earningPower =
+      bound(_earningPower, ((_minQualifyingEarningPowerBips * _depositBalance) / 1e4) + 1, 20_000_000_000e18);
+    earningPowerCalculator.__setEarningPowerForDelegatee(_delegatee, _earningPower);
+
+    // Force the earning power on the deposit to change
+    vm.prank(address(lst));
+    staker.stakeMore(_depositId, 0);
+
+    return _earningPower;
   }
 }
 
@@ -864,22 +901,17 @@ contract EnactOverride is GovLstTest {
     _assumeSafeDelegatee(_delegatee);
     _amount = _boundToReasonableStakeTokenAmount(_amount);
     _mintUpdateDelegateeAndStake(_holder, _amount, _delegatee);
-    _tipAmount = uint160(bound(_tipAmount, 1, maxTip));
-    _minQualifyingEarningPowerBips = bound(_minQualifyingEarningPowerBips, 1, 10_000);
-    _setMaxOverrideTip();
+    _tipAmount = _boundToValidTipAmount(_tipAmount);
+    _minQualifyingEarningPowerBips = bound(_minQualifyingEarningPowerBips, 1, 20_000);
     _setMinQualifyingEarningPowerBips(_minQualifyingEarningPowerBips);
+    _setMaxOverrideTip();
 
     // Set deposit earning power below threshold
     Staker.DepositIdentifier _depositId = lst.depositForDelegatee(_delegatee);
-    (uint96 _depositBalance,,,,,,) = staker.deposits(_depositId);
-    _earningPower = bound(_earningPower, 0, (_minQualifyingEarningPowerBips * _depositBalance) / 1e4);
-    earningPowerCalculator.__setEarningPowerForDelegatee(_delegatee, _earningPower);
-
-    // Force the earning power on the deposit to change
-    vm.prank(address(lst));
-    staker.stakeMore(_depositId, 0);
+    _bumpBelowEarningPowerQualifyingThreshold(_earningPower, _minQualifyingEarningPowerBips, _depositId);
 
     lst.enactOverride(_depositId, _tipReceiver, _tipAmount);
+
     (,,, address _depositDelegatee,,,) = staker.deposits(_depositId);
 
     assertEq(lst.defaultDelegatee(), _depositDelegatee);
@@ -898,21 +930,15 @@ contract EnactOverride is GovLstTest {
     _assumeSafeHolder(_holder);
     _assumeSafeHolder(_delegatee);
     _amount = _boundToReasonableStakeTokenAmount(_amount);
-    _tipAmount = uint160(bound(_tipAmount, 1, maxTip));
-    _minQualifyingEarningPowerBips = bound(_minQualifyingEarningPowerBips, 1, 10_000);
-    _setMaxOverrideTip();
+    _tipAmount = _boundToValidTipAmount(_tipAmount);
+    _minQualifyingEarningPowerBips = bound(_minQualifyingEarningPowerBips, 1, 20_000);
     _setMinQualifyingEarningPowerBips(_minQualifyingEarningPowerBips);
+    _setMaxOverrideTip();
     _mintUpdateDelegateeAndStake(_holder, _amount, _delegatee);
 
     // Set deposit earning power below threshold
     Staker.DepositIdentifier _depositId = lst.depositForDelegatee(_delegatee);
-    (uint96 _depositBalance,,,,,,) = staker.deposits(_depositId);
-    _earningPower = bound(_earningPower, 0, (_minQualifyingEarningPowerBips * _depositBalance) / 1e4);
-    earningPowerCalculator.__setEarningPowerForDelegatee(_delegatee, _earningPower);
-
-    // Force the earning power on the deposit to change
-    vm.prank(address(lst));
-    staker.stakeMore(_depositId, 0);
+    _bumpBelowEarningPowerQualifyingThreshold(_earningPower, _minQualifyingEarningPowerBips, _depositId);
 
     uint256 _oldTotalShares = lst.totalShares();
     uint256 _oldShares = lst.sharesOf(_tipReceiver);
@@ -935,21 +961,15 @@ contract EnactOverride is GovLstTest {
     _assumeSafeHolder(_holder);
     _assumeSafeHolder(_delegatee);
     _amount = _boundToReasonableStakeTokenAmount(_amount);
-    _tipAmount = uint160(bound(_tipAmount, 1, maxTip));
-    _minQualifyingEarningPowerBips = bound(_minQualifyingEarningPowerBips, 1, 9999);
-    _setMaxOverrideTip();
+    _tipAmount = _boundToValidTipAmount(_tipAmount);
+    _minQualifyingEarningPowerBips = bound(_minQualifyingEarningPowerBips, 1, 20_000);
     _setMinQualifyingEarningPowerBips(_minQualifyingEarningPowerBips);
+    _setMaxOverrideTip();
     _mintUpdateDelegateeAndStake(_holder, _amount, _delegatee);
 
     // Set deposit earning power below threshold
     Staker.DepositIdentifier _depositId = lst.depositForDelegatee(_delegatee);
-    (uint96 _depositBalance,,,,,,) = staker.deposits(_depositId);
-    _earningPower = bound(_earningPower, 0, (_minQualifyingEarningPowerBips * _depositBalance) / 1e4);
-    earningPowerCalculator.__setEarningPowerForDelegatee(_delegatee, _earningPower);
-
-    // Force the earning power on the deposit to change
-    vm.prank(address(lst));
-    staker.stakeMore(_depositId, 0);
+    _bumpBelowEarningPowerQualifyingThreshold(_earningPower, _minQualifyingEarningPowerBips, _depositId);
 
     vm.expectEmit();
     emit GovLst.OverrideEnacted(_depositId, _tipReceiver, _calcFeeShares(_tipAmount));
@@ -966,7 +986,7 @@ contract EnactOverride is GovLstTest {
     _assumeSafeHolder(_holder);
     _amount = _boundToReasonableStakeTokenAmount(_amount);
     _mintUpdateDelegateeAndStake(_holder, _amount, lst.defaultDelegatee());
-    _tipAmount = uint160(bound(_tipAmount, 0, maxTip));
+    _tipAmount = _boundToValidTipAmount(_tipAmount);
     _setMaxOverrideTip();
 
     Staker.DepositIdentifier _depositId = lst.depositForDelegatee(lst.defaultDelegatee());
@@ -1000,20 +1020,14 @@ contract EnactOverride is GovLstTest {
     _assumeSafeDelegatee(_delegatee);
     _amount = _boundToReasonableStakeTokenAmount(_amount);
     _mintUpdateDelegateeAndStake(_holder, _amount, _delegatee);
-    _tipAmount = uint160(bound(_tipAmount, 0, maxTip));
-    _minQualifyingEarningPowerBips = bound(_minQualifyingEarningPowerBips, 1, 10_000);
-    _setMaxOverrideTip();
+    _tipAmount = _boundToValidTipAmount(_tipAmount);
+    _minQualifyingEarningPowerBips = bound(_minQualifyingEarningPowerBips, 1, 20_000);
     _setMinQualifyingEarningPowerBips(_minQualifyingEarningPowerBips);
+    _setMaxOverrideTip();
 
     // Make sure earning power is below threshold for first override
     Staker.DepositIdentifier _depositId = lst.depositForDelegatee(_delegatee);
-    (uint96 _depositBalance,,,,,,) = staker.deposits(_depositId);
-    _earningPower = bound(_earningPower, 0, (_minQualifyingEarningPowerBips * _depositBalance) / 1e4);
-    earningPowerCalculator.__setEarningPowerForDelegatee(_delegatee, _earningPower);
-
-    // Force the earning power on the deposit to change
-    vm.prank(address(lst));
-    staker.stakeMore(_depositId, 0);
+    _bumpBelowEarningPowerQualifyingThreshold(_earningPower, _minQualifyingEarningPowerBips, _depositId);
 
     // Successful override
     lst.enactOverride(_depositId, _tipReceiver, _tipAmount);
@@ -1053,17 +1067,51 @@ contract EnactOverride is GovLstTest {
     _assumeSafeHolder(_holder);
     _assumeSafeDelegatee(_delegatee);
     _amount = _boundToReasonableStakeTokenAmount(_amount);
-    _tipAmount = uint8(bound(_tipAmount, 0, maxTip));
-    _minQualifyingEarningPowerBips = bound(_minQualifyingEarningPowerBips, 0, 10_000);
+    _tipAmount = _boundToValidTipAmount(_tipAmount);
+    _minQualifyingEarningPowerBips = bound(_minQualifyingEarningPowerBips, 1, 20_000);
     _mintUpdateDelegateeAndStake(_holder, _amount, _delegatee);
-    _setMaxOverrideTip();
     _setMinQualifyingEarningPowerBips(_minQualifyingEarningPowerBips);
+    _setMaxOverrideTip();
 
     // Make sure earning power is above threshold
     Staker.DepositIdentifier _depositId = lst.depositForDelegatee(_delegatee);
     (uint96 _depositBalance,,,,,,) = staker.deposits(_depositId);
     _earningPower =
-      bound(_earningPower, ((_minQualifyingEarningPowerBips * _depositBalance) / 1e4) + 1, type(uint96).max);
+      _bumpAboveEarningPowerQualifyingThreshold(_earningPower, _minQualifyingEarningPowerBips, _depositId, _delegatee);
+
+    vm.expectRevert(
+      abi.encodeWithSelector(
+        GovLst.GovLst__EarningPowerNotQualified.selector,
+        _earningPower * 1e4,
+        _minQualifyingEarningPowerBips * _depositBalance
+      )
+    );
+    lst.enactOverride(_depositId, _tipReceiver, _tipAmount);
+  }
+
+  function testFuzz_RevertIf_EarningPowerIsEqualTheQualifiedEarningAmount(
+    address _holder,
+    address _delegatee,
+    uint256 _amount,
+    address _tipReceiver,
+    uint160 _tipAmount,
+    uint256 _earningPower
+  ) public {
+    _assumeSafeHolder(_holder);
+    _assumeSafeDelegatee(_delegatee);
+    _amount = _boundToReasonableStakeTokenAmount(_amount);
+    _tipAmount = _boundToValidTipAmount(_tipAmount);
+    uint256 _minQualifyingEarningPowerBips = 10_000;
+    _mintUpdateDelegateeAndStake(_holder, _amount, _delegatee);
+    _setMinQualifyingEarningPowerBips(_minQualifyingEarningPowerBips);
+    _setMaxOverrideTip();
+
+    // Make sure earning power is above threshold
+    Staker.DepositIdentifier _depositId = lst.depositForDelegatee(_delegatee);
+    (uint96 _depositBalance,,,,,,) = staker.deposits(_depositId);
+
+    // Earning power should always be equal to balance
+    _earningPower = _depositBalance;
     earningPowerCalculator.__setEarningPowerForDelegatee(_delegatee, _earningPower);
 
     // Force the earning power on the deposit to change
@@ -1078,6 +1126,296 @@ contract EnactOverride is GovLstTest {
       )
     );
     lst.enactOverride(_depositId, _tipReceiver, _tipAmount);
+  }
+}
+
+contract RevokeOverride is GovLstTest {
+  function testFuzz_RevokedWhenEarningPowerIsAboveThreshold(
+    address _holder,
+    address _delegatee,
+    uint256 _amount,
+    address _tipReceiver,
+    uint160 _tipAmount,
+    uint256 _minQualifyingEarningPowerBips,
+    uint256 _earningPower
+  ) public {
+    _assumeSafeHolder(_holder);
+    _assumeSafeDelegatee(_delegatee);
+    _amount = _boundToReasonableStakeTokenAmount(_amount);
+    _mintUpdateDelegateeAndStake(_holder, _amount, _delegatee);
+    _tipAmount = _boundToValidTipAmount(_tipAmount);
+    _minQualifyingEarningPowerBips = bound(_minQualifyingEarningPowerBips, 1, 20_000);
+    _setMinQualifyingEarningPowerBips(_minQualifyingEarningPowerBips);
+    _setMaxOverrideTip();
+
+    // Set deposit earning power below threshold
+    Staker.DepositIdentifier _depositId = lst.depositForDelegatee(_delegatee);
+    _earningPower = _bumpBelowEarningPowerQualifyingThreshold(_earningPower, _minQualifyingEarningPowerBips, _depositId);
+
+    lst.enactOverride(_depositId, _tipReceiver, _tipAmount);
+
+    _earningPower =
+      _bumpAboveEarningPowerQualifyingThreshold(_earningPower, _minQualifyingEarningPowerBips, _depositId, _delegatee);
+
+    lst.revokeOverride(_depositId, _delegatee, _tipReceiver, _tipAmount);
+
+    (,,, address _depositDelegatee,,,) = staker.deposits(_depositId);
+    assertEq(_delegatee, _depositDelegatee);
+    assertEq(lst.isOverridden(_depositId), false);
+  }
+
+  function testFuzz_RevokedWhenEarningPowerIsEqualThreshold(
+    address _holder,
+    address _delegatee,
+    uint256 _amount,
+    address _tipReceiver,
+    uint160 _tipAmount,
+    uint256 _earningPower
+  ) public {
+    _assumeSafeHolder(_holder);
+    _assumeSafeDelegatee(_delegatee);
+    _amount = _boundToReasonableStakeTokenAmount(_amount);
+    _mintUpdateDelegateeAndStake(_holder, _amount, _delegatee);
+    _tipAmount = _boundToValidTipAmount(_tipAmount);
+    uint256 _minQualifyingEarningPowerBips = 10_000;
+    _setMinQualifyingEarningPowerBips(_minQualifyingEarningPowerBips);
+    _setMaxOverrideTip();
+
+    // Set deposit earning power below threshold
+    Staker.DepositIdentifier _depositId = lst.depositForDelegatee(_delegatee);
+    _earningPower = _bumpBelowEarningPowerQualifyingThreshold(_earningPower, _minQualifyingEarningPowerBips, _depositId);
+
+    lst.enactOverride(_depositId, _tipReceiver, _tipAmount);
+
+    (uint96 _depositBalance,,,,,,) = staker.deposits(_depositId);
+
+    // Earning power should always be equal to balance
+    _earningPower = _depositBalance;
+    earningPowerCalculator.__setEarningPowerForDelegatee(_delegatee, _earningPower);
+
+    // Force the earning power on the deposit to change
+    vm.prank(address(lst));
+    staker.stakeMore(_depositId, 0);
+
+    lst.revokeOverride(_depositId, _delegatee, _tipReceiver, _tipAmount);
+
+    (,,, address _depositDelegatee,,,) = staker.deposits(_depositId);
+    assertEq(_delegatee, _depositDelegatee);
+    assertEq(lst.isOverridden(_depositId), false);
+  }
+
+  function testFuzz_SendOverriderTipInShares(
+    address _holder,
+    address _delegatee,
+    uint256 _amount,
+    address _tipReceiver,
+    uint160 _tipAmount,
+    uint256 _minQualifyingEarningPowerBips,
+    uint256 _earningPower
+  ) public {
+    _assumeSafeHolder(_holder);
+    _assumeSafeHolder(_delegatee);
+    _amount = _boundToReasonableStakeTokenAmount(_amount);
+    _tipAmount = _boundToValidTipAmount(_tipAmount);
+    _minQualifyingEarningPowerBips = bound(_minQualifyingEarningPowerBips, 1, 20_000);
+    _setMaxOverrideTip();
+    _setMinQualifyingEarningPowerBips(_minQualifyingEarningPowerBips);
+    _mintUpdateDelegateeAndStake(_holder, _amount, _delegatee);
+
+    // Set deposit earning power below threshold
+    Staker.DepositIdentifier _depositId = lst.depositForDelegatee(_delegatee);
+    _earningPower = _bumpBelowEarningPowerQualifyingThreshold(_earningPower, _minQualifyingEarningPowerBips, _depositId);
+    lst.enactOverride(_depositId, _tipReceiver, _tipAmount);
+
+    uint256 _oldTotalShares = lst.totalShares();
+    uint256 _oldShares = lst.sharesOf(_tipReceiver);
+    uint256 _tipShares = _calcFeeShares(_tipAmount);
+
+    _earningPower =
+      _bumpAboveEarningPowerQualifyingThreshold(_earningPower, _minQualifyingEarningPowerBips, _depositId, _delegatee);
+    lst.revokeOverride(_depositId, _delegatee, _tipReceiver, _tipAmount);
+
+    assertWithinOneUnit(_oldShares + _tipShares, lst.sharesOf(_tipReceiver));
+    assertWithinOneUnit(_oldTotalShares + _tipShares, lst.totalShares());
+  }
+
+  function testFuzz_EmitsOverrideRevokedEvent(
+    address _holder,
+    address _delegatee,
+    uint256 _amount,
+    address _tipReceiver,
+    uint160 _tipAmount,
+    uint256 _minQualifyingEarningPowerBips,
+    uint256 _earningPower
+  ) public {
+    _assumeSafeHolder(_holder);
+    _assumeSafeHolder(_delegatee);
+    _amount = _boundToReasonableStakeTokenAmount(_amount);
+    _tipAmount = _boundToValidTipAmount(_tipAmount);
+    _minQualifyingEarningPowerBips = bound(_minQualifyingEarningPowerBips, 1, 20_000);
+    _setMaxOverrideTip();
+    _setMinQualifyingEarningPowerBips(_minQualifyingEarningPowerBips);
+    _mintUpdateDelegateeAndStake(_holder, _amount, _delegatee);
+
+    // Set deposit earning power below threshold
+    Staker.DepositIdentifier _depositId = lst.depositForDelegatee(_delegatee);
+    _earningPower = _bumpBelowEarningPowerQualifyingThreshold(_earningPower, _minQualifyingEarningPowerBips, _depositId);
+    lst.enactOverride(_depositId, _tipReceiver, _tipAmount);
+
+    _earningPower =
+      _bumpAboveEarningPowerQualifyingThreshold(_earningPower, _minQualifyingEarningPowerBips, _depositId, _delegatee);
+
+    vm.expectEmit();
+    emit GovLst.OverrideRevoked(_depositId, _tipReceiver, _calcFeeShares(_tipAmount));
+
+    lst.revokeOverride(_depositId, _delegatee, _tipReceiver, _tipAmount);
+  }
+
+  function testFuzz_RevertIf_EarningPowerIsBelowTheQualifiedEarningAmount(
+    address _holder,
+    address _delegatee,
+    uint256 _amount,
+    address _tipReceiver,
+    uint160 _tipAmount,
+    uint256 _minQualifyingEarningPowerBips,
+    uint256 _earningPower
+  ) public {
+    _assumeSafeHolder(_holder);
+    _assumeSafeDelegatee(_delegatee);
+    _amount = _boundToReasonableStakeTokenAmount(_amount);
+    _tipAmount = _boundToValidTipAmount(_tipAmount);
+    _minQualifyingEarningPowerBips = bound(_minQualifyingEarningPowerBips, 1, 20_000);
+    _mintUpdateDelegateeAndStake(_holder, _amount, _delegatee);
+    _setMaxOverrideTip();
+    _setMinQualifyingEarningPowerBips(_minQualifyingEarningPowerBips);
+
+    // Make sure earning power is above threshold
+    Staker.DepositIdentifier _depositId = lst.depositForDelegatee(_delegatee);
+    (uint96 _depositBalance,,,,,,) = staker.deposits(_depositId);
+    uint256 _minQualifyingEarningPower = (_minQualifyingEarningPowerBips * _depositBalance) / 1e4;
+    _earningPower = bound(_earningPower, 0, _minQualifyingEarningPower - 1);
+    earningPowerCalculator.__setEarningPowerForDelegatee(_delegatee, _earningPower);
+
+    // Force the earning power on the deposit to change
+    vm.prank(address(lst));
+    staker.stakeMore(_depositId, 0);
+
+    lst.enactOverride(_depositId, _tipReceiver, _tipAmount);
+
+    vm.expectRevert(
+      abi.encodeWithSelector(
+        GovLst.GovLst__EarningPowerNotQualified.selector,
+        _earningPower * 1e4,
+        _minQualifyingEarningPowerBips * _depositBalance
+      )
+    );
+    lst.revokeOverride(_depositId, _delegatee, _tipReceiver, _tipAmount);
+  }
+
+  function testFuzz_RevertIf_DepositHasZeroBalance(
+    address _holder,
+    uint256 _amount,
+    uint256 _minQualifyingEarningPowerBips,
+    address _tipReceiver,
+    uint160 _tipAmount,
+    uint256 _earningPower
+  ) public {
+    _assumeSafeHolder(_holder);
+    _tipAmount = _boundToValidTipAmount(_tipAmount);
+    _amount = _boundToReasonableStakeTokenAmount(_amount);
+    _mintUpdateDelegateeAndStake(_holder, _amount, _holder);
+    _minQualifyingEarningPowerBips = bound(_minQualifyingEarningPowerBips, 1, 20_000);
+    _setMaxOverrideTip();
+    _setMinQualifyingEarningPowerBips(_minQualifyingEarningPowerBips);
+
+    Staker.DepositIdentifier _depositId = lst.depositForDelegatee(_holder);
+    _earningPower = _bumpBelowEarningPowerQualifyingThreshold(_earningPower, _minQualifyingEarningPowerBips, _depositId);
+    lst.enactOverride(_depositId, _tipReceiver, 0);
+
+    _earningPower =
+      _bumpAboveEarningPowerQualifyingThreshold(_earningPower, _minQualifyingEarningPowerBips, _depositId, _holder);
+
+    vm.prank(_holder);
+    lst.unstake(_amount);
+
+    vm.expectRevert(GovLst.GovLst__InvalidOverride.selector);
+    lst.revokeOverride(_depositId, _holder, _tipReceiver, _tipAmount);
+  }
+
+  function testFuzz_RevertIf_NotSameAsOriginalDelegatee(
+    address _holder,
+    address _delegatee,
+    uint256 _amount,
+    uint256 _minQualifyingEarningPowerBips,
+    address _tipReceiver,
+    uint160 _tipAmount,
+    uint256 _earningPower
+  ) public {
+    vm.assume(_holder != _delegatee);
+    _assumeSafeHolder(_holder);
+    _assumeSafeDelegatee(_delegatee);
+    _tipAmount = _boundToValidTipAmount(_tipAmount);
+    _amount = _boundToReasonableStakeTokenAmount(_amount);
+    _mintUpdateDelegateeAndStake(_holder, _amount, _holder);
+    _minQualifyingEarningPowerBips = bound(_minQualifyingEarningPowerBips, 1, 20_000);
+    _setMaxOverrideTip();
+    _setMinQualifyingEarningPowerBips(_minQualifyingEarningPowerBips);
+
+    Staker.DepositIdentifier _depositId = lst.depositForDelegatee(_holder);
+    _earningPower = _bumpBelowEarningPowerQualifyingThreshold(_earningPower, _minQualifyingEarningPowerBips, _depositId);
+
+    lst.enactOverride(_depositId, _tipReceiver, 0);
+
+    _earningPower =
+      _bumpAboveEarningPowerQualifyingThreshold(_earningPower, _minQualifyingEarningPowerBips, _depositId, _holder);
+
+    vm.expectRevert(GovLst.GovLst__InvalidOverride.selector);
+    lst.revokeOverride(_depositId, _delegatee, _tipReceiver, _tipAmount);
+  }
+
+  function testFuzz_RevertIf_TipGreaterThanMaxTip(
+    address _holder,
+    uint256 _amount,
+    uint256 _minQualifyingEarningPowerBips,
+    address _tipReceiver,
+    uint160 _tipAmount,
+    uint256 _earningPower
+  ) public {
+    _assumeSafeHolder(_holder);
+    _assumeSafeDelegatee(_holder);
+    _tipAmount = uint160(bound(_tipAmount, maxTip + 1, 10_000_000_000e18));
+    _amount = _boundToReasonableStakeTokenAmount(_amount);
+    _mintUpdateDelegateeAndStake(_holder, _amount, _holder);
+    _minQualifyingEarningPowerBips = bound(_minQualifyingEarningPowerBips, 1, 20_000);
+    _setMaxOverrideTip();
+    _setMinQualifyingEarningPowerBips(_minQualifyingEarningPowerBips);
+
+    Staker.DepositIdentifier _depositId = lst.depositForDelegatee(_holder);
+    _earningPower = _bumpBelowEarningPowerQualifyingThreshold(_earningPower, _minQualifyingEarningPowerBips, _depositId);
+
+    lst.enactOverride(_depositId, _tipReceiver, 0);
+
+    _earningPower =
+      _bumpAboveEarningPowerQualifyingThreshold(_earningPower, _minQualifyingEarningPowerBips, _depositId, _holder);
+
+    vm.expectRevert(GovLst.GovLst__GreaterThanMaxTip.selector);
+    lst.revokeOverride(_depositId, _holder, _tipReceiver, _tipAmount);
+  }
+
+  function testFuzz_RevertIf_IsNotOverridden(address _holder, uint256 _amount, address _tipReceiver, uint160 _tipAmount)
+    public
+  {
+    _assumeSafeHolder(_holder);
+    _assumeSafeDelegatee(_holder);
+    _tipAmount = _boundToValidTipAmount(_tipAmount);
+    _amount = _boundToReasonableStakeTokenAmount(_amount);
+    _mintUpdateDelegateeAndStake(_holder, _amount, _holder);
+    _setMaxOverrideTip();
+
+    Staker.DepositIdentifier _depositId = lst.depositForDelegatee(_holder);
+
+    vm.expectRevert(GovLst.GovLst__InvalidOverride.selector);
+    lst.revokeOverride(_depositId, _holder, _tipReceiver, _tipAmount);
   }
 }
 
