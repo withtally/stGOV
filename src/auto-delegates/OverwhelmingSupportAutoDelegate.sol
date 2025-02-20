@@ -113,9 +113,9 @@ abstract contract OverwhelmingSupportAutoDelegate is Ownable, IERC6372 {
   /// @param _governor The Governor contract containing the proposal to vote on.
   /// @param _proposalId The ID of the proposal to vote on.
   /// @dev Always votes in favor (1) of the proposal.
-  function castVote(IGovernorBravoDelegate _governor, uint256 _proposalId) public {
+  function castVote(address _governor, uint256 _proposalId) public virtual {
     checkVoteRequirements(_governor, _proposalId);
-    _governor.castVote(_proposalId, FOR);
+    IGovernorBravoDelegate(_governor).castVote(_proposalId, FOR);
   }
 
   /// @notice Sets the voting window.
@@ -160,10 +160,11 @@ abstract contract OverwhelmingSupportAutoDelegate is Ownable, IERC6372 {
   /// @param _governor The Governor contract containing the proposal.
   /// @param _proposalId The ID of the proposal to check
   /// @dev This function reverts if any voting requirement is not met.
-  function checkVoteRequirements(IGovernorBravoDelegate _governor, uint256 _proposalId) public view {
+  function checkVoteRequirements(address _governor, uint256 _proposalId) public view virtual {
     // Fetch proposal data once
-    (,,,, uint256 endBlock, uint256 forVotes, uint256 againstVotes,,,) = _governor.proposals(_proposalId);
-    uint256 quorumVotes = _governor.quorumVotes();
+    (,,,, uint256 endBlock, uint256 forVotes, uint256 againstVotes,,,) =
+      IGovernorBravoDelegate(_governor).proposals(_proposalId);
+    uint256 quorumVotes = IGovernorBravoDelegate(_governor).quorumVotes();
 
     if (!_isWithinVotingWindow(endBlock)) {
       revert OverwhelmingSupportAutoDelegate__OutsideVotingWindow();
