@@ -10,7 +10,6 @@ import {IERC20Metadata} from "@openzeppelin/contracts/interfaces/IERC20Metadata.
 import {EIP712} from "openzeppelin/utils/cryptography/EIP712.sol";
 import {Nonces} from "openzeppelin/utils/Nonces.sol";
 import {Multicall} from "openzeppelin/utils/Multicall.sol";
-import {SignatureChecker} from "openzeppelin/utils/cryptography/SignatureChecker.sol";
 
 /// @title FixedGovLst
 /// @author [ScopeLift](https://scopelift.co)
@@ -33,7 +32,7 @@ import {SignatureChecker} from "openzeppelin/utils/cryptography/SignatureChecker
 /// regards to delegation. Holders of a wrapped LST tokens are not able to specify their own delegatee, instead all
 /// tokens are delegated to the default. Holders of the fixed LST do not have to make this tradeoff. They are able to
 /// specify a delegate in the same way as holders of the rebasing LST.
-contract FixedGovLst is IERC20, IERC20Metadata, Multicall, EIP712, Nonces {
+contract FixedGovLst is IERC20, IERC20Metadata, IERC20Permit, Multicall, EIP712, Nonces {
   using FixedLstAddressAlias for address;
 
   /// @notice Emitted when a holder updates their deposit identifier, which determines the delegatee of their voting
@@ -88,6 +87,10 @@ contract FixedGovLst is IERC20, IERC20Metadata, Multicall, EIP712, Nonces {
   /// @notice The number of decimals for the fixed LST token.
   uint8 private constant DECIMALS = 18;
 
+  /// @notice Type hash used when encoding data for `permit` calls.
+  bytes32 public constant PERMIT_TYPEHASH =
+    keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
+
   /// @notice The number of rebasing LST shares a given fixed LST token holder controls via their fixed LST holdings.
   /// @dev The fixed LST `balanceOf` the holder is this number scaled down by the `SHARE_SCALE_FACTOR`
   mapping(address _holder => uint256 _balance) private shareBalances;
@@ -102,33 +105,6 @@ contract FixedGovLst is IERC20, IERC20Metadata, Multicall, EIP712, Nonces {
   /// @notice The ERC20 Metadata compliant symbol of the fixed LST token.
   string public symbol;
 
-  /// @notice Type hash used when encoding data for `permit` calls.
-  bytes32 public constant PERMIT_TYPEHASH =
-    keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
-
-  /// @notice Type hash used when encoding data for `updateDepositOnBehalf` calls.
-  bytes32 public constant UPDATE_DEPOSIT_TYPEHASH =
-    keccak256("UpdateDeposit(address account,uint256 depositId,uint256 nonce,uint256 deadline)");
-
-  /// @notice Type hash used when encoding data for `stakeOnBehalf` calls.
-  bytes32 public constant STAKE_TYPEHASH =
-    keccak256("Stake(address account,uint256 amount,uint256 nonce,uint256 deadline)");
-
-  /// @notice Type hash used when encoding data for `convertToFixedOnBehalf` calls.
-  bytes32 public constant CONVERT_TO_FIXED_TYPEHASH =
-    keccak256("ConvertToFixed(address account,uint256 amount,uint256 nonce,uint256 deadline)");
-
-  /// @notice Type hash used when encoding data for `convertToRebasingOnBehalf` calls.
-  bytes32 public constant CONVERT_TO_REBASING_TYPEHASH =
-    keccak256("ConvertToRebasing(address account,uint256 amount,uint256 nonce,uint256 deadline)");
-
-  /// @notice Type hash used when encoding data for `unstakeOnBehalf` calls.
-  bytes32 public constant UNSTAKE_TYPEHASH =
-    keccak256("Unstake(address account,uint256 amount,uint256 nonce,uint256 deadline)");
-
-  /// @notice Type hash used when encoding data for `rescueOnBehalf` calls.
-  bytes32 public constant RESCUE_TYPEHASH = keccak256("Rescue(address account,uint256 nonce,uint256 deadline)");
-
   /// @notice Mapping used to determine the amount of Fixed LST tokens the spender has been approved to transfer on
   /// the holder's behalf.
   mapping(address holder => mapping(address spender => uint256 amount)) public allowance;
@@ -136,9 +112,14 @@ contract FixedGovLst is IERC20, IERC20Metadata, Multicall, EIP712, Nonces {
   /// @param _name The name for the fixed balance liquid stake token.
   /// @param _symbol The symbol for the fixed balance liquid stake token.
   /// @param _lst The rebasing LST for which this contract will serve as the fixed balance counterpart.
-  constructor(string memory _name, string memory _symbol, GovLst _lst, IERC20 _stakeToken, uint256 _shareScaleFactor)
-    EIP712("FixedGovLst", "1")
-  {
+  constructor(
+    string memory _name,
+    string memory _symbol,
+    string memory _version,
+    GovLst _lst,
+    IERC20 _stakeToken,
+    uint256 _shareScaleFactor
+  ) EIP712(_name, _version) {
     name = _name;
     symbol = _symbol;
     LST = _lst;
@@ -149,6 +130,11 @@ contract FixedGovLst is IERC20, IERC20Metadata, Multicall, EIP712, Nonces {
   /// @notice The decimal precision with which the fixed LST token stores its balances.
   function decimals() external pure returns (uint8) {
     return DECIMALS;
+  }
+
+  /// @notice The EIP712 signing version of the contract.
+  function version() external view returns (string memory) {
+    return _EIP712Version();
   }
 
   /// @notice The balance of the holder in fixed LST tokens. Unlike the rebasing LST, this balance is stable even as
@@ -165,6 +151,19 @@ contract FixedGovLst is IERC20, IERC20Metadata, Multicall, EIP712, Nonces {
   /// change when rewards are distributed.
   function totalSupply() public view returns (uint256) {
     return _scaleDown(totalShares);
+  }
+
+  /// @notice Get the current nonce for an owner
+  /// @dev This function explicitly overrides both Nonces and IERC20Permit to allow compatibility
+  /// @param _owner The address of the owner
+  /// @return The current nonce for the owner
+  function nonces(address _owner) public view override(Nonces, IERC20Permit) returns (uint256) {
+    return Nonces.nonces(_owner);
+  }
+
+  /// @notice The domain separator used by this contract for all EIP712 signature based methods.
+  function DOMAIN_SEPARATOR() external view returns (bytes32) {
+    return _domainSeparatorV4();
   }
 
   /// @notice Sets the delegatee which will receive the voting weight of the caller's tokens staked in the fixed LST
@@ -302,133 +301,6 @@ contract FixedGovLst is IERC20, IERC20Metadata, Multicall, EIP712, Nonces {
     emit Approval(_owner, _spender, _value);
   }
 
-  /// @notice Updates the deposit identifier for an account using a signed message for authorization. The deposit
-  /// identifier determines which delegatee receives the voting weight of the account's staked tokens.
-  /// @param _account The address of the account whose deposit identifier is being updated.
-  /// @param _newDepositId The new deposit identifier to associate with the account. Must be a deposit owned by the
-  /// rebasing LST. The underlying tokens staked in the fixed LST will be moved into this deposit.
-  /// @param _nonce The nonce being consumed by this operation to prevent replay attacks.
-  /// @param _deadline The timestamp after which the signature should expire.
-  /// @param _signature The signed message authorizing this deposit update, signed by the account.
-  function updateDepositOnBehalf(
-    address _account,
-    Staker.DepositIdentifier _newDepositId,
-    uint256 _nonce,
-    uint256 _deadline,
-    bytes memory _signature
-  ) external {
-    _validateSignature(
-      _account, Staker.DepositIdentifier.unwrap(_newDepositId), _nonce, _deadline, _signature, UPDATE_DEPOSIT_TYPEHASH
-    );
-    _updateDeposit(_account, _newDepositId);
-  }
-
-  /// @notice Stake tokens to receive fixed liquid stake tokens on behalf of a user, using a signature to validate the
-  /// user's intent. The staking address must pre-approve the LST contract to spend at least the would-be amount
-  /// of tokens.
-  /// @param _account The address on behalf of whom the staking is being performed.
-  /// @param _amount The quantity of tokens that will be staked.
-  /// @param _nonce The nonce being consumed by this operation.
-  /// @param _deadline The timestamp after which the signature should expire.
-  /// @param _signature Signature of the user authorizing this stake.
-  /// @dev The increase in the holder's balance after staking may be slightly less than the amount staked due to
-  /// rounding.
-  /// @return The amount of fixed tokens created after staking.
-  function stakeOnBehalf(address _account, uint256 _amount, uint256 _nonce, uint256 _deadline, bytes memory _signature)
-    external
-    returns (uint256)
-  {
-    _validateSignature(_account, _amount, _nonce, _deadline, _signature, STAKE_TYPEHASH);
-    return _stake(_account, _amount);
-  }
-
-  /// @notice Destroy liquid staked tokens, to receive the underlying token in exchange, on behalf of a user. Use a
-  /// signature to validate the user's  intent. Tokens are removed first from the default deposit, if any are present,
-  /// then from holder's specified deposit if any are needed.
-  /// @param _account The address on behalf of whom the unstaking is being performed.
-  /// @param _amount The amount of tokens to unstake.
-  /// @param _nonce The nonce being consumed by this operation.
-  /// @param _deadline The timestamp after which the signature should expire.
-  /// @param _signature Signature of the user authorizing this stake.
-  /// @return The amount of stake tokens created after unstaking.
-  function unstakeOnBehalf(
-    address _account,
-    uint256 _amount,
-    uint256 _nonce,
-    uint256 _deadline,
-    bytes memory _signature
-  ) external returns (uint256) {
-    _validateSignature(_account, _amount, _nonce, _deadline, _signature, UNSTAKE_TYPEHASH);
-    return _unstake(_account, _amount);
-  }
-
-  /// @notice Convert existing rebasing LST tokens to fixed balance LST tokens on behalf of an account.
-  /// @param _account The address on behalf of whom the conversion is being performed.
-  /// @param _amount The amount of rebasing LST tokens to convert.
-  /// @param _nonce The nonce being consumed by this operation.
-  /// @param _deadline The timestamp after which the signature should expire.
-  /// @param _signature Signature of the user authorizing this stake.
-  /// @return The amount of fixed tokens.
-  function convertToFixedOnBehalf(
-    address _account,
-    uint256 _amount,
-    uint256 _nonce,
-    uint256 _deadline,
-    bytes memory _signature
-  ) external returns (uint256) {
-    _validateSignature(_account, _amount, _nonce, _deadline, _signature, CONVERT_TO_FIXED_TYPEHASH);
-    return _convertToFixed(_account, _amount);
-  }
-
-  /// @notice Convert fixed LST tokens to rebasing LST tokens on behalf of an account.
-  /// @param _account The address on behalf of whom the conversion is being performed.
-  /// @param _amount The amount of fixed LST tokens to convert.
-  /// @param _nonce The nonce being consumed by this operation.
-  /// @param _deadline The timestamp after which the signature should expire.
-  /// @param _signature Signature of the user authorizing this stake.
-  /// @return The amount of rebasing tokens.
-  function convertToRebasingOnBehalf(
-    address _account,
-    uint256 _amount,
-    uint256 _nonce,
-    uint256 _deadline,
-    bytes memory _signature
-  ) external returns (uint256) {
-    _validateSignature(_account, _amount, _nonce, _deadline, _signature, CONVERT_TO_REBASING_TYPEHASH);
-    return _convertToRebasing(_account, _amount);
-  }
-
-  /// @notice Save rebasing LST tokens that were mistakenly sent to the fixed holder alias address on behalf of an
-  /// account.
-  /// @param _account The address on behalf of whom the rescue is being performed.
-  /// @param _nonce The nonce being consumed by this operation.
-  /// @param _deadline The timestamp after which the signature should expire.
-  /// @param _signature Signature of the user authorizing this stake.
-  /// @return The amount of fixed tokens rescued.
-  function rescueOnBehalf(address _account, uint256 _nonce, uint256 _deadline, bytes memory _signature)
-    external
-    returns (uint256)
-  {
-    _validateSignature(_account, _nonce, _deadline, _signature, RESCUE_TYPEHASH);
-    return _rescue(_account);
-  }
-
-  /// @notice Stake tokens to receive fixed liquid stake tokens. Before the staking operation occurs, a signature is
-  /// passed to the token contract's permit method to spend the would-be staked amount of the token.
-  /// @param _amount The quantity of fixed tokens that will be staked.
-  /// @param _deadline The timestamp after which the signature should expire.
-  /// @param _v ECDSA signature component: Parity of the `y` coordinate of point `R`
-  /// @param _r ECDSA signature component: x-coordinate of `R`
-  /// @param _s ECDSA signature component: `s` value of the signature
-  /// @return The number of fixed tokens after staking.
-  function permitAndStake(uint256 _amount, uint256 _deadline, uint8 _v, bytes32 _r, bytes32 _s)
-    public
-    returns (uint256)
-  {
-    try IERC20Permit(address(STAKE_TOKEN)).permit(msg.sender, address(this), _amount, _deadline, _v, _r, _s) {} catch {}
-    return stake(_amount);
-  }
-
   /// @notice Internal convenience method which performs transfer operations.
   /// @dev This method must only be called after proper authorization has been completed.
   /// @dev See public transfer methods for additional documentation.
@@ -557,57 +429,5 @@ contract FixedGovLst is IERC20, IERC20Metadata, Multicall, EIP712, Nonces {
   /// @return _fixedTokens The number of fixed LST tokens.
   function _scaleDown(uint256 _lstShares) internal view returns (uint256 _fixedTokens) {
     _fixedTokens = _lstShares / SHARE_SCALE_FACTOR;
-  }
-
-  /// @notice Internal helper method which reverts with FixedGovLst__SignatureExpired if the signature
-  /// is invalid.
-  /// @param _account The address of the signer.
-  /// @param _amount The amount of tokens involved in this operation.
-  /// @param _nonce The nonce being consumed by this operation.
-  /// @param _deadline The timestamp after which the signature should expire.
-  /// @param _signature Signature of the user authorizing this stake.
-  /// @param _typeHash The typehash being signed over for this operation.
-  function _validateSignature(
-    address _account,
-    uint256 _amount,
-    uint256 _nonce,
-    uint256 _deadline,
-    bytes memory _signature,
-    bytes32 _typeHash
-  ) internal {
-    _useCheckedNonce(_account, _nonce);
-    if (block.timestamp > _deadline) {
-      revert FixedGovLst__SignatureExpired();
-    }
-    bytes32 _structHash = keccak256(abi.encode(_typeHash, _account, _amount, _nonce, _deadline));
-    bytes32 _hash = _hashTypedDataV4(_structHash);
-    if (!SignatureChecker.isValidSignatureNow(_account, _hash, _signature)) {
-      revert FixedGovLst__InvalidSignature();
-    }
-  }
-
-  /// @notice Internal helper method which reverts with FixedGovLst__SignatureExpired if the signature
-  /// is invalid.
-  /// @param _account The address of the signer.
-  /// @param _nonce The nonce being consumed by this operation.
-  /// @param _deadline The timestamp after which the signature should expire.
-  /// @param _signature Signature of the user authorizing this stake.
-  /// @param _typeHash The typehash being signed over for this operation.
-  function _validateSignature(
-    address _account,
-    uint256 _nonce,
-    uint256 _deadline,
-    bytes memory _signature,
-    bytes32 _typeHash
-  ) internal {
-    _useCheckedNonce(_account, _nonce);
-    if (block.timestamp > _deadline) {
-      revert FixedGovLst__SignatureExpired();
-    }
-    bytes32 _structHash = keccak256(abi.encode(_typeHash, _account, _nonce, _deadline));
-    bytes32 _hash = _hashTypedDataV4(_structHash);
-    if (!SignatureChecker.isValidSignatureNow(_account, _hash, _signature)) {
-      revert FixedGovLst__InvalidSignature();
-    }
   }
 }

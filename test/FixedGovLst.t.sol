@@ -5,6 +5,7 @@ import {console2, stdStorage, StdStorage, stdError, Vm} from "forge-std/Test.sol
 import {GovLstTest} from "test/GovLst.t.sol";
 import {Staker} from "staker/Staker.sol";
 import {FixedGovLst} from "src/FixedGovLst.sol";
+import {FixedGovLstHarness} from "test/harnesses/FixedGovLstHarness.sol";
 import {FixedLstAddressAlias} from "src/FixedLstAddressAlias.sol";
 import {IERC20} from "openzeppelin/token/ERC20/IERC20.sol";
 import {ERC20Votes} from "openzeppelin/token/ERC20/extensions/ERC20Votes.sol";
@@ -15,11 +16,11 @@ import {IERC20Errors} from "openzeppelin/interfaces/draft-IERC6093.sol";
 using FixedLstAddressAlias for address;
 
 contract FixedGovLstTest is GovLstTest {
-  FixedGovLst fixedLst;
+  FixedGovLstHarness fixedLst;
 
   function setUp() public virtual override {
     super.setUp();
-    fixedLst = lst.FIXED_LST();
+    fixedLst = FixedGovLstHarness(address(lst.FIXED_LST()));
   }
 
   function _updateFixedDelegatee(address _holder, address _delegatee) internal {
@@ -111,7 +112,9 @@ contract FixedGovLstTest is GovLstTest {
     uint256 _signerPrivateKey
   ) internal view returns (bytes memory) {
     bytes32 structHash = keccak256(abi.encode(_typehash, _account, _amount, _nonce, _expiry));
-    bytes32 hash = _hashTypedDataV4(EIP712_DOMAIN_TYPEHASH, structHash, "FixedGovLst", "1", address(fixedLst));
+    bytes32 hash = _hashTypedDataV4(
+      EIP712_DOMAIN_TYPEHASH, structHash, bytes(fixedLst.name()), bytes(fixedLst.version()), address(fixedLst)
+    );
     (uint8 v, bytes32 r, bytes32 s) = vm.sign(_signerPrivateKey, hash);
     return abi.encodePacked(r, s, v);
   }
@@ -124,7 +127,9 @@ contract FixedGovLstTest is GovLstTest {
     uint256 _signerPrivateKey
   ) internal view returns (bytes memory) {
     bytes32 structHash = keccak256(abi.encode(_typehash, _account, _nonce, _expiry));
-    bytes32 hash = _hashTypedDataV4(EIP712_DOMAIN_TYPEHASH, structHash, "FixedGovLst", "1", address(fixedLst));
+    bytes32 hash = _hashTypedDataV4(
+      EIP712_DOMAIN_TYPEHASH, structHash, bytes(fixedLst.name()), bytes(fixedLst.version()), address(fixedLst)
+    );
     (uint8 v, bytes32 r, bytes32 s) = vm.sign(_signerPrivateKey, hash);
     return abi.encodePacked(r, s, v);
   }
@@ -313,7 +318,10 @@ contract Permit is FixedGovLstTest {
     uint256 _nonce = ERC20Permit(address(fixedLst)).nonces(_owner);
     bytes32 structHash = _buildPermitStructHash(_owner, _spender, _value, _nonce, _deadline);
     (uint8 v, bytes32 r, bytes32 s) = vm.sign(
-      _ownerPrivateKey, _hashTypedDataV4(EIP712_DOMAIN_TYPEHASH, structHash, "FixedGovLst", "1", address(fixedLst))
+      _ownerPrivateKey,
+      _hashTypedDataV4(
+        EIP712_DOMAIN_TYPEHASH, structHash, bytes(fixedLst.name()), bytes(fixedLst.version()), address(fixedLst)
+      )
     );
 
     assertEq(fixedLst.allowance(_owner, _spender), 0);
@@ -341,7 +349,10 @@ contract Permit is FixedGovLstTest {
     uint256 _nonce = ERC20Permit(address(fixedLst)).nonces(_owner);
     bytes32 structHash = _buildPermitStructHash(_owner, _spender, _value, _nonce, _deadline);
     (uint8 v, bytes32 r, bytes32 s) = vm.sign(
-      _ownerPrivateKey, _hashTypedDataV4(EIP712_DOMAIN_TYPEHASH, structHash, "FixedGovLst", "1", address(fixedLst))
+      _ownerPrivateKey,
+      _hashTypedDataV4(
+        EIP712_DOMAIN_TYPEHASH, structHash, bytes(fixedLst.name()), bytes(fixedLst.version()), address(fixedLst)
+      )
     );
 
     vm.prank(_sender);
@@ -373,7 +384,10 @@ contract Permit is FixedGovLstTest {
     uint256 _nonce = ERC20Permit(address(fixedLst)).nonces(_owner);
     bytes32 structHash = _buildPermitStructHash(_owner, _spender, _value, _nonce, _deadline);
     (uint8 v, bytes32 r, bytes32 s) = vm.sign(
-      _ownerPrivateKey, _hashTypedDataV4(EIP712_DOMAIN_TYPEHASH, structHash, "FixedGovLst", "1", address(fixedLst))
+      _ownerPrivateKey,
+      _hashTypedDataV4(
+        EIP712_DOMAIN_TYPEHASH, structHash, bytes(fixedLst.name()), bytes(fixedLst.version()), address(fixedLst)
+      )
     );
 
     vm.prank(_sender);
@@ -400,7 +414,10 @@ contract Permit is FixedGovLstTest {
     uint256 _nonce = ERC20Permit(address(fixedLst)).nonces(_owner);
     bytes32 structHash = _buildPermitStructHash(_owner, _spender, _value, _nonce, _deadline);
     (uint8 v, bytes32 r, bytes32 s) = vm.sign(
-      _wrongPrivateKey, _hashTypedDataV4(EIP712_DOMAIN_TYPEHASH, structHash, "FixedGovLst", "1", address(fixedLst))
+      _wrongPrivateKey,
+      _hashTypedDataV4(
+        EIP712_DOMAIN_TYPEHASH, structHash, bytes(fixedLst.name()), bytes(fixedLst.version()), address(fixedLst)
+      )
     );
 
     vm.prank(_sender);
@@ -424,7 +441,10 @@ contract Permit is FixedGovLstTest {
     uint256 _nonce = ERC20Permit(address(fixedLst)).nonces(_owner);
     bytes32 structHash = _buildPermitStructHash(_owner, _spender, _value, _nonce, _deadline);
     (uint8 v, bytes32 r, bytes32 s) = vm.sign(
-      _ownerPrivateKey, _hashTypedDataV4(EIP712_DOMAIN_TYPEHASH, structHash, "FixedGovLst", "1", address(fixedLst))
+      _ownerPrivateKey,
+      _hashTypedDataV4(
+        EIP712_DOMAIN_TYPEHASH, structHash, bytes(fixedLst.name()), bytes(fixedLst.version()), address(fixedLst)
+      )
     );
 
     vm.prank(_sender);

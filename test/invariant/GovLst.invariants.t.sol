@@ -4,6 +4,7 @@ pragma solidity 0.8.28;
 import {Test, console2} from "forge-std/Test.sol";
 import {GovLst} from "src/GovLst.sol";
 import {GovLstHandler} from "./GovLst.handler.sol";
+import {GovLstHarness} from "test/harnesses/GovLstHarness.sol";
 import {UnitTestBase} from "test/UnitTestBase.sol";
 import {Staker} from "staker/Staker.sol";
 import {MockFullEarningPowerCalculator} from "test/mocks/MockFullEarningPowerCalculator.sol";
@@ -55,7 +56,9 @@ contract GovStakerInvariants is Test, UnitTestBase {
     staker.setRewardNotifier(stakerAdmin, true);
 
     // Finally, deploy the lst for tests.
-    lst = new GovLst("Gov Lst", "stGov", staker, defaultDelegatee, lstOwner, initialPayoutAmount, delegateeGuardian, 0);
+    lst = new GovLstHarness(
+      "Gov Lst", "stGov", staker, defaultDelegatee, lstOwner, initialPayoutAmount, delegateeGuardian, 0
+    );
 
     // Set the withdrawal delay to a non-zero amount
     vm.startPrank(lstOwner);
