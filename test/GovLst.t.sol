@@ -8,6 +8,7 @@ import {ERC20Permit} from "openzeppelin/token/ERC20/extensions/ERC20Permit.sol";
 import {Staker} from "staker/Staker.sol";
 import {IERC20Staking} from "staker/interfaces/IERC20Staking.sol";
 import {GovLst, Ownable} from "src/GovLst.sol";
+import {GovLstHarness} from "test/harnesses/GovLstHarness.sol";
 import {WithdrawGate} from "src/WithdrawGate.sol";
 import {UnitTestBase} from "test/UnitTestBase.sol";
 import {TestHelpers} from "test/helpers/TestHelpers.sol";
@@ -27,7 +28,7 @@ contract GovLstTest is UnitTestBase, PercentAssertions, TestHelpers, Eip712Helpe
 
   FakeStaker staker;
   MockFullEarningPowerCalculator earningPowerCalculator;
-  GovLst lst;
+  GovLstHarness lst;
   WithdrawGate withdrawGate;
   address lstOwner;
   uint80 initialPayoutAmount = 2500e18;
@@ -78,8 +79,9 @@ contract GovLstTest is UnitTestBase, PercentAssertions, TestHelpers, Eip712Helpe
     staker.setRewardNotifier(stakerAdmin, true);
 
     // Finally, deploy the lst for tests.
-    lst =
-      new GovLst(tokenName, tokenSymbol, staker, defaultDelegatee, lstOwner, initialPayoutAmount, delegateeGuardian, 0);
+    lst = new GovLstHarness(
+      tokenName, tokenSymbol, staker, defaultDelegatee, lstOwner, initialPayoutAmount, delegateeGuardian, 0
+    );
     // Store the withdraw gate for convenience, set a non-zero withdrawal delay
     withdrawGate = lst.WITHDRAW_GATE();
     vm.prank(lstOwner);
@@ -375,7 +377,8 @@ contract GovLstTest is UnitTestBase, PercentAssertions, TestHelpers, Eip712Helpe
     uint256 _signerPrivateKey
   ) internal view returns (bytes memory) {
     bytes32 structHash = keccak256(abi.encode(_typehash, _account, _amount, _nonce, _expiry));
-    bytes32 hash = _hashTypedDataV4(EIP712_DOMAIN_TYPEHASH, structHash, "Staked Gov", "1", address(lst));
+    bytes32 hash =
+      _hashTypedDataV4(EIP712_DOMAIN_TYPEHASH, structHash, bytes(lst.name()), bytes(lst.version()), address(lst));
     (uint8 v, bytes32 r, bytes32 s) = vm.sign(_signerPrivateKey, hash);
     return abi.encodePacked(r, s, v);
   }
@@ -473,7 +476,7 @@ contract Constructor is GovLstTest {
     _mintStakeToken(address(this), _stakeToBurn);
     stakeToken.approve(address(lstAddr), _stakeToBurn);
 
-    GovLst _lst = new GovLst(
+    GovLst _lst = new GovLstHarness(
       _tokenName,
       _tokenSymbol,
       Staker(staker),
@@ -4492,8 +4495,10 @@ contract Permit is GovLstTest {
 
     uint256 _nonce = lst.nonces(_owner);
     bytes32 structHash = _buildPermitStructHash(_owner, _spender, _value, _nonce, _deadline);
-    (uint8 v, bytes32 r, bytes32 s) =
-      vm.sign(_ownerPrivateKey, _hashTypedDataV4(EIP712_DOMAIN_TYPEHASH, structHash, "Staked Gov", "1", address(lst)));
+    (uint8 v, bytes32 r, bytes32 s) = vm.sign(
+      _ownerPrivateKey,
+      _hashTypedDataV4(EIP712_DOMAIN_TYPEHASH, structHash, bytes(lst.name()), bytes(lst.version()), address(lst))
+    );
 
     assertEq(lst.allowance(_owner, _spender), 0);
 
@@ -4519,8 +4524,10 @@ contract Permit is GovLstTest {
 
     uint256 _nonce = lst.nonces(_owner);
     bytes32 structHash = _buildPermitStructHash(_owner, _spender, _value, _nonce, _deadline);
-    (uint8 v, bytes32 r, bytes32 s) =
-      vm.sign(_ownerPrivateKey, _hashTypedDataV4(EIP712_DOMAIN_TYPEHASH, structHash, "Staked Gov", "1", address(lst)));
+    (uint8 v, bytes32 r, bytes32 s) = vm.sign(
+      _ownerPrivateKey,
+      _hashTypedDataV4(EIP712_DOMAIN_TYPEHASH, structHash, bytes(lst.name()), bytes(lst.version()), address(lst))
+    );
 
     vm.prank(_sender);
     vm.expectEmit();
@@ -4550,8 +4557,10 @@ contract Permit is GovLstTest {
 
     uint256 _nonce = lst.nonces(_owner);
     bytes32 structHash = _buildPermitStructHash(_owner, _spender, _value, _nonce, _deadline);
-    (uint8 v, bytes32 r, bytes32 s) =
-      vm.sign(_ownerPrivateKey, _hashTypedDataV4(EIP712_DOMAIN_TYPEHASH, structHash, "Staked Gov", "1", address(lst)));
+    (uint8 v, bytes32 r, bytes32 s) = vm.sign(
+      _ownerPrivateKey,
+      _hashTypedDataV4(EIP712_DOMAIN_TYPEHASH, structHash, bytes(lst.name()), bytes(lst.version()), address(lst))
+    );
 
     vm.prank(_sender);
     vm.expectRevert(GovLst.GovLst__SignatureExpired.selector);
@@ -4576,8 +4585,10 @@ contract Permit is GovLstTest {
 
     uint256 _nonce = lst.nonces(_owner);
     bytes32 structHash = _buildPermitStructHash(_owner, _spender, _value, _nonce, _deadline);
-    (uint8 v, bytes32 r, bytes32 s) =
-      vm.sign(_wrongPrivateKey, _hashTypedDataV4(EIP712_DOMAIN_TYPEHASH, structHash, "Staked Gov", "1", address(lst)));
+    (uint8 v, bytes32 r, bytes32 s) = vm.sign(
+      _wrongPrivateKey,
+      _hashTypedDataV4(EIP712_DOMAIN_TYPEHASH, structHash, bytes(lst.name()), bytes(lst.version()), address(lst))
+    );
 
     vm.prank(_sender);
     vm.expectRevert(GovLst.GovLst__InvalidSignature.selector);
@@ -4599,8 +4610,10 @@ contract Permit is GovLstTest {
 
     uint256 _nonce = lst.nonces(_owner);
     bytes32 structHash = _buildPermitStructHash(_owner, _spender, _value, _nonce, _deadline);
-    (uint8 v, bytes32 r, bytes32 s) =
-      vm.sign(_ownerPrivateKey, _hashTypedDataV4(EIP712_DOMAIN_TYPEHASH, structHash, "Staked Gov", "1", address(lst)));
+    (uint8 v, bytes32 r, bytes32 s) = vm.sign(
+      _ownerPrivateKey,
+      _hashTypedDataV4(EIP712_DOMAIN_TYPEHASH, structHash, bytes(lst.name()), bytes(lst.version()), address(lst))
+    );
 
     vm.prank(_sender);
     lst.permit(_owner, _spender, _value, _deadline, v, r, s);
@@ -4616,8 +4629,8 @@ contract DOMAIN_SEPARATOR is GovLstTest {
     bytes32 _expectedDomainSeparator = keccak256(
       abi.encode(
         keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
-        keccak256("Staked Gov"),
-        keccak256("1"),
+        keccak256(bytes(lst.name())),
+        keccak256(bytes(lst.version())),
         block.chainid,
         address(lst)
       )

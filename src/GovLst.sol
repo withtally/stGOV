@@ -6,7 +6,6 @@ import {IERC20Metadata} from "openzeppelin/interfaces/IERC20Metadata.sol";
 import {IERC20Permit} from "openzeppelin/token/ERC20/extensions/IERC20Permit.sol";
 import {Ownable} from "openzeppelin/access/Ownable.sol";
 import {EIP712} from "openzeppelin/utils/cryptography/EIP712.sol";
-import {SignatureChecker} from "openzeppelin/utils/cryptography/SignatureChecker.sol";
 import {Nonces} from "openzeppelin/utils/Nonces.sol";
 import {Multicall} from "openzeppelin/utils/Multicall.sol";
 import {SafeCast} from "openzeppelin/utils/math/SafeCast.sol";
@@ -32,7 +31,7 @@ import {FixedLstAddressAlias} from "src/FixedLstAddressAlias.sol";
 /// its share of the total staked supply, the balance is subject to truncation. Care must be taken to ensure all
 /// deposits remain solvent. Where a deposit might be left short due to truncation, we aim to accumulate these
 /// shortfalls in the default deposit, which can be subsidized to remain solvent.
-contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP712, Nonces {
+abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP712, Nonces {
   using FixedLstAddressAlias for address;
   using SafeCast for uint256;
 
@@ -210,6 +209,10 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     uint128 shares;
   }
 
+  /// @notice Type hash used when encoding data for `permit` calls.
+  bytes32 public constant PERMIT_TYPEHASH =
+    keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
+
   /// @notice The name of the LST token.
   string private NAME;
 
@@ -221,22 +224,6 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
 
   /// @notice Maximum allowable fee in basis points (20%).
   uint16 public constant MAX_FEE_BIPS = 2000;
-
-  /// @notice Type hash used when encoding data for `stakeOnBehalf` calls.
-  bytes32 public constant STAKE_TYPEHASH =
-    keccak256("Stake(address account,uint256 amount,uint256 nonce,uint256 deadline)");
-
-  /// @notice Type hash used when encoding data for `unstakeOnBehalf` calls.
-  bytes32 public constant UNSTAKE_TYPEHASH =
-    keccak256("Unstake(address account,uint256 amount,uint256 nonce,uint256 deadline)");
-
-  /// @notice Type hash used when encoding data for `permit` calls.
-  bytes32 public constant PERMIT_TYPEHASH =
-    keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
-
-  /// @notice Type hash used when encoding data for `updateDepositOnBehalf` calls.
-  bytes32 public constant UPDATE_DEPOSIT_TYPEHASH =
-    keccak256("UpdateDeposit(address account,uint256 newDepositId,uint256 nonce,uint256 deadline)");
 
   /// @notice The global total supply and total shares for the LST.
   Totals internal totals;
@@ -288,17 +275,18 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   constructor(
     string memory _name,
     string memory _symbol,
+    string memory _version,
     Staker _staker,
     address _initialDefaultDelegatee,
     address _initialOwner,
     uint80 _initialPayoutAmount,
     address _initialDelegateeGuardian,
     uint256 _stakeToBurn
-  ) Ownable(_initialOwner) EIP712(_name, "1") {
+  ) Ownable(_initialOwner) EIP712(string.concat("Rebased ", _name), _version) {
     STAKER = _staker;
     STAKE_TOKEN = IERC20(_staker.STAKE_TOKEN());
     REWARD_TOKEN = IWETH9(payable(address(_staker.REWARD_TOKEN())));
-    NAME = string.concat("Rebased ", _name);
+    NAME = _EIP712Name();
     SYMBOL = string.concat("r", _symbol);
 
     _setDefaultDelegatee(_initialDefaultDelegatee);
@@ -314,7 +302,7 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
 
     // Deploy the WithdrawGate
     WITHDRAW_GATE = new WithdrawGate(_initialOwner, address(this), address(STAKE_TOKEN), 0);
-    FIXED_LST = new FixedGovLst(_name, _symbol, this, STAKE_TOKEN, SHARE_SCALE_FACTOR);
+    FIXED_LST = _deployFixedGovLst(_name, _symbol, _version, this, STAKE_TOKEN, SHARE_SCALE_FACTOR);
   }
 
   /// @notice The name of the liquid stake token.
@@ -330,6 +318,11 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// @notice The decimal precision which the LST tokens stores its balances with.
   function decimals() external pure override returns (uint8) {
     return 18;
+  }
+
+  /// @notice The EIP712 signing version of the contract.
+  function version() external view returns (string memory) {
+    return _EIP712Version();
   }
 
   /// @notice The total amount of LST token supply, also equal to the total number of stake tokens in the system.
@@ -478,29 +471,6 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     _emitDepositUpdatedEvent(msg.sender, _oldDepositId, _newDepositId);
   }
 
-  /// @notice Sets the deposit to which a holder is choosing to assign their staked tokens using a signature to
-  /// validate the user's intent.
-  /// @param _account The address of the holder whose deposit is being updated.
-  /// @param _newDepositId The stake deposit identifier to which this holder's staked tokens will be moved to and
-  /// kept in henceforth.
-  /// @param _nonce The nonce being consumed by this operation.
-  /// @param _deadline The timestamp after which the signature should expire.
-  /// @param _signature Signature of the user authorizing this stake.
-  /// @return _oldDepositId The stake deposit identifier which was previously assigned to this holder's staked.
-  function updateDepositOnBehalf(
-    address _account,
-    Staker.DepositIdentifier _newDepositId,
-    uint256 _nonce,
-    uint256 _deadline,
-    bytes memory _signature
-  ) external returns (Staker.DepositIdentifier _oldDepositId) {
-    _validateSignature(
-      _account, Staker.DepositIdentifier.unwrap(_newDepositId), _nonce, _deadline, _signature, UPDATE_DEPOSIT_TYPEHASH
-    );
-    _oldDepositId = _updateDeposit(_account, _newDepositId);
-    _emitDepositUpdatedEvent(_account, _oldDepositId, _newDepositId);
-  }
-
   /// @notice Stake tokens to receive liquid stake tokens. The caller must pre-approve the LST contract to spend at
   /// least the would-be amount of tokens.
   /// @param _amount The quantity of tokens that will be staked.
@@ -531,48 +501,6 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     return _stake(msg.sender, _amount);
   }
 
-  /// @notice Stake tokens to receive liquid stake tokens on behalf of a user, using a signature to validate the user's
-  /// intent. The staking address must pre-approve the LST contract to spend at least the would-be amount of tokens.
-  /// @param _account The address on behalf of whom the staking is being performed.
-  /// @param _amount The quantity of tokens that will be staked.
-  /// @param _nonce The nonce being consumed by this operation.
-  /// @param _deadline The timestamp after which the signature should expire.
-  /// @param _signature Signature of the user authorizing this stake.
-  /// @dev The increase in the holder's balance after staking may be slightly less than the amount staked due to
-  /// rounding.
-  /// @return The difference in LST token balance of the account after the stake operation.
-  function stakeOnBehalf(address _account, uint256 _amount, uint256 _nonce, uint256 _deadline, bytes memory _signature)
-    external
-    returns (uint256)
-  {
-    _validateSignature(_account, _amount, _nonce, _deadline, _signature, STAKE_TYPEHASH);
-    // UNI reverts on failure so it's not necessary to check return value.
-    STAKE_TOKEN.transferFrom(_account, address(this), _amount);
-    _emitStakedEvent(_account, _amount);
-    _emitTransferEvent(address(0), msg.sender, _amount);
-    return _stake(_account, _amount);
-  }
-
-  /// @notice Stake tokens to receive liquid stake tokens. Before the staking operation occurs, a signature is passed
-  /// to the token contract's permit method to spend the would-be staked amount of the token.
-  /// @param _amount The quantity of tokens that will be staked.
-  /// @param _deadline The timestamp after which the signature should expire.
-  /// @param _v ECDSA signature component: Parity of the `y` coordinate of point `R`
-  /// @param _r ECDSA signature component: x-coordinate of `R`
-  /// @param _s ECDSA signature component: `s` value of the signature
-  /// @return The difference in LST token balance of the msg.sender.
-  function permitAndStake(uint256 _amount, uint256 _deadline, uint8 _v, bytes32 _r, bytes32 _s)
-    external
-    returns (uint256)
-  {
-    try IERC20Permit(address(STAKE_TOKEN)).permit(msg.sender, address(this), _amount, _deadline, _v, _r, _s) {} catch {}
-    // UNI reverts on failure so it's not necessary to check return value.
-    STAKE_TOKEN.transferFrom(msg.sender, address(this), _amount);
-    _emitStakedEvent(msg.sender, _amount);
-    _emitTransferEvent(address(0), msg.sender, _amount);
-    return _stake(msg.sender, _amount);
-  }
-
   /// @notice Destroy liquid staked tokens to receive the underlying token in exchange. Tokens are removed first from
   /// the default deposit, if any are present, then from holder's specified deposit if any are needed.
   /// @param _amount The amount of tokens to unstake.
@@ -581,28 +509,6 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     _emitUnstakedEvent(msg.sender, _amount);
     _emitTransferEvent(msg.sender, address(0), _amount);
     return _unstake(msg.sender, _amount);
-  }
-
-  /// @notice Destroy liquid staked tokens, to receive the underlying token in exchange, on behalf of a user. Use a
-  /// signature to validate the user's  intent. Tokens are removed first from the default deposit, if any are present,
-  /// then from holder's specified deposit if any are needed.
-  /// @param _account The address on behalf of whom the unstaking is being performed.
-  /// @param _amount The amount of tokens to unstake.
-  /// @param _nonce The nonce being consumed by this operation.
-  /// @param _deadline The timestamp after which the signature should expire.
-  /// @param _signature Signature of the user authorizing this stake.
-  /// @return The amount of tokens that were withdrawn from the staking contract.
-  function unstakeOnBehalf(
-    address _account,
-    uint256 _amount,
-    uint256 _nonce,
-    uint256 _deadline,
-    bytes memory _signature
-  ) external returns (uint256) {
-    _validateSignature(_account, _amount, _nonce, _deadline, _signature, UNSTAKE_TYPEHASH);
-    _emitUnstakedEvent(_account, _amount);
-    _emitTransferEvent(msg.sender, address(0), _amount);
-    return _unstake(_account, _amount);
   }
 
   /// @notice Grant an allowance to the spender to transfer up to a certain amount of LST tokens on behalf of the
@@ -1096,6 +1002,20 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
 
   //------------------------------------------ End Fixed LST Helper Methods ------------------------------------------/
 
+  /// @notice Method called in the GovLst constructor which deploys the corresponding FixedGovLst
+  /// instance that accompanies this instance of the rebasing GovLst. This is a virtual method that
+  /// must be implemented by each concrete instance of GovLst.
+  /// @dev The parameters called in this method match 1:1 the parameters in the constructor of the
+  /// FixedGovLst contract.
+  function _deployFixedGovLst(
+    string memory _name,
+    string memory _symbol,
+    string memory _version,
+    GovLst _lst,
+    IERC20 _stakeToken,
+    uint256 _shareScaleFactor
+  ) internal virtual returns (FixedGovLst _fixedLst);
+
   /// @notice Internal helper method that takes an amount of stake tokens and metadata representing the global state of
   /// the LST and returns the quantity of shares that is worth the requested quantity of stake token. All data for the
   /// calculation is provided in memory and the calculation is performed there, making it a pure function.
@@ -1515,33 +1435,6 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   function _setDelegateeGuardian(address _newDelegateeGuardian) internal {
     emit DelegateeGuardianSet(delegateeGuardian, _newDelegateeGuardian);
     delegateeGuardian = _newDelegateeGuardian;
-  }
-
-  /// @notice Internal helper method which reverts with GovLst__SignatureExpired if the signature
-  /// is invalid.
-  /// @param _account The address of the signer.
-  /// @param _amount The amount of tokens involved in this operation.
-  /// @param _nonce The nonce being consumed by this operation.
-  /// @param _deadline The timestamp after which the signature should expire.
-  /// @param _signature Signature of the user authorizing this stake.
-  /// @param _typeHash The typehash being signed over for this operation.
-  function _validateSignature(
-    address _account,
-    uint256 _amount,
-    uint256 _nonce,
-    uint256 _deadline,
-    bytes memory _signature,
-    bytes32 _typeHash
-  ) internal {
-    _useCheckedNonce(_account, _nonce);
-    if (block.timestamp > _deadline) {
-      revert GovLst__SignatureExpired();
-    }
-    bytes32 _structHash = keccak256(abi.encode(_typeHash, _account, _amount, _nonce, _deadline));
-    bytes32 _hash = _hashTypedDataV4(_structHash);
-    if (!SignatureChecker.isValidSignatureNow(_account, _hash, _signature)) {
-      revert GovLst__InvalidSignature();
-    }
   }
 
   /// @notice Internal helper that updates the allowance of the from address for the message sender, and reverts if the
