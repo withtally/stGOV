@@ -17,17 +17,42 @@ using FixedLstAddressAlias for address;
 
 contract FixedGovLstTest is GovLstTest {
   FixedGovLstHarness fixedLst;
+  address delegateeFunded = makeAddr("Delegatee funder");
 
   function setUp() public virtual override {
     super.setUp();
     fixedLst = FixedGovLstHarness(address(lst.FIXED_LST()));
   }
 
+  function _stakeOnDelegateeFixedDeposit(Staker.DepositIdentifier _depositId, address _depositor) internal {
+    _mintAndStakeFixed(_depositor, 1e18);
+    vm.startPrank(_depositor);
+    fixedLst.updateDeposit(_depositId);
+    vm.stopPrank();
+  }
+
+  function _unstakeOnDelegateeFixedDeposit(address _depositor) internal {
+    uint256 _time = block.timestamp;
+    vm.startPrank(_depositor);
+    uint256 _identifier = withdrawGate.getNextWithdrawalId();
+    fixedLst.unstake(fixedLst.balanceOf(_depositor));
+    if (withdrawGate.delay() != 0) {
+      vm.warp(_time + withdrawGate.delay());
+      withdrawGate.completeWithdrawal(_identifier);
+      vm.warp(_time);
+    }
+    vm.stopPrank();
+  }
+
   function _updateFixedDelegatee(address _holder, address _delegatee) internal {
     Staker.DepositIdentifier _depositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+    _assumeSafeDelegatee(_delegatee);
+    _stakeOnDelegateeFixedDeposit(_depositId, delegateeFunded);
 
     vm.prank(_holder);
     fixedLst.updateDeposit(_depositId);
+
+    _unstakeOnDelegateeFixedDeposit(delegateeFunded);
   }
 
   function _stakeFixed(address _holder, uint256 _amount) internal returns (uint256) {
@@ -53,8 +78,9 @@ contract FixedGovLstTest is GovLstTest {
     internal
     returns (uint256)
   {
+    uint256 _initialStaked = _stakeFixed(_holder, _amount);
     _updateFixedDelegatee(_holder, _delegatee);
-    return _stakeFixed(_holder, _amount);
+    return _initialStaked;
   }
 
   function _mintStakeTokenUpdateFixedDelegateeAndStakeFixed(address _holder, uint256 _amount, address _delegatee)
@@ -188,6 +214,8 @@ contract UpdateDeposit is FixedGovLstTest {
     _assumeSafeHolder(_holder);
     _assumeSafeDelegatee(_delegatee);
     Staker.DepositIdentifier _newDepositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+    _stakeOnDelegateeFixedDeposit(_newDepositId, delegateeFunded);
+
     Staker.DepositIdentifier _oldDepositId = lst.depositIdForHolder(_holder.fixedAlias());
 
     vm.expectEmit();
@@ -472,6 +500,8 @@ contract UpdateDepositOnBehalf is FixedGovLstTest {
     // Sign the message
     _setNonce(address(fixedLst), _holder, _nonce);
     Staker.DepositIdentifier _depositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+    _stakeOnDelegateeFixedDeposit(_depositId, delegateeFunded);
+
     bytes memory _signature = _signFixedMessage(
       fixedLst.UPDATE_DEPOSIT_TYPEHASH(),
       _holder,
@@ -503,6 +533,8 @@ contract UpdateDepositOnBehalf is FixedGovLstTest {
     // Sign the message
     _setNonce(address(fixedLst), _holder, _nonce);
     Staker.DepositIdentifier _newDepositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+    _stakeOnDelegateeFixedDeposit(_newDepositId, delegateeFunded);
+
     Staker.DepositIdentifier _oldDepositId = lst.depositIdForHolder(_holder.fixedAlias());
     bytes memory _signature = _signFixedMessage(
       fixedLst.UPDATE_DEPOSIT_TYPEHASH(),
@@ -626,6 +658,8 @@ contract UpdateDepositOnBehalf is FixedGovLstTest {
     // Sign the message
     _setNonce(address(fixedLst), _holder, _nonce);
     Staker.DepositIdentifier _depositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+    _stakeOnDelegateeFixedDeposit(_depositId, delegateeFunded);
+
     bytes memory _signature = _signFixedMessage(
       fixedLst.UPDATE_DEPOSIT_TYPEHASH(),
       _holder,
