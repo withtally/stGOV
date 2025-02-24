@@ -4,6 +4,7 @@ pragma solidity ^0.8.23;
 import {IERC20} from "openzeppelin/token/ERC20/IERC20.sol";
 import {IERC20Metadata} from "openzeppelin/interfaces/IERC20Metadata.sol";
 import {IERC20Permit} from "openzeppelin/token/ERC20/extensions/IERC20Permit.sol";
+import {SafeERC20} from "openzeppelin/token/ERC20/utils/SafeERC20.sol";
 import {Ownable} from "openzeppelin/access/Ownable.sol";
 import {EIP712} from "openzeppelin/utils/cryptography/EIP712.sol";
 import {Nonces} from "openzeppelin/utils/Nonces.sol";
@@ -34,6 +35,7 @@ import {FixedLstAddressAlias} from "src/FixedLstAddressAlias.sol";
 abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP712, Nonces {
   using FixedLstAddressAlias for address;
   using SafeCast for uint256;
+  using SafeERC20 for IERC20;
 
   /// @notice Emitted when the LST owner updates the payout amount required for the MEV reward game in
   /// `claimAndDistributeReward`.
@@ -163,7 +165,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   IERC20 public immutable STAKE_TOKEN;
 
   /// @notice The token distributed as rewards by the staking instance; in this case, WETH.
-  IWETH9 public immutable REWARD_TOKEN;
+  IERC20 public immutable REWARD_TOKEN;
 
   /// @notice A coupled contract used by the LST to enforce an optional delay when withdrawing staked tokens from the
   /// LST. Can be used to prevent users from frontrunning rewards by staking and withdrawing repeatedly at opportune
@@ -294,7 +296,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   ) Ownable(_initialOwner) EIP712(string.concat("Rebased ", _name), _version) {
     STAKER = _staker;
     STAKE_TOKEN = IERC20(_staker.STAKE_TOKEN());
-    REWARD_TOKEN = IWETH9(payable(address(_staker.REWARD_TOKEN())));
+    REWARD_TOKEN = IERC20(_staker.REWARD_TOKEN());
     NAME = _EIP712Name();
     SYMBOL = string.concat("r", _symbol);
 
@@ -302,11 +304,10 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
     _setRewardParams(_initialPayoutAmount, 0, _initialOwner);
     _setDelegateeGuardian(_initialDelegateeGuardian);
 
-    // UNI reverts on failure so it's not necessary to check return value.
     STAKE_TOKEN.approve(address(_staker), type(uint256).max);
     // Create initial deposit for default so other methods can assume it exists.
     DEFAULT_DEPOSIT_ID = STAKER.stake(0, _initialDefaultDelegatee);
-    STAKE_TOKEN.transferFrom(msg.sender, address(this), _stakeToBurn);
+    STAKE_TOKEN.safeTransferFrom(msg.sender, address(this), _stakeToBurn);
     _stake(address(this), _stakeToBurn);
 
     // Deploy the WithdrawGate
@@ -486,8 +487,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   /// @dev The increase in the holder's balance after staking may be slightly less than the amount staked due to
   /// rounding.
   function stake(uint256 _amount) external returns (uint256) {
-    // UNI reverts on failure so it's not necessary to check return value.
-    STAKE_TOKEN.transferFrom(msg.sender, address(this), _amount);
+    STAKE_TOKEN.safeTransferFrom(msg.sender, address(this), _amount);
     _emitStakedEvent(msg.sender, _amount);
     _emitTransferEvent(address(0), msg.sender, _amount);
     return _stake(msg.sender, _amount);
@@ -503,8 +503,8 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   function stakeWithAttribution(uint256 _amount, address _referrer) external returns (uint256) {
     Staker.DepositIdentifier _depositId = _calcDepositId(holderStates[msg.sender]);
     emit StakedWithAttribution(_depositId, _amount, _referrer);
-    // UNI reverts on failure so it's not necessary to check return value.
-    STAKE_TOKEN.transferFrom(msg.sender, address(this), _amount);
+
+    STAKE_TOKEN.safeTransferFrom(msg.sender, address(this), _amount);
     _emitStakedEvent(msg.sender, _amount);
     _emitTransferEvent(address(0), msg.sender, _amount);
     return _stake(msg.sender, _amount);
@@ -695,7 +695,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
     totals = Totals({supply: _newTotalSupply, shares: _totals.shares + _feeShares});
 
     // Transfer stake token to the LST
-    STAKE_TOKEN.transferFrom(msg.sender, address(this), _rewardParams.payoutAmount);
+    STAKE_TOKEN.safeTransferFrom(msg.sender, address(this), _rewardParams.payoutAmount);
     // Stake the rewards with the default delegatee
     STAKER.stakeMore(DEFAULT_DEPOSIT_ID, _rewardParams.payoutAmount);
 
@@ -711,7 +711,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
       revert GovLst__InsufficientRewards();
     }
     // Transfer the reward tokens to the recipient
-    REWARD_TOKEN.transfer(_recipient, _rewards);
+    REWARD_TOKEN.safeTransfer(_recipient, _rewards);
 
     emit RewardDistributed(
       msg.sender, _recipient, _rewards, rewardParams.payoutAmount, _feeAmount, rewardParams.feeCollector
@@ -737,7 +737,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   /// @dev Caller must approve the LST contract for at least the `_amount` on the stake token before calling this
   /// method.
   function subsidizeDeposit(Staker.DepositIdentifier _depositId, uint256 _amount) external {
-    STAKE_TOKEN.transferFrom(msg.sender, address(this), _amount);
+    STAKE_TOKEN.safeTransferFrom(msg.sender, address(this), _amount);
 
     // This will revert if the deposit is not owned by this contract
     STAKER.stakeMore(_depositId, uint96(_amount));
@@ -1278,7 +1278,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
       WITHDRAW_GATE.initiateWithdrawal(uint96(_amount), _account);
     }
 
-    STAKE_TOKEN.transfer(_withdrawalTarget, _amount);
+    STAKE_TOKEN.safeTransfer(_withdrawalTarget, _amount);
     return _amount;
   }
 

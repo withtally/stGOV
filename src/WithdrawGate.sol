@@ -3,6 +3,7 @@ pragma solidity ^0.8.23;
 
 import {Ownable} from "openzeppelin/access/Ownable.sol";
 import {IERC20} from "openzeppelin/token/ERC20/IERC20.sol";
+import {SafeERC20} from "openzeppelin/token/ERC20/utils/SafeERC20.sol";
 import {EIP712} from "openzeppelin/utils/cryptography/EIP712.sol";
 import {SignatureChecker} from "openzeppelin/utils/cryptography/SignatureChecker.sol";
 import {Multicall} from "openzeppelin/utils/Multicall.sol";
@@ -11,6 +12,8 @@ import {Multicall} from "openzeppelin/utils/Multicall.sol";
 /// @author ScopeLift
 /// @notice A contract to enforce a withdrawal delay for users exiting the LST.
 contract WithdrawGate is Ownable, Multicall, EIP712 {
+  using SafeERC20 for IERC20;
+
   /// @notice Thrown when an invalid LST address is provided.
   error WithdrawGate__InvalidLSTAddress();
 
@@ -194,7 +197,7 @@ contract WithdrawGate is Ownable, Multicall, EIP712 {
     withdrawals[_identifier].eligibleTimestamp = 0;
 
     // This transfer assumes WITHDRAWAL_TOKEN will revert if the transfer fails.
-    IERC20(WITHDRAWAL_TOKEN).transfer(_withdrawal.receiver, _withdrawal.amount);
+    IERC20(WITHDRAWAL_TOKEN).safeTransfer(_withdrawal.receiver, _withdrawal.amount);
 
     emit WithdrawalCompleted(_identifier, _withdrawal.receiver, _withdrawal.amount);
   }
