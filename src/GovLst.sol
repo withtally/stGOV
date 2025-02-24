@@ -79,6 +79,15 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
   /// @notice Emitted when an overridden deposit delegatee is set back to the original delegatee.
   event OverrideRevoked(Staker.DepositIdentifier depositId, address tipReceiver, uint160 tipShares);
 
+  /// @notice Emitted when an overridden deposit is migrated to a new default delegatee.
+  event OverrideMigrated(
+    Staker.DepositIdentifier depositId,
+    address oldDelegatee,
+    address newDelegatee,
+    address tipReceiver,
+    uint160 tipShares
+  );
+
   ///@notice Emitted when a reward is distributed by an MEV searcher who claims the LST's stake rewards in exchange
   /// for providing the payout amount of the stake token to the LST.
   event RewardDistributed(
@@ -897,6 +906,39 @@ contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP
     holderStates[_tipReceiver].shares += SafeCast.toUint128(_tipShares);
 
     emit OverrideRevoked(_depositId, _tipReceiver, _tipShares);
+  }
+
+  /// @notice An open method that allows anyone to migrate an overridden deposit to a new default delegatee. This method
+  /// handles cases where the `GovLst` owner sets a new default delegatee while some existing deposits are overridden,
+  /// still referencing the old default delegatee.
+  /// @param _depositId The id of the deposit in the override state.
+  /// @param _tipReceiver The address that receives the reward for carrying out the migrate action.
+  /// @param _requestedTip The amount to reward the tip receiver for carrying out the migrate action.
+  function migrateOverride(Staker.DepositIdentifier _depositId, address _tipReceiver, uint160 _requestedTip) external {
+    // Requested tip cannot be above the max tip
+    _revertIfGreaterThanMaxTip(_requestedTip);
+    // Deposit must be overridden
+    if (!isOverridden[_depositId]) {
+      revert GovLst__InvalidOverride();
+    }
+
+    (,,, address _currentDelegatee,,,) = STAKER.deposits(_depositId);
+    // Deposit cannot be the current default delegatee
+    if (_currentDelegatee == defaultDelegatee) {
+      revert GovLst__InvalidOverride();
+    }
+
+    // Move the deposit's delegatee back to the current default delegatee.
+    STAKER.alterDelegatee(_depositId, defaultDelegatee);
+
+    // Distribute shares to the caller
+    Totals memory _totals = totals;
+    uint160 _tipShares = _calcFeeShares(_requestedTip, _totals.supply, _totals.shares);
+    totals.shares += _tipShares;
+    holderStates[_tipReceiver].shares += SafeCast.toUint128(_tipShares);
+
+    // Emit event
+    emit OverrideMigrated(_depositId, _currentDelegatee, defaultDelegatee, _tipReceiver, _tipShares);
   }
 
   /// @notice Sets the reward parameters including payout amount, fee in bips, and fee collector.
