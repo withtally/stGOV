@@ -503,7 +503,6 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   function stakeWithAttribution(uint256 _amount, address _referrer) external returns (uint256) {
     Staker.DepositIdentifier _depositId = _calcDepositId(holderStates[msg.sender]);
     emit StakedWithAttribution(_depositId, _amount, _referrer);
-
     STAKE_TOKEN.safeTransferFrom(msg.sender, address(this), _amount);
     _emitStakedEvent(msg.sender, _amount);
     _emitTransferEvent(address(0), msg.sender, _amount);
