@@ -4,7 +4,8 @@ pragma solidity ^0.8.23;
 import {Test} from "forge-std/Test.sol";
 import {OverwhelmingSupportAutoDelegate, Ownable} from "src/auto-delegates/OverwhelmingSupportAutoDelegate.sol";
 import {GovernorBravoDelegateMock} from "test/mocks/GovernorBravoDelegateMock.sol";
-import {AutoDelegateTimestampClockMode} from "src/auto-delegates/extensions/AutoDelegateTimestampClockMode.sol";
+import {TimestampClockMode} from "src/auto-delegates/extensions/TimestampClockMode.sol";
+import {BlockNumberClockMode} from "src/auto-delegates/extensions/BlockNumberClockMode.sol";
 
 contract OverwhelmingSupportAutoDelegateTest is Test {
   OverwhelmingSupportAutoDelegate public autoDelegate;
@@ -14,7 +15,7 @@ contract OverwhelmingSupportAutoDelegateTest is Test {
   uint256 votingWindowInSeconds = 7200; // 2 hours.
   uint256 subQuorumBips = 7500; // 75% of governor `QuorumVotes`
   uint256 supportThreshold = 7000; // 70%
-  uint256 proposalDeadline = 20_000; // Random proposal end block.
+  uint256 proposalDeadline = 20_000; // Arbitrary proposal deadline timepoint. (20,000 blocks or 20000 seconds).
   uint256 minSupportThreshold = 5000; // 50%
   uint256 maxSupportThreshold = 9500; // 95%
   bool isUsingTimestampMode = false;
@@ -30,13 +31,11 @@ contract OverwhelmingSupportAutoDelegateTest is Test {
 
   function autoDelegateUsingBlockNumberOrTimestampMode() public returns (OverwhelmingSupportAutoDelegate) {
     if (vm.randomUint() % 2 == 0) {
-      return new OverwhelmingSupportAutoDelegate(owner, votingWindow, subQuorumBips, supportThreshold);
+      return new OverwhelmingSupportAutoDelegateBlockNumberMode(owner, votingWindow, subQuorumBips, supportThreshold);
     } else {
       votingWindow = votingWindowInSeconds;
       isUsingTimestampMode = true;
-      return new OverwhelmingSupportAutoDelegateUsingTimestampMode(
-        owner, votingWindowInSeconds, subQuorumBips, supportThreshold
-      );
+      return new OverwhelmingSupportAutoDelegateTimestampMode(owner, votingWindow, subQuorumBips, supportThreshold);
     }
   }
 
@@ -57,41 +56,16 @@ contract OverwhelmingSupportAutoDelegateTest is Test {
   }
 }
 
-contract OverwhelmingSupportAutoDelegateUsingTimestampMode is
-  OverwhelmingSupportAutoDelegate,
-  AutoDelegateTimestampClockMode
-{
+contract OverwhelmingSupportAutoDelegateBlockNumberMode is BlockNumberClockMode {
   constructor(address _initialOwner, uint256 _votingWindow, uint256 _subQuorumBips, uint256 _supportThreshold)
-    OverwhelmingSupportAutoDelegate(_initialOwner, _votingWindow, _subQuorumBips, _supportThreshold)
+    BlockNumberClockMode(_initialOwner, _votingWindow, _subQuorumBips, _supportThreshold)
   {}
+}
 
-  function clock()
-    public
-    view
-    virtual
-    override(OverwhelmingSupportAutoDelegate, AutoDelegateTimestampClockMode)
-    returns (uint48)
-  {
-    return AutoDelegateTimestampClockMode.clock();
-  }
-
-  function CLOCK_MODE()
-    public
-    pure
-    virtual
-    override(OverwhelmingSupportAutoDelegate, AutoDelegateTimestampClockMode)
-    returns (string memory)
-  {
-    return AutoDelegateTimestampClockMode.CLOCK_MODE();
-  }
-
-  function _setVotingWindow(uint256 _votingWindow)
-    internal
-    virtual
-    override(OverwhelmingSupportAutoDelegate, AutoDelegateTimestampClockMode)
-  {
-    AutoDelegateTimestampClockMode._setVotingWindow(_votingWindow);
-  }
+contract OverwhelmingSupportAutoDelegateTimestampMode is TimestampClockMode {
+  constructor(address _initialOwner, uint256 _votingWindow, uint256 _subQuorumBips, uint256 _supportThreshold)
+    TimestampClockMode(_initialOwner, _votingWindow, _subQuorumBips, _supportThreshold)
+  {}
 }
 
 contract Constructor is OverwhelmingSupportAutoDelegateTest {
@@ -117,7 +91,7 @@ contract CastVote is OverwhelmingSupportAutoDelegateTest {
     uint256 _forVotesLowerBound = governor.quorumVotes() * _forVotesBIP / BIP;
     _forVotes = bound(_forVotes, _forVotesLowerBound, GOV_SUPPLY);
 
-    // Set the proposal end block to a random block number.
+    // Set the proposal end block to an arbitrary timepoint.
     governor.__setProposals(_proposalId, _proposalDeadline, _forVotes, /*Against*/ 0);
     rollOrWarpToTimepoint(_proposalDeadline - _blocksWithinVotingWindow);
 
@@ -132,7 +106,7 @@ contract CastVote is OverwhelmingSupportAutoDelegateTest {
   ) public {
     _proposalDeadline = bound(_proposalDeadline, getTimepoint() + governor.votingPeriod(), type(uint48).max);
     _blocksOutsideVotingWindow = bound(_blocksOutsideVotingWindow, votingWindow + 1, _proposalDeadline);
-    // Set the proposal end block to a random block number.
+    // Set the proposal end block to an arbitrary timepoint.
     governor.__setProposals(_proposalId, _proposalDeadline, /*For*/ 0, /*Against*/ 0);
     rollOrWarpToTimepoint(_proposalDeadline - _blocksOutsideVotingWindow);
 
@@ -152,7 +126,7 @@ contract CastVote is OverwhelmingSupportAutoDelegateTest {
     _blocksWithinBuffer = bound(_blocksWithinBuffer, 0, votingWindow);
     _forVotesBIP = bound(_forVotesBIP, 0, autoDelegate.subQuorumBips() - 1);
     uint256 _forVotes = governor.quorumVotes() * _forVotesBIP / BIP;
-    // Set the proposal end block to a random block number.
+    // Set the proposal end block to an arbitrary timepoint.
     governor.__setProposals(_proposalId, proposalDeadline, _forVotes, /*Against*/ 0);
     rollOrWarpToTimepoint(proposalDeadline - _blocksWithinBuffer);
 
@@ -173,7 +147,7 @@ contract CastVote is OverwhelmingSupportAutoDelegateTest {
     // Max is bound to 1 below votes required to meet supportThreshold.
     _forVotes = bound(_forVotes, _subQuorumVotes, _totalVotes * supportThreshold / BIP - 1);
     _againstVotes = _totalVotes - _forVotes;
-    // Set the proposal end block to a random block number.
+    // Set the proposal end block to an arbitrary timepoint.
     governor.__setProposals(_proposalId, proposalDeadline, _forVotes, _againstVotes);
     rollOrWarpToTimepoint(proposalDeadline - _blocksWithinBuffer);
 
@@ -184,14 +158,7 @@ contract CastVote is OverwhelmingSupportAutoDelegateTest {
 
 contract SetVotingWindow is OverwhelmingSupportAutoDelegateTest {
   function boundVotingWindow(uint256 _votingWindow) public view returns (uint256) {
-    if (isUsingTimestampMode) {
-      return bound(
-        _votingWindow, autoDelegate.MIN_VOTING_WINDOW_IN_BLOCKS() * 12, autoDelegate.MAX_VOTING_WINDOW_IN_BLOCKS() * 12
-      );
-    } else {
-      return
-        bound(_votingWindow, autoDelegate.MIN_VOTING_WINDOW_IN_BLOCKS(), autoDelegate.MAX_VOTING_WINDOW_IN_BLOCKS());
-    }
+    return bound(_votingWindow, autoDelegate.MIN_VOTING_WINDOW(), autoDelegate.MAX_VOTING_WINDOW());
   }
 
   function testFuzz_SetsVotingWindow(uint256 _votingWindow) public {
@@ -218,11 +185,7 @@ contract SetVotingWindow is OverwhelmingSupportAutoDelegateTest {
   }
 
   function testFuzz_RevertIf_VotingWindowIsBelowMinimum(uint256 _votingWindow) public {
-    if (isUsingTimestampMode) {
-      _votingWindow = bound(_votingWindow, 0, autoDelegate.MIN_VOTING_WINDOW_IN_BLOCKS() * 12 - 1);
-    } else {
-      _votingWindow = bound(_votingWindow, 0, autoDelegate.MIN_VOTING_WINDOW_IN_BLOCKS() - 1);
-    }
+    _votingWindow = bound(_votingWindow, 0, autoDelegate.MIN_VOTING_WINDOW() - 1);
 
     vm.prank(owner);
     vm.expectRevert(OverwhelmingSupportAutoDelegate.OverwhelmingSupportAutoDelegate__InvalidVotingWindow.selector);
@@ -230,11 +193,7 @@ contract SetVotingWindow is OverwhelmingSupportAutoDelegateTest {
   }
 
   function testFuzz_RevertIf_VotingWindowIsAboveMaximum(uint256 _votingWindow) public {
-    if (isUsingTimestampMode) {
-      _votingWindow = bound(_votingWindow, autoDelegate.MAX_VOTING_WINDOW_IN_BLOCKS() * 12 + 1, type(uint48).max);
-    } else {
-      _votingWindow = bound(_votingWindow, autoDelegate.MAX_VOTING_WINDOW_IN_BLOCKS() + 1, type(uint48).max);
-    }
+    _votingWindow = bound(_votingWindow, autoDelegate.MAX_VOTING_WINDOW() + 1, type(uint48).max);
 
     vm.prank(owner);
     vm.expectRevert(OverwhelmingSupportAutoDelegate.OverwhelmingSupportAutoDelegate__InvalidVotingWindow.selector);

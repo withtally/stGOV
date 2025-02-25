@@ -3,10 +3,9 @@ pragma solidity ^0.8.23;
 
 import {Ownable} from "openzeppelin/access/Ownable.sol";
 import {IGovernorBravoDelegate} from "src/interfaces/IGovernorBravoDelegate.sol";
-import {SafeCast} from "openzeppelin/utils/math/SafeCast.sol";
 import {IERC6372} from "openzeppelin/interfaces/IERC6372.sol";
 
-contract OverwhelmingSupportAutoDelegate is Ownable, IERC6372 {
+abstract contract OverwhelmingSupportAutoDelegate is Ownable, IERC6372 {
   /// @notice Error thrown when attempting to cast a vote outside the permitted voting window.
   /// @dev This error is thrown when trying to vote too early, before the voting window period has started.
   error OverwhelmingSupportAutoDelegate__OutsideVotingWindow();
@@ -62,17 +61,17 @@ contract OverwhelmingSupportAutoDelegate is Ownable, IERC6372 {
   /// @notice The maximum support threshold allowed for proposals, set to 9500 basis points (95%).
   uint256 public constant MAX_SUPPORT_THRESHOLD = 9500;
 
-  /// @notice The minimum voting window in blocks allowed for proposals, set to 300 blocks about 1 hour at 12s.
-  uint256 public constant MIN_VOTING_WINDOW_IN_BLOCKS = 300;
-
-  /// @notice The maximum voting window in blocks allowed for proposals, set to 50_400 blocks about 1 week at 12s.
-  uint256 public constant MAX_VOTING_WINDOW_IN_BLOCKS = 50_400;
-
   /// @notice The minimum sub-quorum basis points allowed for proposals, set to 1000 basis points (10%).
   uint256 public constant MIN_SUB_QUORUM_BIPS = 1000;
 
   /// @notice The maximum sub-quorum basis points allowed for proposals, set to 10_000 basis points (100%).
   uint256 public constant MAX_SUB_QUORUM_BIPS = 10_000;
+
+  /// @notice The minimum voting window in blocks allowed for proposals, set to 300 blocks about 1 hour at 12s.
+  uint256 public immutable MIN_VOTING_WINDOW;
+
+  /// @notice The maximum voting window in blocks allowed for proposals, set to 50_400 blocks about 1 week at 12s.
+  uint256 public immutable MAX_VOTING_WINDOW;
 
   /// @notice Timepoint before a proposal's voting deadline at which this Auto Delegate can begin casting votes.
   /// @dev Earliest timepoint that this delegate can vote would be proposalDeadline - votingWindow.
@@ -95,9 +94,16 @@ contract OverwhelmingSupportAutoDelegate is Ownable, IERC6372 {
   /// @param _supportThreshold The initial support threshold in basis points.
   /// @notice The number of FOR votes required for a proposal.
   /// @dev If a proposal receives at least this many for votes, this delegate will be able to vote in favor of it.
-  constructor(address _initialOwner, uint256 _votingWindow, uint256 _subQuorumBips, uint256 _supportThreshold)
-    Ownable(_initialOwner)
-  {
+  constructor(
+    address _initialOwner,
+    uint256 _minVotingWindow,
+    uint256 _maxVotingWindow,
+    uint256 _votingWindow,
+    uint256 _subQuorumBips,
+    uint256 _supportThreshold
+  ) Ownable(_initialOwner) {
+    MIN_VOTING_WINDOW = _minVotingWindow;
+    MAX_VOTING_WINDOW = _maxVotingWindow;
     _setVotingWindow(_votingWindow);
     _setSubQuorumBips(_subQuorumBips);
     _setSupportThreshold(_supportThreshold);
@@ -120,20 +126,11 @@ contract OverwhelmingSupportAutoDelegate is Ownable, IERC6372 {
     _setVotingWindow(_votingWindow);
   }
 
-  /// @notice Returns the current clock value as a uint48.
-  /// @dev Can be overridden to implement timestamp-based clock.
-  /// @return uint48 The current block number cast to uint48.
-  function clock() public view virtual returns (uint48) {
-    return SafeCast.toUint48(block.number);
-  }
+  /// @inheritdoc IERC6372
+  function clock() public view virtual returns (uint48) {}
 
-  /// @notice Returns a string representing the clock mode used by the contract.
-  /// @dev Indicates that the contract uses block numbers as its time tracking mechanism by default.
-  /// @dev Can be overridden to implement timestamp mode.
-  /// @return string A machine-readable string describing the clock mode.
-  function CLOCK_MODE() public pure virtual returns (string memory) {
-    return "mode=blocknumber&from=default";
-  }
+  /// @inheritdoc IERC6372
+  function CLOCK_MODE() public pure virtual returns (string memory) {}
 
   /// @notice Sets the sub-quorum votes percentage in basis points.
   /// @param _subQuorumBips The percentage of the live quorum (in basis points) that must be FOR votes before this
@@ -209,7 +206,7 @@ contract OverwhelmingSupportAutoDelegate is Ownable, IERC6372 {
   /// @notice Internal function to set the voting window.
   /// @param _votingWindow The new voting window value, same as clock() type.
   function _setVotingWindow(uint256 _votingWindow) internal virtual {
-    if (_votingWindow < MIN_VOTING_WINDOW_IN_BLOCKS || _votingWindow > MAX_VOTING_WINDOW_IN_BLOCKS) {
+    if (_votingWindow < MIN_VOTING_WINDOW || _votingWindow > MAX_VOTING_WINDOW) {
       revert OverwhelmingSupportAutoDelegate__InvalidVotingWindow();
     }
     emit VotingWindowSet(votingWindow, _votingWindow);
