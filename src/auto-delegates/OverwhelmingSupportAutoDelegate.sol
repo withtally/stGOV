@@ -2,7 +2,6 @@
 pragma solidity ^0.8.23;
 
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
-import {IGovernorBravoDelegate} from "../interfaces/IGovernorBravoDelegate.sol";
 import {IERC6372} from "@openzeppelin/contracts/interfaces/IERC6372.sol";
 
 abstract contract OverwhelmingSupportAutoDelegate is Ownable, IERC6372 {
@@ -115,7 +114,7 @@ abstract contract OverwhelmingSupportAutoDelegate is Ownable, IERC6372 {
   /// @dev Always votes in favor (1) of the proposal.
   function castVote(address _governor, uint256 _proposalId) public virtual {
     checkVoteRequirements(_governor, _proposalId);
-    IGovernorBravoDelegate(_governor).castVote(_proposalId, FOR);
+    _castVote(_governor, _proposalId);
   }
 
   /// @notice Sets the voting window.
@@ -183,17 +182,21 @@ abstract contract OverwhelmingSupportAutoDelegate is Ownable, IERC6372 {
   /// @return _forVotes The number of votes in favor of the proposal.
   /// @return _againstVotes The number of votes against the proposal.
   /// @return _quorumVotes The number of votes required to reach quorum.
-  /// @dev This internal function can be overridden to fetch proposal details from a different governor interface.
+  /// @dev This internal function should be overridden to implement fetching proposal different governor interfaces.
   function _getProposalDetails(address _governor, uint256 _proposalId)
     internal
     view
     virtual
     returns (uint256 _proposalDeadline, uint256 _forVotes, uint256 _againstVotes, uint256 _quorumVotes)
-  {
-    // Fetch proposal data once
-    (,,,, _proposalDeadline, _forVotes, _againstVotes,,,) = IGovernorBravoDelegate(_governor).proposals(_proposalId);
-    _quorumVotes = IGovernorBravoDelegate(_governor).quorumVotes();
-  }
+  {}
+
+  /// @notice Casts a "For" vote on a given proposal in the specified governor contract.
+  /// @param _governor The Governor contract containing the proposal to vote on.
+  /// @param _proposalId The ID of the proposal to vote on.
+  /// @dev Always votes in favor (1) of the proposal.
+  /// @dev This is an internal virtual function that should be overridden by child contracts to implement
+  /// the specific voting logic for different governor interfaces.
+  function _castVote(address _governor, uint256 _proposalId) internal virtual {}
 
   /// @notice Checks if the current timepoint is within the voting window of a proposal's deadline.
   /// @param _proposalDeadline The proposal's deadline.
