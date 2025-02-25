@@ -56,16 +56,62 @@ contract OverwhelmingSupportAutoDelegateTest is Test {
   }
 }
 
-contract OverwhelmingSupportAutoDelegateBlockNumberMode is BlockNumberClockMode {
+contract OverwhelmingSupportAutoDelegateBlockNumberMode is OverwhelmingSupportAutoDelegate, BlockNumberClockMode {
+  uint256 MIN_VOTING_WINDOW_IN_BLOCKS = 300;
+  uint256 MAX_VOTING_WINDOW_IN_BLOCKS = 50_400;
+
   constructor(address _initialOwner, uint256 _votingWindow, uint256 _subQuorumBips, uint256 _supportThreshold)
-    BlockNumberClockMode(_initialOwner, _votingWindow, _subQuorumBips, _supportThreshold)
+    OverwhelmingSupportAutoDelegate(
+      _initialOwner,
+      MIN_VOTING_WINDOW_IN_BLOCKS,
+      MAX_VOTING_WINDOW_IN_BLOCKS,
+      _votingWindow,
+      _subQuorumBips,
+      _supportThreshold
+    )
   {}
+
+  function clock() public view override(OverwhelmingSupportAutoDelegate, BlockNumberClockMode) returns (uint48) {
+    return BlockNumberClockMode.clock();
+  }
+
+  function CLOCK_MODE()
+    public
+    pure
+    override(OverwhelmingSupportAutoDelegate, BlockNumberClockMode)
+    returns (string memory)
+  {
+    return BlockNumberClockMode.CLOCK_MODE();
+  }
 }
 
-contract OverwhelmingSupportAutoDelegateTimestampMode is TimestampClockMode {
+contract OverwhelmingSupportAutoDelegateTimestampMode is OverwhelmingSupportAutoDelegate, TimestampClockMode {
+  uint256 public constant MIN_VOTING_WINDOW_IN_SECONDS = 3600;
+  uint256 public constant MAX_VOTING_WINDOW_IN_SECONDS = 604_800;
+
   constructor(address _initialOwner, uint256 _votingWindow, uint256 _subQuorumBips, uint256 _supportThreshold)
-    TimestampClockMode(_initialOwner, _votingWindow, _subQuorumBips, _supportThreshold)
+    OverwhelmingSupportAutoDelegate(
+      _initialOwner,
+      MIN_VOTING_WINDOW_IN_SECONDS,
+      MAX_VOTING_WINDOW_IN_SECONDS,
+      _votingWindow,
+      _subQuorumBips,
+      _supportThreshold
+    )
   {}
+
+  function clock() public view override(OverwhelmingSupportAutoDelegate, TimestampClockMode) returns (uint48) {
+    return TimestampClockMode.clock();
+  }
+
+  function CLOCK_MODE()
+    public
+    pure
+    override(OverwhelmingSupportAutoDelegate, TimestampClockMode)
+    returns (string memory)
+  {
+    return TimestampClockMode.CLOCK_MODE();
+  }
 }
 
 contract Constructor is OverwhelmingSupportAutoDelegateTest {
