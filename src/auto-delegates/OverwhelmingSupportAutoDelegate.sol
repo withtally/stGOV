@@ -34,8 +34,8 @@ abstract contract OverwhelmingSupportAutoDelegate is Ownable, IERC6372 {
   error OverwhelmingSupportAutoDelegate__InvalidSubQuorumBips();
 
   /// @notice Emitted when the voting window is changed.
-  /// @param oldVotingWindow The previous voting window, same as clock() type.
-  /// @param newVotingWindow The new voting window, same as clock() type.
+  /// @param oldVotingWindow The previous voting window, in timepoint units.
+  /// @param newVotingWindow The new voting window, in timepoint units.
   event VotingWindowSet(uint256 oldVotingWindow, uint256 newVotingWindow);
 
   /// @notice Emitted when the sub-quorum basis points threshold is changed.
@@ -89,7 +89,7 @@ abstract contract OverwhelmingSupportAutoDelegate is Ownable, IERC6372 {
 
   /// @notice Initializes the contract with an owner and voting window.
   /// @param _initialOwner The address that will be set as the initial owner of the contract.
-  /// @param _votingWindow The initial voting window value, same as clock() type.
+  /// @param _votingWindow The initial voting window value, in timepoint units.
   /// @param _subQuorumBips The initial sub-quorum votes percentage in basis points.
   /// @param _supportThreshold The initial support threshold in basis points.
   /// @notice The number of FOR votes required for a proposal.
@@ -119,7 +119,7 @@ abstract contract OverwhelmingSupportAutoDelegate is Ownable, IERC6372 {
   }
 
   /// @notice Sets the voting window.
-  /// @param _votingWindow The new voting window value, same as clock() type.
+  /// @param _votingWindow The new voting window value, in timepoint units.
   /// @dev Can only be called by the contract owner.
   function setVotingWindow(uint256 _votingWindow) external {
     _checkOwner();
@@ -204,7 +204,7 @@ abstract contract OverwhelmingSupportAutoDelegate is Ownable, IERC6372 {
   }
 
   /// @notice Internal function to set the voting window.
-  /// @param _votingWindow The new voting window value, same as clock() type.
+  /// @param _votingWindow The new voting window value, in timepoint units.
   function _setVotingWindow(uint256 _votingWindow) internal virtual {
     if (_votingWindow < MIN_VOTING_WINDOW || _votingWindow > MAX_VOTING_WINDOW) {
       revert OverwhelmingSupportAutoDelegate__InvalidVotingWindow();
