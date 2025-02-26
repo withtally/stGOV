@@ -236,7 +236,6 @@ contract GovLstTest is UnitTestBase, PercentAssertions, TestHelpers, Eip712Helpe
     if (withdrawGate.delay() != 0) {
       vm.warp(_time + withdrawGate.delay());
       withdrawGate.completeWithdrawal(_identifier);
-      vm.warp(_time);
     }
     vm.stopPrank();
   }
@@ -637,8 +636,6 @@ contract FetchOrInitializeDepositForDelegatee is GovLstTest {
   }
 }
 
-// default delegatee to delegaatee address
-// any delegatee to another that is invalid
 contract UpdateDeposit is GovLstTest {
   using stdStorage for StdStorage;
 

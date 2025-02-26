@@ -17,7 +17,6 @@ using FixedLstAddressAlias for address;
 
 contract FixedGovLstTest is GovLstTest {
   FixedGovLstHarness fixedLst;
-  address delegateeFunded = makeAddr("Delegatee funder");
 
   function setUp() public virtual override {
     super.setUp();
@@ -47,12 +46,12 @@ contract FixedGovLstTest is GovLstTest {
   function _updateFixedDelegatee(address _holder, address _delegatee) internal {
     Staker.DepositIdentifier _depositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
     _assumeSafeDelegatee(_delegatee);
-    _stakeOnDelegateeFixedDeposit(_depositId, delegateeFunded);
+    _stakeOnDelegateeFixedDeposit(_depositId, delegateeFunder);
 
     vm.prank(_holder);
     fixedLst.updateDeposit(_depositId);
 
-    _unstakeOnDelegateeFixedDeposit(delegateeFunded);
+    _unstakeOnDelegateeFixedDeposit(delegateeFunder);
   }
 
   function _stakeFixed(address _holder, uint256 _amount) internal returns (uint256) {
@@ -214,7 +213,7 @@ contract UpdateDeposit is FixedGovLstTest {
     _assumeSafeHolder(_holder);
     _assumeSafeDelegatee(_delegatee);
     Staker.DepositIdentifier _newDepositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
-    _stakeOnDelegateeFixedDeposit(_newDepositId, delegateeFunded);
+    _stakeOnDelegateeFixedDeposit(_newDepositId, delegateeFunder);
 
     Staker.DepositIdentifier _oldDepositId = lst.depositIdForHolder(_holder.fixedAlias());
 
@@ -500,7 +499,7 @@ contract UpdateDepositOnBehalf is FixedGovLstTest {
     // Sign the message
     _setNonce(address(fixedLst), _holder, _nonce);
     Staker.DepositIdentifier _depositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
-    _stakeOnDelegateeFixedDeposit(_depositId, delegateeFunded);
+    _stakeOnDelegateeFixedDeposit(_depositId, delegateeFunder);
 
     bytes memory _signature = _signFixedMessage(
       fixedLst.UPDATE_DEPOSIT_TYPEHASH(),
@@ -533,7 +532,7 @@ contract UpdateDepositOnBehalf is FixedGovLstTest {
     // Sign the message
     _setNonce(address(fixedLst), _holder, _nonce);
     Staker.DepositIdentifier _newDepositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
-    _stakeOnDelegateeFixedDeposit(_newDepositId, delegateeFunded);
+    _stakeOnDelegateeFixedDeposit(_newDepositId, delegateeFunder);
 
     Staker.DepositIdentifier _oldDepositId = lst.depositIdForHolder(_holder.fixedAlias());
     bytes memory _signature = _signFixedMessage(
@@ -658,7 +657,7 @@ contract UpdateDepositOnBehalf is FixedGovLstTest {
     // Sign the message
     _setNonce(address(fixedLst), _holder, _nonce);
     Staker.DepositIdentifier _depositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
-    _stakeOnDelegateeFixedDeposit(_depositId, delegateeFunded);
+    _stakeOnDelegateeFixedDeposit(_depositId, delegateeFunder);
 
     bytes memory _signature = _signFixedMessage(
       fixedLst.UPDATE_DEPOSIT_TYPEHASH(),
