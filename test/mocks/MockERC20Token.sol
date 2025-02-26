@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.28;
+pragma solidity ^0.8.23;
 
 contract MockERC20Token {
   address public lastParam__transfer_to;

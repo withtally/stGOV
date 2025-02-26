@@ -14,6 +14,7 @@
     "forge-std/=lib/forge-std/src",
     "openzeppelin/=lib/staker/lib/openzeppelin-contracts/contracts",
   ]
+  solc_version = "0.8.28"
   verbosity = 3
   via-ir = false
 

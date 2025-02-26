@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.28;
+pragma solidity ^0.8.23;
 
 import {console2} from "forge-std/Test.sol";
 import {WithdrawGate} from "src/WithdrawGate.sol";
@@ -11,7 +11,6 @@ import {Eip712Helper} from "test/helpers/Eip712Helper.sol";
 import {Ownable} from "openzeppelin/access/Ownable.sol";
 import {IERC20} from "openzeppelin/token/ERC20/IERC20.sol";
 import {ECDSA} from "openzeppelin/utils/cryptography/ECDSA.sol";
-import {SignatureChecker} from "openzeppelin/utils/cryptography/SignatureChecker.sol";
 
 contract WithdrawGateTest is TestHelpers {
   WithdrawGate withdrawGate;
