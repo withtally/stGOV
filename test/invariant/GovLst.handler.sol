@@ -7,9 +7,9 @@ import {StdUtils} from "forge-std/StdUtils.sol";
 import {console} from "forge-std/console.sol";
 import {AddressSet, LibAddressSet} from "./AddressSet.sol";
 import {DepositIdSet, LibDepositIdSet} from "./DepositIdSet.sol";
-import {GovLst} from "src/GovLst.sol";
-import {IERC20} from "openzeppelin/token/ERC20/IERC20.sol";
-import {Staker} from "staker/Staker.sol";
+import {GovLst} from "../../src/GovLst.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {Staker} from "../../lib/staker/src/Staker.sol";
 
 contract GovLstHandler is CommonBase, StdCheats, StdUtils {
   using LibAddressSet for AddressSet;

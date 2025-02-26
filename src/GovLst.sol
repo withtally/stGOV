@@ -1,19 +1,19 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.23;
 
-import {IERC20} from "openzeppelin/token/ERC20/IERC20.sol";
-import {IERC20Metadata} from "openzeppelin/interfaces/IERC20Metadata.sol";
-import {IERC20Permit} from "openzeppelin/token/ERC20/extensions/IERC20Permit.sol";
-import {SafeERC20} from "openzeppelin/token/ERC20/utils/SafeERC20.sol";
-import {Ownable} from "openzeppelin/access/Ownable.sol";
-import {EIP712} from "openzeppelin/utils/cryptography/EIP712.sol";
-import {Nonces} from "openzeppelin/utils/Nonces.sol";
-import {Multicall} from "openzeppelin/utils/Multicall.sol";
-import {SafeCast} from "openzeppelin/utils/math/SafeCast.sol";
-import {Staker} from "staker/Staker.sol";
-import {WithdrawGate} from "src/WithdrawGate.sol";
-import {FixedGovLst} from "src/FixedGovLst.sol";
-import {FixedLstAddressAlias} from "src/FixedLstAddressAlias.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20Metadata} from "@openzeppelin/contracts/interfaces/IERC20Metadata.sol";
+import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
+import {Nonces} from "@openzeppelin/contracts/utils/Nonces.sol";
+import {Multicall} from "@openzeppelin/contracts/utils/Multicall.sol";
+import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
+import {Staker} from "../lib/staker/src/Staker.sol";
+import {WithdrawGate} from "./WithdrawGate.sol";
+import {FixedGovLst} from "./FixedGovLst.sol";
+import {FixedLstAddressAlias} from "./FixedLstAddressAlias.sol";
 
 /// @title GovLst
 /// @author [ScopeLift](https://scopelift.co)

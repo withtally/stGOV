@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.23;
 
-import {ERC20} from "openzeppelin/token/ERC20/ERC20.sol";
-import {Nonces} from "openzeppelin/utils/Nonces.sol";
-import {ERC20Permit} from "openzeppelin/token/ERC20/extensions/ERC20Permit.sol";
-import {ERC20Votes} from "openzeppelin/token/ERC20/extensions/ERC20Votes.sol";
+import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {Nonces} from "@openzeppelin/contracts/utils/Nonces.sol";
+import {ERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/ERC20Permit.sol";
+import {ERC20Votes} from "@openzeppelin/contracts/token/ERC20/extensions/ERC20Votes.sol";
 
 /// @dev An ERC20 token that allows for public minting for use in tests.
 contract FakeERC20Permit is ERC20Permit, ERC20Votes {

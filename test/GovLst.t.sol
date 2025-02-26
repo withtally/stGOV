@@ -2,23 +2,23 @@
 pragma solidity ^0.8.23;
 
 import {console2, stdStorage, StdStorage, stdError} from "forge-std/Test.sol";
-import {IERC20} from "openzeppelin/token/ERC20/IERC20.sol";
-import {ERC20Votes} from "openzeppelin/token/ERC20/extensions/ERC20Votes.sol";
-import {ERC20Permit} from "openzeppelin/token/ERC20/extensions/ERC20Permit.sol";
-import {Staker} from "staker/Staker.sol";
-import {IERC20Staking} from "staker/interfaces/IERC20Staking.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {ERC20Votes} from "@openzeppelin/contracts/token/ERC20/extensions/ERC20Votes.sol";
+import {ERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/ERC20Permit.sol";
+import {Staker} from "../lib/staker/src/Staker.sol";
+import {IERC20Staking} from "../lib/staker/src/interfaces/IERC20Staking.sol";
 import {GovLst, Ownable} from "src/GovLst.sol";
-import {GovLstHarness} from "test/harnesses/GovLstHarness.sol";
+import {GovLstHarness} from "./harnesses/GovLstHarness.sol";
 import {WithdrawGate} from "src/WithdrawGate.sol";
-import {UnitTestBase} from "test/UnitTestBase.sol";
-import {TestHelpers} from "test/helpers/TestHelpers.sol";
-import {Eip712Helper} from "test/helpers/Eip712Helper.sol";
-import {PercentAssertions} from "test/helpers/PercentAssertions.sol";
-import {MockFullEarningPowerCalculator} from "test/mocks/MockFullEarningPowerCalculator.sol";
-import {FakeStaker} from "test/fakes/FakeStaker.sol";
-import {Nonces} from "openzeppelin/utils/Nonces.sol";
+import {UnitTestBase} from "./UnitTestBase.sol";
+import {TestHelpers} from "./helpers/TestHelpers.sol";
+import {Eip712Helper} from "./helpers/Eip712Helper.sol";
+import {PercentAssertions} from "./helpers/PercentAssertions.sol";
+import {MockFullEarningPowerCalculator} from "./mocks/MockFullEarningPowerCalculator.sol";
+import {FakeStaker} from "./fakes/FakeStaker.sol";
+import {Nonces} from "@openzeppelin/contracts/utils/Nonces.sol";
 import {Vm} from "forge-std/Vm.sol";
-import {IERC20Errors} from "openzeppelin/interfaces/draft-IERC6093.sol";
+import {IERC20Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
 
 contract GovLstTest is UnitTestBase, PercentAssertions, TestHelpers, Eip712Helper {
   using stdStorage for StdStorage;

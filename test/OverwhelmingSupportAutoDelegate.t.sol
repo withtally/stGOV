@@ -2,12 +2,12 @@
 pragma solidity ^0.8.23;
 
 import {Test} from "forge-std/Test.sol";
-import {OverwhelmingSupportAutoDelegate, Ownable} from "src/auto-delegates/OverwhelmingSupportAutoDelegate.sol";
-import {GovernorBravoDelegateMock} from "test/mocks/GovernorBravoDelegateMock.sol";
+import {OverwhelmingSupportAutoDelegate, Ownable} from "../src/auto-delegates/OverwhelmingSupportAutoDelegate.sol";
+import {GovernorBravoDelegateMock} from "./mocks/GovernorBravoDelegateMock.sol";
 import {OverwhelmingSupportAutoDelegateBravoGovernorBlockNumberMode} from
-  "test/mocks/OverwhelmingSupportAutoDelegateBravoGovernorBlockNumberMode.sol";
+  "./mocks/OverwhelmingSupportAutoDelegateBravoGovernorBlockNumberMode.sol";
 import {OverwhelmingSupportAutoDelegateBravoGovernorTimestampMode} from
-  "test/mocks/OverwhelmingSupportAutoDelegateBravoGovernorTimestampMode.sol";
+  "./mocks/OverwhelmingSupportAutoDelegateBravoGovernorTimestampMode.sol";
 
 abstract contract OverwhelmingSupportAutoDelegateTest is Test {
   OverwhelmingSupportAutoDelegate public autoDelegate;

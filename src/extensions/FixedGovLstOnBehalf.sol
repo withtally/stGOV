@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.23;
 
-import {FixedGovLst} from "src/FixedGovLst.sol";
-import {Staker} from "staker/Staker.sol";
-import {SignatureChecker} from "openzeppelin/utils/cryptography/SignatureChecker.sol";
+import {FixedGovLst} from "../FixedGovLst.sol";
+import {Staker} from "../../lib/staker/src/Staker.sol";
+import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 
 /// @title FixedGovLstOnBehalf
 /// @author [ScopeLift](https://scopelift.co)

@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.23;
 
-import {GovLst} from "src/GovLst.sol";
-import {Staker} from "staker/Staker.sol";
-import {SignatureChecker} from "openzeppelin/utils/cryptography/SignatureChecker.sol";
-import {SafeERC20} from "openzeppelin/token/ERC20/utils/SafeERC20.sol";
-import {IERC20} from "openzeppelin/token/ERC20/IERC20.sol";
+import {GovLst} from "../GovLst.sol";
+import {Staker} from "../../lib/staker/src/Staker.sol";
+import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 /// @title GovLstOnBehalf
 /// @author [ScopeLift](https://scopelift.co)

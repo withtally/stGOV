@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.23;
 
-import {GasReport} from "test/gas-reports/GasReport.sol";
-import {Staker} from "staker/Staker.sol";
-import {FixedLstAddressAlias} from "src/FixedLstAddressAlias.sol";
-import {FixedGovLstTest} from "test/FixedGovLst.t.sol";
+import {GasReport} from "./GasReport.sol";
+import {Staker} from "../../lib/staker/src/Staker.sol";
+import {FixedLstAddressAlias} from "../../src/FixedLstAddressAlias.sol";
+import {FixedGovLstTest} from "../FixedGovLst.t.sol";
 
 contract FixedGovLstGasReport is FixedGovLstTest, GasReport {
   using FixedLstAddressAlias for address;
