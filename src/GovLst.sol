@@ -1122,9 +1122,6 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
         holderStates[_account].depositId = _depositIdToUInt32(_newDepositId);
         _revertIfInvalidDeposit(_newDepositId);
         (uint96 _balance,, uint96 _earningPower,,,,) = STAKER.deposits(_newDepositId);
-        if (_balance == 0) {
-          revert GovLst__InvalidDeposit();
-        }
         return _oldDepositId;
       }
     }
@@ -1517,6 +1514,10 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
       revert GovLst__EarningPowerNotQualified(
         uint256(_earningPower) * BIPS, uint256(minQualifyingEarningPowerBips) * _balance
       );
+    }
+
+    if (_balance == 0) {
+      revert GovLst__InvalidDeposit();
     }
   }
 
