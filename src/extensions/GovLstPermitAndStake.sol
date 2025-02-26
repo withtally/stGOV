@@ -3,6 +3,8 @@ pragma solidity ^0.8.23;
 
 import {GovLst} from "src/GovLst.sol";
 import {IERC20Permit} from "openzeppelin/token/ERC20/extensions/IERC20Permit.sol";
+import {SafeERC20} from "openzeppelin/token/ERC20/utils/SafeERC20.sol";
+import {IERC20} from "openzeppelin/token/ERC20/IERC20.sol";
 
 /// @title GovLstPermitAndStake
 /// @author [ScopeLift](https://scopelift.co)
@@ -12,6 +14,8 @@ import {IERC20Permit} from "openzeppelin/token/ERC20/extensions/IERC20Permit.sol
 /// enabling users to approve and stake tokens in a single transaction. Note that this extension
 /// requires the stake token to support EIP-2612 permit functionality.
 abstract contract GovLstPermitAndStake is GovLst {
+  using SafeERC20 for IERC20;
+
   /// @notice Stake tokens to receive liquid stake tokens. Before the staking operation occurs, a signature is passed
   /// to the token contract's permit method to spend the would-be staked amount of the token.
   /// @param _amount The quantity of tokens that will be staked.
@@ -26,7 +30,7 @@ abstract contract GovLstPermitAndStake is GovLst {
   {
     try IERC20Permit(address(STAKE_TOKEN)).permit(msg.sender, address(this), _amount, _deadline, _v, _r, _s) {} catch {}
     // UNI reverts on failure so it's not necessary to check return value.
-    STAKE_TOKEN.transferFrom(msg.sender, address(this), _amount);
+    STAKE_TOKEN.safeTransferFrom(msg.sender, address(this), _amount);
     _emitStakedEvent(msg.sender, _amount);
     _emitTransferEvent(address(0), msg.sender, _amount);
     return _stake(msg.sender, _amount);

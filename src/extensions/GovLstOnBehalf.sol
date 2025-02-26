@@ -4,6 +4,8 @@ pragma solidity ^0.8.23;
 import {GovLst} from "src/GovLst.sol";
 import {Staker} from "staker/Staker.sol";
 import {SignatureChecker} from "openzeppelin/utils/cryptography/SignatureChecker.sol";
+import {SafeERC20} from "openzeppelin/token/ERC20/utils/SafeERC20.sol";
+import {IERC20} from "openzeppelin/token/ERC20/IERC20.sol";
 
 /// @title GovLstOnBehalf
 /// @author [ScopeLift](https://scopelift.co)
@@ -14,6 +16,8 @@ import {SignatureChecker} from "openzeppelin/utils/cryptography/SignatureChecker
 /// Each operation requires a unique signature that is validated against the appropriate signer before
 /// execution.
 abstract contract GovLstOnBehalf is GovLst {
+  using SafeERC20 for IERC20;
+
   /// @notice Type hash used when encoding data for `stakeOnBehalf` calls.
   bytes32 public constant STAKE_TYPEHASH =
     keccak256("Stake(address account,uint256 amount,uint256 nonce,uint256 deadline)");
@@ -65,7 +69,7 @@ abstract contract GovLstOnBehalf is GovLst {
   {
     _validateSignature(_account, _amount, _nonce, _deadline, _signature, STAKE_TYPEHASH);
     // UNI reverts on failure so it's not necessary to check return value.
-    STAKE_TOKEN.transferFrom(_account, address(this), _amount);
+    STAKE_TOKEN.safeTransferFrom(_account, address(this), _amount);
     _emitStakedEvent(_account, _amount);
     _emitTransferEvent(address(0), msg.sender, _amount);
     return _stake(_account, _amount);

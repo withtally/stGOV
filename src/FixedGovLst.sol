@@ -4,9 +4,10 @@ pragma solidity ^0.8.23;
 import {GovLst} from "src/GovLst.sol";
 import {FixedLstAddressAlias} from "src/FixedLstAddressAlias.sol";
 import {Staker} from "staker/Staker.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
-import {IERC20Metadata} from "@openzeppelin/contracts/interfaces/IERC20Metadata.sol";
+import {IERC20} from "openzeppelin/token/ERC20/IERC20.sol";
+import {IERC20Permit} from "openzeppelin/token/ERC20/extensions/IERC20Permit.sol";
+import {IERC20Metadata} from "openzeppelin/interfaces/IERC20Metadata.sol";
+import {SafeERC20} from "openzeppelin/token/ERC20/utils/SafeERC20.sol";
 import {EIP712} from "openzeppelin/utils/cryptography/EIP712.sol";
 import {Nonces} from "openzeppelin/utils/Nonces.sol";
 import {Multicall} from "openzeppelin/utils/Multicall.sol";
@@ -34,6 +35,7 @@ import {Multicall} from "openzeppelin/utils/Multicall.sol";
 /// specify a delegate in the same way as holders of the rebasing LST.
 contract FixedGovLst is IERC20, IERC20Metadata, IERC20Permit, Multicall, EIP712, Nonces {
   using FixedLstAddressAlias for address;
+  using SafeERC20 for IERC20;
 
   /// @notice Emitted when a holder updates their deposit identifier, which determines the delegatee of their voting
   /// weight.
@@ -331,7 +333,7 @@ contract FixedGovLst is IERC20, IERC20Metadata, IERC20Permit, Multicall, EIP712,
   /// @return The number of fixed tokens after staking.
   function _stake(address _account, uint256 _stakeTokens) internal virtual returns (uint256) {
     // Send the stake tokens to the LST.
-    STAKE_TOKEN.transferFrom(_account, address(LST), _stakeTokens);
+    STAKE_TOKEN.safeTransferFrom(_account, address(LST), _stakeTokens);
     uint256 _shares = LST.stakeAndConvertToFixed(_account, _stakeTokens);
     shareBalances[_account] += _shares;
     totalShares += _shares;
