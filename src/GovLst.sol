@@ -145,6 +145,9 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   /// @notice Thrown when attempting to improperly override a deposit's delegatee.
   error GovLst__InvalidOverride();
 
+  /// @notice Thrown when attempting to update a parameter with an invalid value.
+  error GovLst__InvalidParameter();
+
   /// @notice Thrown when an overrider requests a tip greater than the max tip.
   error GovLst__GreaterThanMaxTip();
 
@@ -224,6 +227,12 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
 
   /// @notice Maximum allowable fee in basis points (20%).
   uint16 public constant MAX_FEE_BIPS = 2000;
+
+  /// @notice Maximum BIPs value for minimum qualifying earning power BIPs.
+  uint256 public immutable MAXIMUM_MINIMUM_QUALIFYING_EARNING_POWER_BIPS = 20_000;
+
+  /// @notice Maximum value to set the max override tip.
+  uint256 public immutable MAXIMUM_MAX_OVERRIDE_TIP = 2000e18;
 
   /// @notice The global total supply and total shares for the LST.
   Totals internal totals;
@@ -860,6 +869,9 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   /// lead to overflow errors if the maximum tip is too high.
   function setMaxOverrideTip(uint256 _maxOverrideTip) external {
     _checkOwner();
+    if (MAXIMUM_MAX_OVERRIDE_TIP < _maxOverrideTip) {
+      revert GovLst__InvalidParameter();
+    }
     _setMaxOverrideTip(_maxOverrideTip);
   }
 
@@ -868,6 +880,9 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   /// @param _minQualifyingEarningPowerBips The new minimum qualifying earning power amount in bips (1/10,000).
   function setMinQualifyingEarningPowerBips(uint256 _minQualifyingEarningPowerBips) external {
     _checkOwner();
+    if (MAXIMUM_MINIMUM_QUALIFYING_EARNING_POWER_BIPS < _minQualifyingEarningPowerBips) {
+      revert GovLst__InvalidParameter();
+    }
     _setMinQualifyingEarningPowerBips(_minQualifyingEarningPowerBips);
   }
 
