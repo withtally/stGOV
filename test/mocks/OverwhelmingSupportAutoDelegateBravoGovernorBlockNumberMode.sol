@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.26;
+pragma solidity ^0.8.23;
 
 import {OverwhelmingSupportAutoDelegate} from "src/auto-delegates/OverwhelmingSupportAutoDelegate.sol";
 import {BlockNumberClockMode} from "src/auto-delegates/extensions/BlockNumberClockMode.sol";
