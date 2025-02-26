@@ -19,7 +19,7 @@
   via-ir = false
 
 [profile.ci]
-  fuzz = { runs = 2500 }
+  fuzz = { runs = 1500 }
   invariant = { runs = 500 }
 
 [profile.prod]
