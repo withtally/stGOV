@@ -4,10 +4,12 @@ pragma solidity ^0.8.23;
 import {Test} from "forge-std/Test.sol";
 import {OverwhelmingSupportAutoDelegate, Ownable} from "src/auto-delegates/OverwhelmingSupportAutoDelegate.sol";
 import {GovernorBravoDelegateMock} from "test/mocks/GovernorBravoDelegateMock.sol";
-import {TimestampClockMode} from "src/auto-delegates/extensions/TimestampClockMode.sol";
-import {BlockNumberClockMode} from "src/auto-delegates/extensions/BlockNumberClockMode.sol";
+import {OverwhelmingSupportAutoDelegateBravoGovernorBlockNumberMode} from
+  "test/mocks/OverwhelmingSupportAutoDelegateBravoGovernorBlockNumberMode.sol";
+import {OverwhelmingSupportAutoDelegateBravoGovernorTimestampMode} from
+  "test/mocks/OverwhelmingSupportAutoDelegateBravoGovernorTimestampMode.sol";
 
-contract OverwhelmingSupportAutoDelegateTest is Test {
+abstract contract OverwhelmingSupportAutoDelegateTest is Test {
   OverwhelmingSupportAutoDelegate public autoDelegate;
   GovernorBravoDelegateMock public governor;
   address public owner = makeAddr("Owner");
@@ -29,15 +31,7 @@ contract OverwhelmingSupportAutoDelegateTest is Test {
     rollOrWarpToTimepoint(10_000); // Roll block to 10000;
   }
 
-  function autoDelegateUsingBlockNumberOrTimestampMode() public returns (OverwhelmingSupportAutoDelegate) {
-    if (vm.randomUint() % 2 == 0) {
-      return new OverwhelmingSupportAutoDelegateBlockNumberMode(owner, votingWindow, subQuorumBips, supportThreshold);
-    } else {
-      votingWindow = votingWindowInSeconds;
-      isUsingTimestampMode = true;
-      return new OverwhelmingSupportAutoDelegateTimestampMode(owner, votingWindow, subQuorumBips, supportThreshold);
-    }
-  }
+  function autoDelegateUsingBlockNumberOrTimestampMode() public virtual returns (OverwhelmingSupportAutoDelegate) {}
 
   function getTimepoint() public view returns (uint256) {
     if (isUsingTimestampMode) {
@@ -56,65 +50,7 @@ contract OverwhelmingSupportAutoDelegateTest is Test {
   }
 }
 
-contract OverwhelmingSupportAutoDelegateBlockNumberMode is OverwhelmingSupportAutoDelegate, BlockNumberClockMode {
-  uint256 MIN_VOTING_WINDOW_IN_BLOCKS = 300;
-  uint256 MAX_VOTING_WINDOW_IN_BLOCKS = 50_400;
-
-  constructor(address _initialOwner, uint256 _votingWindow, uint256 _subQuorumBips, uint256 _supportThreshold)
-    OverwhelmingSupportAutoDelegate(
-      _initialOwner,
-      MIN_VOTING_WINDOW_IN_BLOCKS,
-      MAX_VOTING_WINDOW_IN_BLOCKS,
-      _votingWindow,
-      _subQuorumBips,
-      _supportThreshold
-    )
-  {}
-
-  function clock() public view override(OverwhelmingSupportAutoDelegate, BlockNumberClockMode) returns (uint48) {
-    return BlockNumberClockMode.clock();
-  }
-
-  function CLOCK_MODE()
-    public
-    pure
-    override(OverwhelmingSupportAutoDelegate, BlockNumberClockMode)
-    returns (string memory)
-  {
-    return BlockNumberClockMode.CLOCK_MODE();
-  }
-}
-
-contract OverwhelmingSupportAutoDelegateTimestampMode is OverwhelmingSupportAutoDelegate, TimestampClockMode {
-  uint256 public constant MIN_VOTING_WINDOW_IN_SECONDS = 3600;
-  uint256 public constant MAX_VOTING_WINDOW_IN_SECONDS = 604_800;
-
-  constructor(address _initialOwner, uint256 _votingWindow, uint256 _subQuorumBips, uint256 _supportThreshold)
-    OverwhelmingSupportAutoDelegate(
-      _initialOwner,
-      MIN_VOTING_WINDOW_IN_SECONDS,
-      MAX_VOTING_WINDOW_IN_SECONDS,
-      _votingWindow,
-      _subQuorumBips,
-      _supportThreshold
-    )
-  {}
-
-  function clock() public view override(OverwhelmingSupportAutoDelegate, TimestampClockMode) returns (uint48) {
-    return TimestampClockMode.clock();
-  }
-
-  function CLOCK_MODE()
-    public
-    pure
-    override(OverwhelmingSupportAutoDelegate, TimestampClockMode)
-    returns (string memory)
-  {
-    return TimestampClockMode.CLOCK_MODE();
-  }
-}
-
-contract Constructor is OverwhelmingSupportAutoDelegateTest {
+abstract contract Constructor is OverwhelmingSupportAutoDelegateTest {
   function test_SetsCorrectOwner() public view {
     assertEq(autoDelegate.owner(), owner);
     assertEq(autoDelegate.votingWindow(), votingWindow);
@@ -123,7 +59,7 @@ contract Constructor is OverwhelmingSupportAutoDelegateTest {
   }
 }
 
-contract CastVote is OverwhelmingSupportAutoDelegateTest {
+abstract contract CastVote is OverwhelmingSupportAutoDelegateTest {
   function testFuzz_CastsSupportVote(
     uint256 _proposalId,
     uint256 _blocksWithinVotingWindow,
@@ -202,7 +138,7 @@ contract CastVote is OverwhelmingSupportAutoDelegateTest {
   }
 }
 
-contract SetVotingWindow is OverwhelmingSupportAutoDelegateTest {
+abstract contract SetVotingWindow is OverwhelmingSupportAutoDelegateTest {
   function boundVotingWindow(uint256 _votingWindow) public view returns (uint256) {
     return bound(_votingWindow, autoDelegate.MIN_VOTING_WINDOW(), autoDelegate.MAX_VOTING_WINDOW());
   }
@@ -247,13 +183,13 @@ contract SetVotingWindow is OverwhelmingSupportAutoDelegateTest {
   }
 }
 
-contract Clock is OverwhelmingSupportAutoDelegateTest {
+abstract contract Clock is OverwhelmingSupportAutoDelegateTest {
   function test_ReturnsCorrectClockValue() public view {
     assertEq(autoDelegate.clock(), getTimepoint());
   }
 }
 
-contract Clock_Mode is OverwhelmingSupportAutoDelegateTest {
+abstract contract Clock_Mode is OverwhelmingSupportAutoDelegateTest {
   function test_ReturnsCorrectClockMode() public view {
     if (isUsingTimestampMode) {
       assertEq(autoDelegate.CLOCK_MODE(), "mode=timestamp");
@@ -263,7 +199,7 @@ contract Clock_Mode is OverwhelmingSupportAutoDelegateTest {
   }
 }
 
-contract SetSubQuorumBips is OverwhelmingSupportAutoDelegateTest {
+abstract contract SetSubQuorumBips is OverwhelmingSupportAutoDelegateTest {
   function testFuzz_SetsSubQuorumBips(uint256 _subQuorumBips) public {
     _subQuorumBips = bound(_subQuorumBips, autoDelegate.MIN_SUB_QUORUM_BIPS(), autoDelegate.MAX_SUB_QUORUM_BIPS());
     vm.prank(owner);
@@ -302,7 +238,7 @@ contract SetSubQuorumBips is OverwhelmingSupportAutoDelegateTest {
   }
 }
 
-contract SetSupportThreshold is OverwhelmingSupportAutoDelegateTest {
+abstract contract SetSupportThreshold is OverwhelmingSupportAutoDelegateTest {
   function testFuzz_SetsSupportRatio(uint256 _supportThreshold) public {
     _supportThreshold = bound(_supportThreshold, minSupportThreshold, maxSupportThreshold);
     vm.prank(owner);
@@ -334,5 +270,131 @@ contract SetSupportThreshold is OverwhelmingSupportAutoDelegateTest {
     vm.prank(owner);
     vm.expectRevert(OverwhelmingSupportAutoDelegate.OverwhelmingSupportAutoDelegate__InvalidSupportThreshold.selector);
     autoDelegate.setSupportThreshold(_supportThreshold);
+  }
+}
+
+contract BraveGovernorBlockNumberModeConstructor is OverwhelmingSupportAutoDelegateTest, Constructor {
+  function autoDelegateUsingBlockNumberOrTimestampMode() public override returns (OverwhelmingSupportAutoDelegate) {
+    return new OverwhelmingSupportAutoDelegateBravoGovernorBlockNumberMode(
+      owner, votingWindow, subQuorumBips, supportThreshold
+    );
+  }
+}
+
+contract BraveGovernorBlockNumberModeCastVote is OverwhelmingSupportAutoDelegateTest, CastVote {
+  function autoDelegateUsingBlockNumberOrTimestampMode() public override returns (OverwhelmingSupportAutoDelegate) {
+    return new OverwhelmingSupportAutoDelegateBravoGovernorBlockNumberMode(
+      owner, votingWindow, subQuorumBips, supportThreshold
+    );
+  }
+}
+
+contract BraveGovernorBlockNumberModeSetVotingWindow is OverwhelmingSupportAutoDelegateTest, SetVotingWindow {
+  function autoDelegateUsingBlockNumberOrTimestampMode() public override returns (OverwhelmingSupportAutoDelegate) {
+    return new OverwhelmingSupportAutoDelegateBravoGovernorBlockNumberMode(
+      owner, votingWindow, subQuorumBips, supportThreshold
+    );
+  }
+}
+
+contract BraveGovernorBlockNumberModeClock is OverwhelmingSupportAutoDelegateTest, Clock {
+  function autoDelegateUsingBlockNumberOrTimestampMode() public override returns (OverwhelmingSupportAutoDelegate) {
+    return new OverwhelmingSupportAutoDelegateBravoGovernorBlockNumberMode(
+      owner, votingWindow, subQuorumBips, supportThreshold
+    );
+  }
+}
+
+contract BraveGovernorBlockNumberModeClockMode is OverwhelmingSupportAutoDelegateTest, Clock_Mode {
+  function autoDelegateUsingBlockNumberOrTimestampMode() public override returns (OverwhelmingSupportAutoDelegate) {
+    return new OverwhelmingSupportAutoDelegateBravoGovernorBlockNumberMode(
+      owner, votingWindow, subQuorumBips, supportThreshold
+    );
+  }
+}
+
+contract BraveGovernorBlockNumberModeSetSubQuorumBips is OverwhelmingSupportAutoDelegateTest, SetSubQuorumBips {
+  function autoDelegateUsingBlockNumberOrTimestampMode() public override returns (OverwhelmingSupportAutoDelegate) {
+    return new OverwhelmingSupportAutoDelegateBravoGovernorBlockNumberMode(
+      owner, votingWindow, subQuorumBips, supportThreshold
+    );
+  }
+}
+
+contract BraveGovernorBlockNumberModeSetSupportThreshold is OverwhelmingSupportAutoDelegateTest, SetSupportThreshold {
+  function autoDelegateUsingBlockNumberOrTimestampMode() public override returns (OverwhelmingSupportAutoDelegate) {
+    return new OverwhelmingSupportAutoDelegateBravoGovernorBlockNumberMode(
+      owner, votingWindow, subQuorumBips, supportThreshold
+    );
+  }
+}
+
+contract BraveGovernorTimeStampModeConstructor is OverwhelmingSupportAutoDelegateTest, Constructor {
+  function autoDelegateUsingBlockNumberOrTimestampMode() public override returns (OverwhelmingSupportAutoDelegate) {
+    votingWindow = votingWindowInSeconds;
+    isUsingTimestampMode = true;
+    return new OverwhelmingSupportAutoDelegateBravoGovernorTimestampMode(
+      owner, votingWindow, subQuorumBips, supportThreshold
+    );
+  }
+}
+
+contract BraveGovernorTimeStampModeCastVote is OverwhelmingSupportAutoDelegateTest, CastVote {
+  function autoDelegateUsingBlockNumberOrTimestampMode() public override returns (OverwhelmingSupportAutoDelegate) {
+    votingWindow = votingWindowInSeconds;
+    isUsingTimestampMode = true;
+    return new OverwhelmingSupportAutoDelegateBravoGovernorTimestampMode(
+      owner, votingWindow, subQuorumBips, supportThreshold
+    );
+  }
+}
+
+contract BraveGovernorTimeStampModeSetVotingWindow is OverwhelmingSupportAutoDelegateTest, SetVotingWindow {
+  function autoDelegateUsingBlockNumberOrTimestampMode() public override returns (OverwhelmingSupportAutoDelegate) {
+    votingWindow = votingWindowInSeconds;
+    isUsingTimestampMode = true;
+    return new OverwhelmingSupportAutoDelegateBravoGovernorTimestampMode(
+      owner, votingWindow, subQuorumBips, supportThreshold
+    );
+  }
+}
+
+contract BraveGovernorTimeStampModeClock is OverwhelmingSupportAutoDelegateTest, Clock {
+  function autoDelegateUsingBlockNumberOrTimestampMode() public override returns (OverwhelmingSupportAutoDelegate) {
+    votingWindow = votingWindowInSeconds;
+    isUsingTimestampMode = true;
+    return new OverwhelmingSupportAutoDelegateBravoGovernorTimestampMode(
+      owner, votingWindow, subQuorumBips, supportThreshold
+    );
+  }
+}
+
+contract BraveGovernorTimeStampModeClockMode is OverwhelmingSupportAutoDelegateTest, Clock_Mode {
+  function autoDelegateUsingBlockNumberOrTimestampMode() public override returns (OverwhelmingSupportAutoDelegate) {
+    votingWindow = votingWindowInSeconds;
+    isUsingTimestampMode = true;
+    return new OverwhelmingSupportAutoDelegateBravoGovernorTimestampMode(
+      owner, votingWindow, subQuorumBips, supportThreshold
+    );
+  }
+}
+
+contract BraveGovernorTimeStampModeSetSubQuorumBips is OverwhelmingSupportAutoDelegateTest, SetSubQuorumBips {
+  function autoDelegateUsingBlockNumberOrTimestampMode() public override returns (OverwhelmingSupportAutoDelegate) {
+    votingWindow = votingWindowInSeconds;
+    isUsingTimestampMode = true;
+    return new OverwhelmingSupportAutoDelegateBravoGovernorTimestampMode(
+      owner, votingWindow, subQuorumBips, supportThreshold
+    );
+  }
+}
+
+contract BraveGovernorTimeStampModeSetSupportThreshold is OverwhelmingSupportAutoDelegateTest, SetSupportThreshold {
+  function autoDelegateUsingBlockNumberOrTimestampMode() public override returns (OverwhelmingSupportAutoDelegate) {
+    votingWindow = votingWindowInSeconds;
+    isUsingTimestampMode = true;
+    return new OverwhelmingSupportAutoDelegateBravoGovernorTimestampMode(
+      owner, votingWindow, subQuorumBips, supportThreshold
+    );
   }
 }
