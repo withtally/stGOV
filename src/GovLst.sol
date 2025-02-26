@@ -770,7 +770,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
 
     isOverridden[_depositId] = true;
 
-    uint160 _tipShares = _compensationInShares(_requestedTip, _tipReceiver);
+    uint160 _tipShares = _transferFeeInShares(_requestedTip, _tipReceiver);
 
     emit OverrideEnacted(_depositId, _tipReceiver, _tipShares);
   }
@@ -810,7 +810,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
 
     isOverridden[_depositId] = false;
 
-    uint160 _tipShares = _compensationInShares(_requestedTip, _tipReceiver);
+    uint160 _tipShares = _transferFeeInShares(_requestedTip, _tipReceiver);
 
     emit OverrideRevoked(_depositId, _tipReceiver, _tipShares);
   }
@@ -839,7 +839,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
     STAKER.alterDelegatee(_depositId, defaultDelegatee);
 
     // Distribute shares to the caller
-    uint160 _tipShares = _compensationInShares(_requestedTip, _tipReceiver);
+    uint160 _tipShares = _transferFeeInShares(_requestedTip, _tipReceiver);
 
     // Emit event
     emit OverrideMigrated(_depositId, _currentDelegatee, defaultDelegatee, _tipReceiver, _tipShares);
@@ -1453,14 +1453,14 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   }
 
   /// @notice Internal helper to compensate a receiver in shares based on a provided token amount.
-  /// @param  _tokenAmount The amount of tokens to convert to shares while diluting other sharelholders.
-  /// @param _compensationReceiver The address that will receives the shares.
-  function _compensationInShares(uint256 _tokenAmount, address _compensationReceiver) internal returns (uint160) {
+  /// @param  _feeAmount The amount of tokens to convert to shares while diluting other shareholders.
+  /// @param _feeReceiver The address that will receives the shares.
+  function _transferFeeInShares(uint256 _feeAmount, address _feeReceiver) internal returns (uint160) {
     Totals memory _totals = totals;
-    uint160 _tipShares = _calcFeeShares(_tipAmount, _totals.supply, _totals.shares);
-    totals.shares += _tipShares;
-    holderStates[_tipReceiver].shares += SafeCast.toUint128(_tipShares);
-    return _tipShares;
+    uint160 _feeShares = _calcFeeShares(_feeAmount, _totals.supply, _totals.shares);
+    totals.shares += _feeShares;
+    holderStates[_feeReceiver].shares += SafeCast.toUint128(_feeShares);
+    return _feeShares;
   }
 
   /// @notice Internal helper which checks that the message sender is either the delegatee guardian or the owner and
