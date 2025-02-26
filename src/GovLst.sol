@@ -11,7 +11,6 @@ import {Nonces} from "openzeppelin/utils/Nonces.sol";
 import {Multicall} from "openzeppelin/utils/Multicall.sol";
 import {SafeCast} from "openzeppelin/utils/math/SafeCast.sol";
 import {Staker} from "staker/Staker.sol";
-import {IWETH9} from "src/interfaces/IWETH9.sol";
 import {WithdrawGate} from "src/WithdrawGate.sol";
 import {FixedGovLst} from "src/FixedGovLst.sol";
 import {FixedLstAddressAlias} from "src/FixedLstAddressAlias.sol";
