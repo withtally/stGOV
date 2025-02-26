@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.28;
+pragma solidity ^0.8.23;
 
 import {Ownable} from "openzeppelin/access/Ownable.sol";
-import {GovLst} from "src/GovLst.sol";
 import {IERC20} from "openzeppelin/token/ERC20/IERC20.sol";
 import {EIP712} from "openzeppelin/utils/cryptography/EIP712.sol";
 import {SignatureChecker} from "openzeppelin/utils/cryptography/SignatureChecker.sol";

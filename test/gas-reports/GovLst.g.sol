@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.28;
+pragma solidity ^0.8.23;
 
 import {GasReport} from "test/gas-reports/GasReport.sol";
 import {GovLst} from "src/GovLst.sol";

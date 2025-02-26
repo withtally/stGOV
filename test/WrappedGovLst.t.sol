@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.28;
+pragma solidity ^0.8.23;
 
 import {console2} from "forge-std/Test.sol";
 import {GovLstTest, GovLst} from "test/GovLst.t.sol";
