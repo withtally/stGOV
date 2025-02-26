@@ -1505,10 +1505,10 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   /// deposit.
   /// @param _depositId The id of the deposit to check.
   function _revertIfInvalidDeposit(Staker.DepositIdentifier _depositId) internal view {
-    (uint96 _balance,, uint96 _earningPower,,,,) = STAKER.deposits(_depositId);
     if (isOverridden[_depositId]) {
       revert GovLst__InvalidDeposit();
     }
+    (uint96 _balance,, uint96 _earningPower,,,,) = STAKER.deposits(_depositId);
     bool _isBelowMin = uint256(_earningPower) * BIPS < minQualifyingEarningPowerBips * _balance;
     if (_isBelowMin) {
       revert GovLst__EarningPowerNotQualified(
