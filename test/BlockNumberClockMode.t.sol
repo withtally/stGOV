@@ -11,14 +11,18 @@ contract BlockNumberClockModeTest is Test {
   function setUp() public {
     blockNumberClockMode = new BlockNumberClockMode();
   }
+}
 
+contract Clock is BlockNumberClockModeTest {
   function testFuzz_ReturnsCurrentBlockNumber(uint256 _randomBlockNumber) public {
     _randomBlockNumber = bound(_randomBlockNumber, 0, type(uint48).max);
     vm.roll(_randomBlockNumber);
     assertEq(blockNumberClockMode.clock(), SafeCast.toUint48(_randomBlockNumber));
   }
+}
 
-  function test_ReturnsClockMode() public view {
+contract CLOCK_MODE is BlockNumberClockModeTest {
+  function test_ReturnsCorrectClockMode() public view {
     assertEq(blockNumberClockMode.CLOCK_MODE(), "mode=blocknumber&from=default");
   }
 }

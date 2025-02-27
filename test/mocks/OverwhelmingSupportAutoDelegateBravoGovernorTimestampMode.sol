@@ -28,7 +28,7 @@ contract OverwhelmingSupportAutoDelegateBravoGovernorTimestampMode is
 
   function CLOCK_MODE()
     public
-    pure
+    view
     override(OverwhelmingSupportAutoDelegate, TimestampClockMode)
     returns (string memory)
   {

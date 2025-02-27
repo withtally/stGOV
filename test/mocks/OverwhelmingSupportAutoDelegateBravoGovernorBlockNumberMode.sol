@@ -28,7 +28,7 @@ contract OverwhelmingSupportAutoDelegateBravoGovernorBlockNumberMode is
 
   function CLOCK_MODE()
     public
-    pure
+    view
     override(OverwhelmingSupportAutoDelegate, BlockNumberClockMode)
     returns (string memory)
   {

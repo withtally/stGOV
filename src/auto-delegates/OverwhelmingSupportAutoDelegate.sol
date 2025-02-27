@@ -67,10 +67,10 @@ abstract contract OverwhelmingSupportAutoDelegate is Ownable, IERC6372 {
   /// @notice The maximum sub-quorum basis points allowed for proposals, set to 10_000 basis points (100%).
   uint256 public constant MAX_SUB_QUORUM_BIPS = 10_000;
 
-  /// @notice The minimum voting window in blocks allowed for proposals, set to 300 blocks about 1 hour at 12s.
+  /// @notice The minimum allowable voting window to be set.
   uint256 public immutable MIN_VOTING_WINDOW;
 
-  /// @notice The maximum voting window in blocks allowed for proposals, set to 50_400 blocks about 1 week at 12s.
+  /// @notice The maximum allowable voting window to be set.
   uint256 public immutable MAX_VOTING_WINDOW;
 
   /// @notice Timepoint before a proposal's voting deadline at which this Auto Delegate can begin casting votes.
@@ -127,10 +127,10 @@ abstract contract OverwhelmingSupportAutoDelegate is Ownable, IERC6372 {
   }
 
   /// @inheritdoc IERC6372
-  function clock() public view virtual returns (uint48) {}
+  function clock() public view virtual returns (uint48);
 
   /// @inheritdoc IERC6372
-  function CLOCK_MODE() public pure virtual returns (string memory) {}
+  function CLOCK_MODE() public view virtual returns (string memory);
 
   /// @notice Sets the sub-quorum votes percentage in basis points.
   /// @param _subQuorumBips The percentage of the live quorum (in basis points) that must be FOR votes before this
