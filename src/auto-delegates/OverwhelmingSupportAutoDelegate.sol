@@ -187,8 +187,7 @@ abstract contract OverwhelmingSupportAutoDelegate is Ownable, IERC6372 {
     internal
     view
     virtual
-    returns (uint256 _proposalDeadline, uint256 _forVotes, uint256 _againstVotes, uint256 _quorumVotes)
-  {}
+    returns (uint256 _proposalDeadline, uint256 _forVotes, uint256 _againstVotes, uint256 _quorumVotes);
 
   /// @notice Casts a "For" vote on a given proposal in the specified governor contract.
   /// @param _governor The Governor contract containing the proposal to vote on.
@@ -196,7 +195,7 @@ abstract contract OverwhelmingSupportAutoDelegate is Ownable, IERC6372 {
   /// @dev Always votes in favor (1) of the proposal.
   /// @dev This is an internal virtual function that should be overridden by child contracts to implement
   /// the specific voting logic for different governor interfaces.
-  function _castVote(address _governor, uint256 _proposalId) internal virtual {}
+  function _castVote(address _governor, uint256 _proposalId) internal virtual;
 
   /// @notice Checks if the current timepoint is within the voting window of a proposal's deadline.
   /// @param _proposalDeadline The proposal's deadline.
