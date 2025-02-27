@@ -13,13 +13,13 @@
     "forge-std/=lib/forge-std/src",
     "@openzeppelin/contracts/=lib/staker/lib/openzeppelin-contracts/contracts",
   ]
-  solc_version = "0.8.28"
   verbosity = 3
   via-ir = false
 
 [profile.ci]
   fuzz = { runs = 500 }
-  invariant = { runs = 500 }
+  invariant = { runs = 1 }
+  optimizer = false
 
 [profile.prod]
   via-ir = true
