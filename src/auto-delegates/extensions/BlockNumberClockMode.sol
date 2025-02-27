@@ -5,6 +5,7 @@ import {SafeCast} from "openzeppelin/utils/math/SafeCast.sol";
 import {IERC6372} from "openzeppelin/interfaces/IERC6372.sol";
 
 /// @title BlockNumberClockMode
+/// @author [ScopeLift](https://scopelift.co)
 /// @notice Implementation of IERC6372 that uses block numbers as the clock.
 /// @dev This contract provides block number-based clock functionality for contracts that need block tracking.
 contract BlockNumberClockMode is IERC6372 {
