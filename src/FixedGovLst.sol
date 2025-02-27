@@ -86,6 +86,12 @@ contract FixedGovLst is IERC20, IERC20Metadata, IERC20Permit, Multicall, EIP712,
   /// @notice The factor by which scales are multiplied in the underlying rebasing LST.
   uint256 public immutable SHARE_SCALE_FACTOR;
 
+  /// @notice The ERC20 Metadata compliant name of the fixed LST token.
+  string private NAME;
+
+  /// @notice The ERC20 Metadata compliant symbol of the fixed LST token.
+  string private SYMBOL;
+
   /// @notice The number of decimals for the fixed LST token.
   uint8 private constant DECIMALS = 18;
 
@@ -100,12 +106,6 @@ contract FixedGovLst is IERC20, IERC20Metadata, IERC20Permit, Multicall, EIP712,
   /// @notice The total number of rebasing LST shares controlled across all fixed LST token holders.
   /// @dev The fixed LST `totalSupply` is this number scaled down by the `SHARE_SCALE_FACTOR`.
   uint256 private totalShares;
-
-  /// @notice The ERC20 Metadata compliant name of the fixed LST token.
-  string public name;
-
-  /// @notice The ERC20 Metadata compliant symbol of the fixed LST token.
-  string public symbol;
 
   /// @notice Mapping used to determine the amount of Fixed LST tokens the spender has been approved to transfer on
   /// the holder's behalf.
@@ -122,8 +122,8 @@ contract FixedGovLst is IERC20, IERC20Metadata, IERC20Permit, Multicall, EIP712,
     IERC20 _stakeToken,
     uint256 _shareScaleFactor
   ) EIP712(_name, _version) {
-    name = _name;
-    symbol = _symbol;
+    NAME = _name;
+    SYMBOL = _symbol;
     LST = _lst;
     SHARE_SCALE_FACTOR = _shareScaleFactor;
     STAKE_TOKEN = _stakeToken;
@@ -132,6 +132,16 @@ contract FixedGovLst is IERC20, IERC20Metadata, IERC20Permit, Multicall, EIP712,
   /// @notice The decimal precision with which the fixed LST token stores its balances.
   function decimals() external pure returns (uint8) {
     return DECIMALS;
+  }
+
+  /// @inheritdoc IERC20Metadata
+  function name() external view returns (string memory) {
+    return NAME;
+  }
+
+  /// @inheritdoc IERC20Metadata
+  function symbol() external view returns (string memory) {
+    return SYMBOL;
   }
 
   /// @notice The EIP712 signing version of the contract.
