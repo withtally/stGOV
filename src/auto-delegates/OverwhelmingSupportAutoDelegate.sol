@@ -178,7 +178,7 @@ abstract contract OverwhelmingSupportAutoDelegate is Ownable, IERC6372 {
 
   /// @notice Gets the details of a proposal from the governor contract.
   /// @param _governor The address of the Governor contract.
-  /// @param _proposalId The ID of the proposal to get details for.
+  /// @param _proposalId The ID of the proposal for which to get details.
   /// @return _proposalDeadline The deadline (in blocks or timestamp) for voting on the proposal.
   /// @return _forVotes The number of votes in favor of the proposal.
   /// @return _againstVotes The number of votes against the proposal.
