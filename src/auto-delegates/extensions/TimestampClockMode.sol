@@ -5,6 +5,7 @@ import {SafeCast} from "openzeppelin/utils/math/SafeCast.sol";
 import {IERC6372} from "openzeppelin/interfaces/IERC6372.sol";
 
 /// @title TimestampClockMode
+/// @author [ScopeLift](https://scopelift.co)
 /// @notice Implementation of IERC6372 that uses block timestamps as the clock.
 /// @dev This contract provides timestamp-based clock functionality for contracts that need time tracking.
 contract TimestampClockMode is IERC6372 {

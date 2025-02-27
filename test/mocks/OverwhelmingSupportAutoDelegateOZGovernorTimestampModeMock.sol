@@ -3,11 +3,11 @@ pragma solidity ^0.8.23;
 
 import {OverwhelmingSupportAutoDelegate} from "src/auto-delegates/OverwhelmingSupportAutoDelegate.sol";
 import {TimestampClockMode} from "src/auto-delegates/extensions/TimestampClockMode.sol";
-import {AutoDelegateBravoGovernor} from "src/auto-delegates/extensions/AutoDelegateBravoGovernor.sol";
+import {AutoDelegateOpenZeppelinGovernor} from "src/auto-delegates/extensions/AutoDelegateOpenZeppelinGovernor.sol";
 
-contract OverwhelmingSupportAutoDelegateBravoGovernorTimestampMode is
+contract OverwhelmingSupportAutoDelegateOZGovernorTimestampModeMock is
   OverwhelmingSupportAutoDelegate,
-  AutoDelegateBravoGovernor,
+  AutoDelegateOpenZeppelinGovernor,
   TimestampClockMode
 {
   uint256 public constant MIN_VOTING_WINDOW_IN_SECONDS = 3600;

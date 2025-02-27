@@ -5,7 +5,7 @@ import {OverwhelmingSupportAutoDelegate} from "src/auto-delegates/OverwhelmingSu
 import {BlockNumberClockMode} from "src/auto-delegates/extensions/BlockNumberClockMode.sol";
 import {AutoDelegateBravoGovernor} from "src/auto-delegates/extensions/AutoDelegateBravoGovernor.sol";
 
-contract OverwhelmingSupportAutoDelegateBravoGovernorBlockNumberMode is
+contract OverwhelmingSupportAutoDelegateBravoGovernorBlockNumberModeMock is
   OverwhelmingSupportAutoDelegate,
   AutoDelegateBravoGovernor,
   BlockNumberClockMode

@@ -4,12 +4,15 @@ pragma solidity ^0.8.23;
 import {Test} from "forge-std/Test.sol";
 import {OverwhelmingSupportAutoDelegate, Ownable} from "../src/auto-delegates/OverwhelmingSupportAutoDelegate.sol";
 import {GovernorBravoDelegateMock} from "./mocks/GovernorBravoDelegateMock.sol";
-import {OverwhelmingSupportAutoDelegateBravoGovernorBlockNumberMode} from
-  "./mocks/OverwhelmingSupportAutoDelegateBravoGovernorBlockNumberMode.sol";
-import {OverwhelmingSupportAutoDelegateBravoGovernorTimestampMode} from
-  "./mocks/OverwhelmingSupportAutoDelegateBravoGovernorTimestampMode.sol";
-import {SafeCast} from "openzeppelin/utils/math/SafeCast.sol";
-import {AutoDelegateTimestampClockMode} from "src/auto-delegates/extensions/AutoDelegateTimestampClockMode.sol";
+import {OpenZeppelinGovernorMock} from "./mocks/OpenZeppelinGovernorMock.sol";
+import {OverwhelmingSupportAutoDelegateBravoGovernorBlockNumberModeMock} from
+  "./mocks/OverwhelmingSupportAutoDelegateBravoGovernorBlockNumberModeMock.sol";
+import {OverwhelmingSupportAutoDelegateBravoGovernorTimestampModeMock} from
+  "./mocks/OverwhelmingSupportAutoDelegateBravoGovernorTimestampModeMock.sol";
+import {OverwhelmingSupportAutoDelegateOZGovernorBlockNumberModeMock} from
+  "./mocks/OverwhelmingSupportAutoDelegateOZGovernorBlockNumberModeMock.sol";
+import {OverwhelmingSupportAutoDelegateOZGovernorTimestampModeMock} from
+  "./mocks/OverwhelmingSupportAutoDelegateOZGovernorTimestampModeMock.sol";
 
 abstract contract OverwhelmingSupportAutoDelegateTest is Test {
   OverwhelmingSupportAutoDelegate public autoDelegate;
@@ -27,7 +30,7 @@ abstract contract OverwhelmingSupportAutoDelegateTest is Test {
   /// @notice BIP (Basis Points) constant where 100% equals 10,000 basis points (BIP)
   uint256 internal constant BIP = 10_000;
 
-  function setUp() public {
+  function setUp() public virtual {
     autoDelegate = autoDelegateUsingBlockNumberOrTimestampMode();
     governor = new GovernorBravoDelegateMock();
     rollOrWarpToTimepoint(10_000); // Roll block to 10000;
@@ -277,7 +280,7 @@ abstract contract SetSupportThreshold is OverwhelmingSupportAutoDelegateTest {
 
 contract BraveGovernorBlockNumberModeConstructor is OverwhelmingSupportAutoDelegateTest, Constructor {
   function autoDelegateUsingBlockNumberOrTimestampMode() public override returns (OverwhelmingSupportAutoDelegate) {
-    return new OverwhelmingSupportAutoDelegateBravoGovernorBlockNumberMode(
+    return new OverwhelmingSupportAutoDelegateBravoGovernorBlockNumberModeMock(
       owner, votingWindow, subQuorumBips, supportThreshold
     );
   }
@@ -285,7 +288,7 @@ contract BraveGovernorBlockNumberModeConstructor is OverwhelmingSupportAutoDeleg
 
 contract BraveGovernorBlockNumberModeCastVote is OverwhelmingSupportAutoDelegateTest, CastVote {
   function autoDelegateUsingBlockNumberOrTimestampMode() public override returns (OverwhelmingSupportAutoDelegate) {
-    return new OverwhelmingSupportAutoDelegateBravoGovernorBlockNumberMode(
+    return new OverwhelmingSupportAutoDelegateBravoGovernorBlockNumberModeMock(
       owner, votingWindow, subQuorumBips, supportThreshold
     );
   }
@@ -293,7 +296,7 @@ contract BraveGovernorBlockNumberModeCastVote is OverwhelmingSupportAutoDelegate
 
 contract BraveGovernorBlockNumberModeSetVotingWindow is OverwhelmingSupportAutoDelegateTest, SetVotingWindow {
   function autoDelegateUsingBlockNumberOrTimestampMode() public override returns (OverwhelmingSupportAutoDelegate) {
-    return new OverwhelmingSupportAutoDelegateBravoGovernorBlockNumberMode(
+    return new OverwhelmingSupportAutoDelegateBravoGovernorBlockNumberModeMock(
       owner, votingWindow, subQuorumBips, supportThreshold
     );
   }
@@ -301,7 +304,7 @@ contract BraveGovernorBlockNumberModeSetVotingWindow is OverwhelmingSupportAutoD
 
 contract BraveGovernorBlockNumberModeClock is OverwhelmingSupportAutoDelegateTest, Clock {
   function autoDelegateUsingBlockNumberOrTimestampMode() public override returns (OverwhelmingSupportAutoDelegate) {
-    return new OverwhelmingSupportAutoDelegateBravoGovernorBlockNumberMode(
+    return new OverwhelmingSupportAutoDelegateBravoGovernorBlockNumberModeMock(
       owner, votingWindow, subQuorumBips, supportThreshold
     );
   }
@@ -309,7 +312,7 @@ contract BraveGovernorBlockNumberModeClock is OverwhelmingSupportAutoDelegateTes
 
 contract BraveGovernorBlockNumberModeClockMode is OverwhelmingSupportAutoDelegateTest, Clock_Mode {
   function autoDelegateUsingBlockNumberOrTimestampMode() public override returns (OverwhelmingSupportAutoDelegate) {
-    return new OverwhelmingSupportAutoDelegateBravoGovernorBlockNumberMode(
+    return new OverwhelmingSupportAutoDelegateBravoGovernorBlockNumberModeMock(
       owner, votingWindow, subQuorumBips, supportThreshold
     );
   }
@@ -317,7 +320,7 @@ contract BraveGovernorBlockNumberModeClockMode is OverwhelmingSupportAutoDelegat
 
 contract BraveGovernorBlockNumberModeSetSubQuorumBips is OverwhelmingSupportAutoDelegateTest, SetSubQuorumBips {
   function autoDelegateUsingBlockNumberOrTimestampMode() public override returns (OverwhelmingSupportAutoDelegate) {
-    return new OverwhelmingSupportAutoDelegateBravoGovernorBlockNumberMode(
+    return new OverwhelmingSupportAutoDelegateBravoGovernorBlockNumberModeMock(
       owner, votingWindow, subQuorumBips, supportThreshold
     );
   }
@@ -325,7 +328,7 @@ contract BraveGovernorBlockNumberModeSetSubQuorumBips is OverwhelmingSupportAuto
 
 contract BraveGovernorBlockNumberModeSetSupportThreshold is OverwhelmingSupportAutoDelegateTest, SetSupportThreshold {
   function autoDelegateUsingBlockNumberOrTimestampMode() public override returns (OverwhelmingSupportAutoDelegate) {
-    return new OverwhelmingSupportAutoDelegateBravoGovernorBlockNumberMode(
+    return new OverwhelmingSupportAutoDelegateBravoGovernorBlockNumberModeMock(
       owner, votingWindow, subQuorumBips, supportThreshold
     );
   }
@@ -335,7 +338,7 @@ contract BraveGovernorTimeStampModeConstructor is OverwhelmingSupportAutoDelegat
   function autoDelegateUsingBlockNumberOrTimestampMode() public override returns (OverwhelmingSupportAutoDelegate) {
     votingWindow = votingWindowInSeconds;
     isUsingTimestampMode = true;
-    return new OverwhelmingSupportAutoDelegateBravoGovernorTimestampMode(
+    return new OverwhelmingSupportAutoDelegateBravoGovernorTimestampModeMock(
       owner, votingWindow, subQuorumBips, supportThreshold
     );
   }
@@ -345,7 +348,7 @@ contract BraveGovernorTimeStampModeCastVote is OverwhelmingSupportAutoDelegateTe
   function autoDelegateUsingBlockNumberOrTimestampMode() public override returns (OverwhelmingSupportAutoDelegate) {
     votingWindow = votingWindowInSeconds;
     isUsingTimestampMode = true;
-    return new OverwhelmingSupportAutoDelegateBravoGovernorTimestampMode(
+    return new OverwhelmingSupportAutoDelegateBravoGovernorTimestampModeMock(
       owner, votingWindow, subQuorumBips, supportThreshold
     );
   }
@@ -355,7 +358,7 @@ contract BraveGovernorTimeStampModeSetVotingWindow is OverwhelmingSupportAutoDel
   function autoDelegateUsingBlockNumberOrTimestampMode() public override returns (OverwhelmingSupportAutoDelegate) {
     votingWindow = votingWindowInSeconds;
     isUsingTimestampMode = true;
-    return new OverwhelmingSupportAutoDelegateBravoGovernorTimestampMode(
+    return new OverwhelmingSupportAutoDelegateBravoGovernorTimestampModeMock(
       owner, votingWindow, subQuorumBips, supportThreshold
     );
   }
@@ -365,7 +368,7 @@ contract BraveGovernorTimeStampModeClock is OverwhelmingSupportAutoDelegateTest,
   function autoDelegateUsingBlockNumberOrTimestampMode() public override returns (OverwhelmingSupportAutoDelegate) {
     votingWindow = votingWindowInSeconds;
     isUsingTimestampMode = true;
-    return new OverwhelmingSupportAutoDelegateBravoGovernorTimestampMode(
+    return new OverwhelmingSupportAutoDelegateBravoGovernorTimestampModeMock(
       owner, votingWindow, subQuorumBips, supportThreshold
     );
   }
@@ -375,7 +378,7 @@ contract BraveGovernorTimeStampModeClockMode is OverwhelmingSupportAutoDelegateT
   function autoDelegateUsingBlockNumberOrTimestampMode() public override returns (OverwhelmingSupportAutoDelegate) {
     votingWindow = votingWindowInSeconds;
     isUsingTimestampMode = true;
-    return new OverwhelmingSupportAutoDelegateBravoGovernorTimestampMode(
+    return new OverwhelmingSupportAutoDelegateBravoGovernorTimestampModeMock(
       owner, votingWindow, subQuorumBips, supportThreshold
     );
   }
@@ -385,7 +388,7 @@ contract BraveGovernorTimeStampModeSetSubQuorumBips is OverwhelmingSupportAutoDe
   function autoDelegateUsingBlockNumberOrTimestampMode() public override returns (OverwhelmingSupportAutoDelegate) {
     votingWindow = votingWindowInSeconds;
     isUsingTimestampMode = true;
-    return new OverwhelmingSupportAutoDelegateBravoGovernorTimestampMode(
+    return new OverwhelmingSupportAutoDelegateBravoGovernorTimestampModeMock(
       owner, votingWindow, subQuorumBips, supportThreshold
     );
   }
@@ -395,7 +398,143 @@ contract BraveGovernorTimeStampModeSetSupportThreshold is OverwhelmingSupportAut
   function autoDelegateUsingBlockNumberOrTimestampMode() public override returns (OverwhelmingSupportAutoDelegate) {
     votingWindow = votingWindowInSeconds;
     isUsingTimestampMode = true;
-    return new OverwhelmingSupportAutoDelegateBravoGovernorTimestampMode(
+    return new OverwhelmingSupportAutoDelegateBravoGovernorTimestampModeMock(
+      owner, votingWindow, subQuorumBips, supportThreshold
+    );
+  }
+}
+
+contract OZGovernorBlockNumberModeConstructor is OverwhelmingSupportAutoDelegateTest, Constructor {
+  function autoDelegateUsingBlockNumberOrTimestampMode() public override returns (OverwhelmingSupportAutoDelegate) {
+    return new OverwhelmingSupportAutoDelegateOZGovernorBlockNumberModeMock(
+      owner, votingWindow, subQuorumBips, supportThreshold
+    );
+  }
+}
+
+contract OZGovernorBlockNumberModeCastVote is OverwhelmingSupportAutoDelegateTest, CastVote {
+  function setUp() public override {
+    super.setUp();
+    governor = GovernorBravoDelegateMock(address(new OpenZeppelinGovernorMock()));
+  }
+
+  function autoDelegateUsingBlockNumberOrTimestampMode() public override returns (OverwhelmingSupportAutoDelegate) {
+    return new OverwhelmingSupportAutoDelegateOZGovernorBlockNumberModeMock(
+      owner, votingWindow, subQuorumBips, supportThreshold
+    );
+  }
+}
+
+contract OZGovernorBlockNumberModeSetVotingWindow is OverwhelmingSupportAutoDelegateTest, SetVotingWindow {
+  function autoDelegateUsingBlockNumberOrTimestampMode() public override returns (OverwhelmingSupportAutoDelegate) {
+    return new OverwhelmingSupportAutoDelegateOZGovernorBlockNumberModeMock(
+      owner, votingWindow, subQuorumBips, supportThreshold
+    );
+  }
+}
+
+contract OZGovernorBlockNumberModeClock is OverwhelmingSupportAutoDelegateTest, Clock {
+  function autoDelegateUsingBlockNumberOrTimestampMode() public override returns (OverwhelmingSupportAutoDelegate) {
+    return new OverwhelmingSupportAutoDelegateOZGovernorBlockNumberModeMock(
+      owner, votingWindow, subQuorumBips, supportThreshold
+    );
+  }
+}
+
+contract OZGovernorBlockNumberModeClockMode is OverwhelmingSupportAutoDelegateTest, Clock_Mode {
+  function autoDelegateUsingBlockNumberOrTimestampMode() public override returns (OverwhelmingSupportAutoDelegate) {
+    return new OverwhelmingSupportAutoDelegateOZGovernorBlockNumberModeMock(
+      owner, votingWindow, subQuorumBips, supportThreshold
+    );
+  }
+}
+
+contract OZGovernorBlockNumberModeSetSubQuorumBips is OverwhelmingSupportAutoDelegateTest, SetSubQuorumBips {
+  function autoDelegateUsingBlockNumberOrTimestampMode() public override returns (OverwhelmingSupportAutoDelegate) {
+    return new OverwhelmingSupportAutoDelegateOZGovernorBlockNumberModeMock(
+      owner, votingWindow, subQuorumBips, supportThreshold
+    );
+  }
+}
+
+contract OZGovernorBlockNumberModeSetSupportThreshold is OverwhelmingSupportAutoDelegateTest, SetSupportThreshold {
+  function autoDelegateUsingBlockNumberOrTimestampMode() public override returns (OverwhelmingSupportAutoDelegate) {
+    return new OverwhelmingSupportAutoDelegateOZGovernorBlockNumberModeMock(
+      owner, votingWindow, subQuorumBips, supportThreshold
+    );
+  }
+}
+
+contract OZGovernorTimeStampModeConstructor is OverwhelmingSupportAutoDelegateTest, Constructor {
+  function autoDelegateUsingBlockNumberOrTimestampMode() public override returns (OverwhelmingSupportAutoDelegate) {
+    votingWindow = votingWindowInSeconds;
+    isUsingTimestampMode = true;
+    return new OverwhelmingSupportAutoDelegateOZGovernorTimestampModeMock(
+      owner, votingWindow, subQuorumBips, supportThreshold
+    );
+  }
+}
+
+contract OZGovernorTimeStampModeCastVote is OverwhelmingSupportAutoDelegateTest, CastVote {
+  function setUp() public override {
+    super.setUp();
+    governor = GovernorBravoDelegateMock(address(new OpenZeppelinGovernorMock()));
+  }
+
+  function autoDelegateUsingBlockNumberOrTimestampMode() public override returns (OverwhelmingSupportAutoDelegate) {
+    votingWindow = votingWindowInSeconds;
+    isUsingTimestampMode = true;
+    return new OverwhelmingSupportAutoDelegateOZGovernorTimestampModeMock(
+      owner, votingWindow, subQuorumBips, supportThreshold
+    );
+  }
+}
+
+contract OZGovernorTimeStampModeSetVotingWindow is OverwhelmingSupportAutoDelegateTest, SetVotingWindow {
+  function autoDelegateUsingBlockNumberOrTimestampMode() public override returns (OverwhelmingSupportAutoDelegate) {
+    votingWindow = votingWindowInSeconds;
+    isUsingTimestampMode = true;
+    return new OverwhelmingSupportAutoDelegateOZGovernorTimestampModeMock(
+      owner, votingWindow, subQuorumBips, supportThreshold
+    );
+  }
+}
+
+contract OZGovernorTimeStampModeClock is OverwhelmingSupportAutoDelegateTest, Clock {
+  function autoDelegateUsingBlockNumberOrTimestampMode() public override returns (OverwhelmingSupportAutoDelegate) {
+    votingWindow = votingWindowInSeconds;
+    isUsingTimestampMode = true;
+    return new OverwhelmingSupportAutoDelegateOZGovernorTimestampModeMock(
+      owner, votingWindow, subQuorumBips, supportThreshold
+    );
+  }
+}
+
+contract OZGovernorTimeStampModeClockMode is OverwhelmingSupportAutoDelegateTest, Clock_Mode {
+  function autoDelegateUsingBlockNumberOrTimestampMode() public override returns (OverwhelmingSupportAutoDelegate) {
+    votingWindow = votingWindowInSeconds;
+    isUsingTimestampMode = true;
+    return new OverwhelmingSupportAutoDelegateOZGovernorTimestampModeMock(
+      owner, votingWindow, subQuorumBips, supportThreshold
+    );
+  }
+}
+
+contract OZGovernorTimeStampModeSetSubQuorumBips is OverwhelmingSupportAutoDelegateTest, SetSubQuorumBips {
+  function autoDelegateUsingBlockNumberOrTimestampMode() public override returns (OverwhelmingSupportAutoDelegate) {
+    votingWindow = votingWindowInSeconds;
+    isUsingTimestampMode = true;
+    return new OverwhelmingSupportAutoDelegateOZGovernorTimestampModeMock(
+      owner, votingWindow, subQuorumBips, supportThreshold
+    );
+  }
+}
+
+contract OZGovernorTimeStampModeSetSupportThreshold is OverwhelmingSupportAutoDelegateTest, SetSupportThreshold {
+  function autoDelegateUsingBlockNumberOrTimestampMode() public override returns (OverwhelmingSupportAutoDelegate) {
+    votingWindow = votingWindowInSeconds;
+    isUsingTimestampMode = true;
+    return new OverwhelmingSupportAutoDelegateOZGovernorTimestampModeMock(
       owner, votingWindow, subQuorumBips, supportThreshold
     );
   }

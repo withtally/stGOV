@@ -4,11 +4,28 @@ pragma solidity ^0.8.23;
 import {OverwhelmingSupportAutoDelegate} from "src/auto-delegates/OverwhelmingSupportAutoDelegate.sol";
 import {IGovernorBravoDelegate} from "src/interfaces/IGovernorBravoDelegate.sol";
 
+/// @title AutoDelegateBravoGovernor
+/// @author [ScopeLift](https://scopelift.co)
+/// @notice Extension for the OverwhelmingSupportAutoDelegate that integrates with Compound's Governor Bravo contracts.
+/// @dev This contract provides implementations for the abstract functions in OverwhelmingSupportAutoDelegate
+/// that are specific to Governor Bravo contracts.
 abstract contract AutoDelegateBravoGovernor is OverwhelmingSupportAutoDelegate {
+  /// @notice Casts a vote on a proposal in a Governor Bravo contract.
+  /// @dev Always votes in favor of the proposal.
+  /// @param _governor The address of the governor contract.
+  /// @param _proposalId The ID of the proposal to vote on.
   function _castVote(address _governor, uint256 _proposalId) internal virtual override {
     IGovernorBravoDelegate(_governor).castVote(_proposalId, FOR);
   }
 
+  /// @notice Retrieves details about a proposal from a Governor Bravo contract.
+  /// @dev Gets the proposal deadline, vote counts, and quorum requirement.
+  /// @param _governor The address of the governor contract.
+  /// @param _proposalId The ID of the proposal to get details for.
+  /// @return _proposalDeadline The block number when voting on the proposal ends.
+  /// @return _forVotes The number of votes in favor of the proposal.
+  /// @return _againstVotes The number of votes against the proposal.
+  /// @return _quorumVotes The number of votes required to reach quorum.
   function _getProposalDetails(address _governor, uint256 _proposalId)
     internal
     view
