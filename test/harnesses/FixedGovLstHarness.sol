@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.23;
 
-import {FixedGovLst} from "src/FixedGovLst.sol";
-import {FixedGovLstOnBehalf} from "src/extensions/FixedGovLstOnBehalf.sol";
-import {FixedGovLstPermitAndStake} from "src/extensions/FixedGovLstPermitAndStake.sol";
-import {GovLst} from "src/GovLst.sol";
+import {FixedGovLst} from "../../src/FixedGovLst.sol";
+import {FixedGovLstOnBehalf} from "../../src/extensions/FixedGovLstOnBehalf.sol";
+import {FixedGovLstPermitAndStake} from "../../src/extensions/FixedGovLstPermitAndStake.sol";
+import {GovLst} from "../../src/GovLst.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 contract FixedGovLstHarness is FixedGovLstOnBehalf, FixedGovLstPermitAndStake {

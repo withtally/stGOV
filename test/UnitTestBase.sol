@@ -2,8 +2,8 @@
 pragma solidity ^0.8.23;
 
 import {Test, console2} from "forge-std/Test.sol";
-import {IWETH9} from "src/interfaces/IWETH9.sol";
-import {FakeERC20Permit} from "test/fakes/FakeERC20Permit.sol";
+import {IWETH9} from "../src/interfaces/IWETH9.sol";
+import {FakeERC20Permit} from "./fakes/FakeERC20Permit.sol";
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 

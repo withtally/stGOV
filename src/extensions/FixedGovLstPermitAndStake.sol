@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.23;
 
-import {FixedGovLst} from "src/FixedGovLst.sol";
+import {FixedGovLst} from "../FixedGovLst.sol";
 import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
 
 /// @title FixedGovLstPermitAndStake

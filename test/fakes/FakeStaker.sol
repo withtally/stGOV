@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.23;
 
-import {Staker} from "staker/Staker.sol";
-import {StakerPermitAndStake} from "staker/extensions/StakerPermitAndStake.sol";
-import {StakerOnBehalf} from "staker/extensions/StakerOnBehalf.sol";
-import {StakerDelegateSurrogateVotes} from "staker/extensions/StakerDelegateSurrogateVotes.sol";
-import {IERC20Staking} from "staker/interfaces/IERC20Staking.sol";
-import {IEarningPowerCalculator} from "staker/interfaces/IEarningPowerCalculator.sol";
-import {DelegationSurrogate} from "staker/DelegationSurrogate.sol";
-import {IERC20} from "openzeppelin/token/ERC20/IERC20.sol";
-import {EIP712} from "openzeppelin/utils/cryptography/EIP712.sol";
+import {Staker} from "../../lib/staker/src/Staker.sol";
+import {StakerPermitAndStake} from "../../lib/staker/src/extensions/StakerPermitAndStake.sol";
+import {StakerOnBehalf} from "../../lib/staker/src/extensions/StakerOnBehalf.sol";
+import {StakerDelegateSurrogateVotes} from "../../lib/staker/src/extensions/StakerDelegateSurrogateVotes.sol";
+import {IERC20Staking} from "../../lib/staker/src/interfaces/IERC20Staking.sol";
+import {IEarningPowerCalculator} from "../../lib/staker/src/interfaces/IEarningPowerCalculator.sol";
+import {DelegationSurrogate} from "../../lib/staker/src/DelegationSurrogate.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 
 contract FakeStaker is Staker, StakerPermitAndStake, StakerOnBehalf, StakerDelegateSurrogateVotes {
   constructor(

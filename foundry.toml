@@ -10,9 +10,8 @@
   optimizer_runs = 200
   remappings = [
     "lib/staker:src=lib/staker/src/",
-    "staker/=lib/staker/src",
     "forge-std/=lib/forge-std/src",
-    "openzeppelin/=lib/staker/lib/openzeppelin-contracts/contracts",
+    "@openzeppelin/contracts/=lib/staker/lib/openzeppelin-contracts/contracts",
   ]
   solc_version = "0.8.28"
   verbosity = 3

@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.23;
 
-import {IGovernorBravoDelegate} from "src/interfaces/IGovernorBravoDelegate.sol";
-import {GovernorBravoDelegateStorageV1} from "test/helpers/GovernorBravoDelegateStorageV1.sol";
+import {IGovernorBravoDelegate} from "../../src/interfaces/IGovernorBravoDelegate.sol";
+import {GovernorBravoDelegateStorageV1} from "../helpers/GovernorBravoDelegateStorageV1.sol";
 
 contract GovernorBravoDelegateMock is IGovernorBravoDelegate {
   mapping(uint256 proposalId => uint8 support) public mockProposalVotes;

@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.23;
 
-import {Ownable} from "openzeppelin/access/Ownable.sol";
-import {IGovernorBravoDelegate} from "src/interfaces/IGovernorBravoDelegate.sol";
-import {IERC6372} from "openzeppelin/interfaces/IERC6372.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {IGovernorBravoDelegate} from "../interfaces/IGovernorBravoDelegate.sol";
+import {IERC6372} from "@openzeppelin/contracts/interfaces/IERC6372.sol";
 
 abstract contract OverwhelmingSupportAutoDelegate is Ownable, IERC6372 {
   /// @notice Error thrown when attempting to cast a vote outside the permitted voting window.

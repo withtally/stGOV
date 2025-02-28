@@ -2,15 +2,15 @@
 pragma solidity ^0.8.23;
 
 import {console2} from "forge-std/Test.sol";
-import {WithdrawGate} from "src/WithdrawGate.sol";
-import {GovLst} from "src/GovLst.sol";
-import {TestHelpers} from "test/helpers/TestHelpers.sol";
-import {MockERC20Token} from "test/mocks/MockERC20Token.sol";
-import {FakeERC1271Wallet} from "test/fakes/FakeERC1271Wallet.sol";
-import {Eip712Helper} from "test/helpers/Eip712Helper.sol";
-import {Ownable} from "openzeppelin/access/Ownable.sol";
-import {IERC20} from "openzeppelin/token/ERC20/IERC20.sol";
-import {ECDSA} from "openzeppelin/utils/cryptography/ECDSA.sol";
+import {WithdrawGate} from "../src/WithdrawGate.sol";
+import {GovLst} from "../src/GovLst.sol";
+import {TestHelpers} from "./helpers/TestHelpers.sol";
+import {MockERC20Token} from "./mocks/MockERC20Token.sol";
+import {FakeERC1271Wallet} from "./fakes/FakeERC1271Wallet.sol";
+import {Eip712Helper} from "./helpers/Eip712Helper.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
 contract WithdrawGateTest is TestHelpers {
   WithdrawGate withdrawGate;

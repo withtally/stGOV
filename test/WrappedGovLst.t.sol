@@ -2,10 +2,10 @@
 pragma solidity ^0.8.23;
 
 import {console2} from "forge-std/Test.sol";
-import {GovLstTest, GovLst} from "test/GovLst.t.sol";
-import {Staker} from "staker/Staker.sol";
-import {WrappedGovLst, Ownable} from "src/WrappedGovLst.sol";
-import {IERC20Errors} from "openzeppelin/interfaces/draft-IERC6093.sol";
+import {GovLstTest, GovLst} from "./GovLst.t.sol";
+import {Staker} from "../lib/staker/src/Staker.sol";
+import {WrappedGovLst, Ownable} from "../src/WrappedGovLst.sol";
+import {IERC20Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
 
 contract WrappedGovLstTest is GovLstTest {
   WrappedGovLst wrappedLst;
