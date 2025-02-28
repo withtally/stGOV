@@ -323,7 +323,7 @@ contract Stake is FixedGovLstTest {
 contract Permit is FixedGovLstTest {
   function _buildPermitStructHash(address _owner, address _spender, uint256 _value, uint256 _nonce, uint256 _deadline)
     internal
-    view
+    pure
     returns (bytes32)
   {
     return keccak256(abi.encode(PERMIT_TYPEHASH, _owner, _spender, _value, _nonce, _deadline));
@@ -2781,7 +2781,7 @@ contract Delegate is FixedGovLstTest {
   {
     _assumeSafeHolder(_holder);
     _assumeSafeDelegatee(_delegatee);
-    Staker.DepositIdentifier _depositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+    lst.fetchOrInitializeDepositForDelegatee(_delegatee);
 
     _amount = _boundToReasonableStakeTokenAmount(_amount);
     _mintStakeToken(_holder, _amount);
