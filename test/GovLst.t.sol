@@ -495,7 +495,7 @@ contract Constructor is GovLstTest {
     string memory _tokenName,
     string memory _tokenSymbol,
     address _delegateeGuardian,
-    uint256 _stakeToBurn,
+    uint64 _stakeToBurn,
     uint256 _maxOverrideTip,
     uint256 _minQualifyingEarningPowerBips
   ) public {
