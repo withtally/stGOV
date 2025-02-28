@@ -17,7 +17,7 @@
   via-ir = false
 
 [profile.ci]
-  fuzz = { runs = 500 }
+  fuzz = { runs = 1000 }
   invariant = { runs = 1 }
   optimizer = false
 
