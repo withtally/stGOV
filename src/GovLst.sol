@@ -229,6 +229,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   /// @param _maxOverrideTip The max tip an overrider can request for performing an override action.
   /// @param _minQualifyingEarningPowerBips The minimum qualifying earning power amount in BIPs (1/10,000) for a deposit
   /// to not be overridden.
+
   struct ConstructorParams {
     string fixedLstName;
     string fixedLstSymbol;
