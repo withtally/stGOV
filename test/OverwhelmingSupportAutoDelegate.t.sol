@@ -77,7 +77,7 @@ abstract contract CastVote is OverwhelmingSupportAutoDelegateTest {
     governor.__setProposals(_proposalId, _proposalDeadline, _forVotes, /*Against*/ 0);
     rollOrWarpToTimepoint(_proposalDeadline - _blocksWithinVotingWindow);
 
-    autoDelegate.castVote(governor, _proposalId);
+    autoDelegate.castVote(address(governor), _proposalId);
     assertEq(governor.mockProposalVotes(_proposalId), 1);
   }
 
@@ -97,7 +97,7 @@ abstract contract CastVote is OverwhelmingSupportAutoDelegateTest {
         OverwhelmingSupportAutoDelegate.OverwhelmingSupportAutoDelegate__OutsideVotingWindow.selector
       )
     );
-    autoDelegate.castVote(governor, _proposalId);
+    autoDelegate.castVote(address(governor), _proposalId);
   }
 
   function testFuzz_RevertIf_ProposalDoesNotHaveSufficientForVotes(
@@ -113,7 +113,7 @@ abstract contract CastVote is OverwhelmingSupportAutoDelegateTest {
     rollOrWarpToTimepoint(proposalDeadline - _blocksWithinBuffer);
 
     vm.expectRevert(OverwhelmingSupportAutoDelegate.OverwhelmingSupportAutoDelegate__InsufficientForVotes.selector);
-    autoDelegate.castVote(governor, _proposalId);
+    autoDelegate.castVote(address(governor), _proposalId);
   }
 
   function testFuzz_RevertIf_VoteRatioIsBelowSupportRatio(
@@ -134,7 +134,7 @@ abstract contract CastVote is OverwhelmingSupportAutoDelegateTest {
     rollOrWarpToTimepoint(proposalDeadline - _blocksWithinBuffer);
 
     vm.expectRevert(OverwhelmingSupportAutoDelegate.OverwhelmingSupportAutoDelegate__BelowSupportThreshold.selector);
-    autoDelegate.castVote(governor, _proposalId);
+    autoDelegate.castVote(address(governor), _proposalId);
   }
 }
 

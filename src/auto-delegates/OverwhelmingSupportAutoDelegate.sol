@@ -50,7 +50,7 @@ abstract contract OverwhelmingSupportAutoDelegate is Ownable, IERC6372 {
 
   /// @notice The constant value representing a "For" vote.
   /// @dev Aligns with FOR value in Governor's VoteType enum.
-  uint8 private constant FOR = 1;
+  uint8 public constant FOR = 1;
 
   /// @notice BIP (Basis Points) constant where 100% equals 10,000 basis points (BIP)
   uint256 private constant BIP = 10_000;
@@ -113,9 +113,9 @@ abstract contract OverwhelmingSupportAutoDelegate is Ownable, IERC6372 {
   /// @param _governor The Governor contract containing the proposal to vote on.
   /// @param _proposalId The ID of the proposal to vote on.
   /// @dev Always votes in favor (1) of the proposal.
-  function castVote(IGovernorBravoDelegate _governor, uint256 _proposalId) public {
+  function castVote(address _governor, uint256 _proposalId) public virtual {
     checkVoteRequirements(_governor, _proposalId);
-    _governor.castVote(_proposalId, FOR);
+    IGovernorBravoDelegate(_governor).castVote(_proposalId, FOR);
   }
 
   /// @notice Sets the voting window.
@@ -160,20 +160,39 @@ abstract contract OverwhelmingSupportAutoDelegate is Ownable, IERC6372 {
   /// @param _governor The Governor contract containing the proposal.
   /// @param _proposalId The ID of the proposal to check
   /// @dev This function reverts if any voting requirement is not met.
-  function checkVoteRequirements(IGovernorBravoDelegate _governor, uint256 _proposalId) public view {
+  function checkVoteRequirements(address _governor, uint256 _proposalId) public view {
     // Fetch proposal data once
-    (,,,, uint256 endBlock, uint256 forVotes, uint256 againstVotes,,,) = _governor.proposals(_proposalId);
-    uint256 quorumVotes = _governor.quorumVotes();
+    (uint256 _proposalDeadline, uint256 _forVotes, uint256 _againstVotes, uint256 _quorumVotes) =
+      _getProposalDetails(_governor, _proposalId);
 
-    if (!_isWithinVotingWindow(endBlock)) {
+    if (!_isWithinVotingWindow(_proposalDeadline)) {
       revert OverwhelmingSupportAutoDelegate__OutsideVotingWindow();
     }
-    if (!_hasReachedSubQuorum(forVotes, quorumVotes)) {
+    if (!_hasReachedSubQuorum(_forVotes, _quorumVotes)) {
       revert OverwhelmingSupportAutoDelegate__InsufficientForVotes();
     }
-    if (!_isAboveSupportThreshold(forVotes, againstVotes)) {
+    if (!_isAboveSupportThreshold(_forVotes, _againstVotes)) {
       revert OverwhelmingSupportAutoDelegate__BelowSupportThreshold();
     }
+  }
+
+  /// @notice Gets the details of a proposal from the governor contract.
+  /// @param _governor The address of the Governor contract.
+  /// @param _proposalId The ID of the proposal for which to get details.
+  /// @return _proposalDeadline The deadline (in blocks or timestamp) for voting on the proposal.
+  /// @return _forVotes The number of votes in favor of the proposal.
+  /// @return _againstVotes The number of votes against the proposal.
+  /// @return _quorumVotes The number of votes required to reach quorum.
+  /// @dev This internal function can be overridden to fetch proposal details from a different governor interface.
+  function _getProposalDetails(address _governor, uint256 _proposalId)
+    internal
+    view
+    virtual
+    returns (uint256 _proposalDeadline, uint256 _forVotes, uint256 _againstVotes, uint256 _quorumVotes)
+  {
+    // Fetch proposal data once
+    (,,,, _proposalDeadline, _forVotes, _againstVotes,,,) = IGovernorBravoDelegate(_governor).proposals(_proposalId);
+    _quorumVotes = IGovernorBravoDelegate(_governor).quorumVotes();
   }
 
   /// @notice Checks if the current timepoint is within the voting window of a proposal's deadline.
