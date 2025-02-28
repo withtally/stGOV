@@ -166,7 +166,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   /// @notice The governance token used by the staking system.
   IERC20 public immutable STAKE_TOKEN;
 
-  /// @notice The token distributed as rewards by the staking instance; in this case, WETH.
+  /// @notice The token distributed as rewards by the staking instance.
   IERC20 public immutable REWARD_TOKEN;
 
   /// @notice A coupled contract used by the LST to enforce an optional delay when withdrawing staked tokens from the
@@ -215,6 +215,8 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
     uint96 balanceCheckpoint;
     uint128 shares;
   }
+
+  /// @notice Data structure for deploying the `GovLst`.
   /// @param _fixedLstName The name for the fixed liquid stake token.
   /// @param _fixedLstSymbol The symbol for the fixed liquid stake token.
   /// @param _rebasingLstName The name for the rebasing liquid stake token.
@@ -229,7 +231,6 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   /// @param _maxOverrideTip The max tip an overrider can request for performing an override action.
   /// @param _minQualifyingEarningPowerBips The minimum qualifying earning power amount in BIPs (1/10,000) for a deposit
   /// to not be overridden.
-
   struct ConstructorParams {
     string fixedLstName;
     string fixedLstSymbol;
