@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.23;
 
+import {console2, stdStorage, StdStorage, stdError} from "forge-std/Test.sol";
 import {IERC20} from "openzeppelin/token/ERC20/IERC20.sol";
 import {IERC20Metadata} from "openzeppelin/interfaces/IERC20Metadata.sol";
 import {IERC20Permit} from "openzeppelin/token/ERC20/extensions/IERC20Permit.sol";
@@ -1096,6 +1097,20 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
     pure
     returns (uint160)
   {
+
+		  console2.logString("Fee amount");
+		  console2.logUint(_feeAmount);
+		  console2.logString("Total shares");
+		  console2.logUint(_totalShares);
+		  console2.logString("New Total shares");
+		  console2.logUint(_newTotalSupply);
+		  console2.logString("Numerator");
+		  console2.logUint(uint256(_feeAmount) * _totalShares);
+		  console2.logString("Denominator");
+		  console2.logUint((_newTotalSupply - _feeAmount));
+		  console2.logString("Result");
+		  console2.logUint(SafeCast.toUint160((uint256(_feeAmount) * _totalShares) / (_newTotalSupply - _feeAmount)));
+
     return SafeCast.toUint160((uint256(_feeAmount) * _totalShares) / (_newTotalSupply - _feeAmount));
   }
 

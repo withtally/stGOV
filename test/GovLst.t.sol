@@ -33,8 +33,8 @@ contract GovLstTest is UnitTestBase, PercentAssertions, TestHelpers, Eip712Helpe
   address lstOwner;
   uint80 initialPayoutAmount = 2500e18;
   address claimer = makeAddr("Claimer");
-  uint256 rewardTokenAmount = 10e18; // arbitrary amount of reward token
-  uint256 maxTip = 1e18; // Higher values cause overflow issues
+  uint256 rewardTokenAmount = 10_000e18; // arbitrary amount of reward token
+  uint256 maxTip = 1000e18; // Higher values cause overflow issues
 
   address defaultDelegatee = makeAddr("Default Delegatee");
   address delegateeFunder = makeAddr("Delegatee Funder");
