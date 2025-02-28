@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.23;
 
-import {OverwhelmingSupportAutoDelegate} from "src/auto-delegates/OverwhelmingSupportAutoDelegate.sol";
-import {IGovernorBravoDelegate} from "src/interfaces/IGovernorBravoDelegate.sol";
+import {OverwhelmingSupportAutoDelegate} from "../../auto-delegates/OverwhelmingSupportAutoDelegate.sol";
+import {IGovernorBravoDelegate} from "../../interfaces/IGovernorBravoDelegate.sol";
 
 /// @title AutoDelegateBravoGovernor
 /// @author [ScopeLift](https://scopelift.co)

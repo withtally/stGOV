@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.23;
 
-import {SafeCast} from "openzeppelin/utils/math/SafeCast.sol";
-import {IERC6372} from "openzeppelin/interfaces/IERC6372.sol";
+import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
+import {IERC6372} from "@openzeppelin/contracts/interfaces/IERC6372.sol";
 
 /// @title BlockNumberClockMode
 /// @author [ScopeLift](https://scopelift.co)

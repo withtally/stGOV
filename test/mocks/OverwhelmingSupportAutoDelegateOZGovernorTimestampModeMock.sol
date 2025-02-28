@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.23;
 
-import {OverwhelmingSupportAutoDelegate} from "src/auto-delegates/OverwhelmingSupportAutoDelegate.sol";
-import {TimestampClockMode} from "src/auto-delegates/extensions/TimestampClockMode.sol";
-import {AutoDelegateOpenZeppelinGovernor} from "src/auto-delegates/extensions/AutoDelegateOpenZeppelinGovernor.sol";
+import {OverwhelmingSupportAutoDelegate} from "../../src/auto-delegates/OverwhelmingSupportAutoDelegate.sol";
+import {TimestampClockMode} from "../../src/auto-delegates/extensions/TimestampClockMode.sol";
+import {AutoDelegateOpenZeppelinGovernor} from
+  "../../src/auto-delegates/extensions/AutoDelegateOpenZeppelinGovernor.sol";
 
 contract OverwhelmingSupportAutoDelegateOZGovernorTimestampModeMock is
   OverwhelmingSupportAutoDelegate,

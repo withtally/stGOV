@@ -2,8 +2,8 @@
 pragma solidity ^0.8.23;
 
 import {Test} from "forge-std/Test.sol";
-import {TimestampClockMode} from "src/auto-delegates/extensions/TimestampClockMode.sol";
-import {SafeCast} from "openzeppelin/utils/math/SafeCast.sol";
+import {TimestampClockMode} from "../src/auto-delegates/extensions/TimestampClockMode.sol";
+import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 
 contract TimestampClockModeTest is Test {
   TimestampClockMode public timestampClockMode;
