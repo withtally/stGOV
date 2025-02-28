@@ -49,7 +49,6 @@ contract OpenZeppelinGovernorMock is Governor, GovernorCountingSimple {
     return quorumVotesOverride;
   }
 
-  /// test
   function quorumVotes() public view returns (uint256) {
     return quorumVotesOverride;
   }
