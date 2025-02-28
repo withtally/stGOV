@@ -10,12 +10,21 @@ import {IGovernorCountingExtensions} from "../../auto-delegates/interfaces/IGove
 /// @notice Extension for the OverwhelmingSupportAutoDelegate that integrates with OpenZeppelin Governor contracts.
 /// @dev This contract provides implementations for the abstract functions in OverwhelmingSupportAutoDelegate
 /// that are specific to OpenZeppelin Governor contracts.
-abstract contract AutoDelegateOpenZeppelinGovernor is OverwhelmingSupportAutoDelegate {
+abstract contract AutoDelegateOpenZeppelinGovernor {
+  /// @notice The constant value representing a "For" vote.
+  /// @dev Aligns with FOR value in Governor's VoteType enum.
+  uint8 public constant FOR = 1;
+
+  /// @notice Clock used for flagging checkpoints. Can be overridden to implement timestamp based checkpoints (and
+  /// voting).
+  /// @dev This function needs to be overridden by the implementing contract.
+  function clock() public view virtual returns (uint48);
+
   /// @notice Casts a vote on a proposal in an OpenZeppelin Governor contract.
   /// @dev Always votes in favor of the proposal.
   /// @param _governor The address of the governor contract.
   /// @param _proposalId The ID of the proposal to vote on.
-  function _castVote(address _governor, uint256 _proposalId) internal virtual override {
+  function _castVote(address _governor, uint256 _proposalId) internal virtual {
     IGovernor(_governor).castVote(_proposalId, FOR);
   }
 
@@ -31,7 +40,6 @@ abstract contract AutoDelegateOpenZeppelinGovernor is OverwhelmingSupportAutoDel
     internal
     view
     virtual
-    override
     returns (uint256 _proposalDeadline, uint256 _forVotes, uint256 _againstVotes, uint256 _quorumVotes)
   {
     _proposalDeadline = IGovernor(_governor).proposalDeadline(_proposalId);

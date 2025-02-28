@@ -36,4 +36,20 @@ contract OverwhelmingSupportAutoDelegateBravoGovernorBlockNumberModeMock is
   {
     return BlockNumberClockMode.CLOCK_MODE();
   }
+
+  function _castVote(address _governor, uint256 _proposalId)
+    internal
+    override(OverwhelmingSupportAutoDelegate, AutoDelegateBravoGovernor)
+  {
+    AutoDelegateBravoGovernor._castVote(_governor, _proposalId);
+  }
+
+  function _getProposalDetails(address _governor, uint256 _proposalId)
+    internal
+    view
+    override(OverwhelmingSupportAutoDelegate, AutoDelegateBravoGovernor)
+    returns (uint256 _proposalDeadline, uint256 _forVotes, uint256 _againstVotes, uint256 _quorumVotes)
+  {
+    return AutoDelegateBravoGovernor._getProposalDetails(_governor, _proposalId);
+  }
 }

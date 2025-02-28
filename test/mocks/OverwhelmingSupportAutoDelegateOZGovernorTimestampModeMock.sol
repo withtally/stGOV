@@ -25,7 +25,12 @@ contract OverwhelmingSupportAutoDelegateOZGovernorTimestampModeMock is
     )
   {}
 
-  function clock() public view override(OverwhelmingSupportAutoDelegate, TimestampClockMode) returns (uint48) {
+  function clock()
+    public
+    view
+    override(OverwhelmingSupportAutoDelegate, AutoDelegateOpenZeppelinGovernor, TimestampClockMode)
+    returns (uint48)
+  {
     return TimestampClockMode.clock();
   }
 
@@ -36,5 +41,21 @@ contract OverwhelmingSupportAutoDelegateOZGovernorTimestampModeMock is
     returns (string memory)
   {
     return TimestampClockMode.CLOCK_MODE();
+  }
+
+  function _castVote(address _governor, uint256 _proposalId)
+    internal
+    override(OverwhelmingSupportAutoDelegate, AutoDelegateOpenZeppelinGovernor)
+  {
+    AutoDelegateOpenZeppelinGovernor._castVote(_governor, _proposalId);
+  }
+
+  function _getProposalDetails(address _governor, uint256 _proposalId)
+    internal
+    view
+    override(OverwhelmingSupportAutoDelegate, AutoDelegateOpenZeppelinGovernor)
+    returns (uint256 _proposalDeadline, uint256 _forVotes, uint256 _againstVotes, uint256 _quorumVotes)
+  {
+    return AutoDelegateOpenZeppelinGovernor._getProposalDetails(_governor, _proposalId);
   }
 }

@@ -47,10 +47,6 @@ abstract contract OverwhelmingSupportAutoDelegate is Ownable, IERC6372 {
   /// @param newSupportThreshold The new support threshold in basis points.
   event SupportThresholdSet(uint256 oldSupportThreshold, uint256 newSupportThreshold);
 
-  /// @notice The constant value representing a "For" vote.
-  /// @dev Aligns with FOR value in Governor's VoteType enum.
-  uint8 public constant FOR = 1;
-
   /// @notice BIP (Basis Points) constant where 100% equals 10,000 basis points (BIP)
   uint256 private constant BIP = 10_000;
 
@@ -109,7 +105,7 @@ abstract contract OverwhelmingSupportAutoDelegate is Ownable, IERC6372 {
   }
 
   /// @notice Casts a "For" vote on a given proposal in the specified governor contract.
-  /// @param _governor The Governor contract containing the proposal to vote on.
+  /// @param _governor The Governor contract where the proposal lives and the vote takes place.
   /// @param _proposalId The ID of the proposal to vote on.
   /// @dev Always votes in favor (1) of the proposal.
   function castVote(address _governor, uint256 _proposalId) public virtual {
@@ -190,7 +186,7 @@ abstract contract OverwhelmingSupportAutoDelegate is Ownable, IERC6372 {
     returns (uint256 _proposalDeadline, uint256 _forVotes, uint256 _againstVotes, uint256 _quorumVotes);
 
   /// @notice Casts a "For" vote on a given proposal in the specified governor contract.
-  /// @param _governor The Governor contract containing the proposal to vote on.
+  /// @param _governor The Governor contract where the proposal lives and the vote takes place.
   /// @param _proposalId The ID of the proposal to vote on.
   /// @dev Always votes in favor (1) of the proposal.
   /// @dev This is an internal virtual function that should be overridden by child contracts to implement
