@@ -81,7 +81,7 @@ contract GovLstTest is UnitTestBase, PercentAssertions, TestHelpers, Eip712Helpe
 
     // Finally, deploy the lst for tests.
     lst = new GovLstHarness(
-      tokenName, tokenSymbol, staker, defaultDelegatee, lstOwner, initialPayoutAmount, delegateeGuardian, 0
+      tokenName, tokenSymbol, staker, defaultDelegatee, lstOwner, initialPayoutAmount, delegateeGuardian, 0, maxTip, 0
     );
     // Store the withdraw gate for convenience, set a non-zero withdrawal delay
     withdrawGate = lst.WITHDRAW_GATE();
@@ -495,9 +495,14 @@ contract Constructor is GovLstTest {
     string memory _tokenName,
     string memory _tokenSymbol,
     address _delegateeGuardian,
-    uint64 _stakeToBurn
+    uint64 _stakeToBurn,
+    uint256 _maxOverrideTip,
+    uint256 _minQualifyingEarningPowerBips
   ) public {
     vm.assume(_lstOwner != address(0) && _defaultDelegatee != address(0));
+    _maxOverrideTip = bound(_maxOverrideTip, 0, lst.MAX_OVERRIDE_TIP_CAP());
+    _minQualifyingEarningPowerBips =
+      bound(_minQualifyingEarningPowerBips, 0, lst.MINIMUM_QUALIFYING_EARNING_POWER_BIPS_CAP());
 
     address lstAddr = _computeCreate1Address(address(this), uint8(vm.getNonce(address(this))));
     _mintStakeToken(address(this), _stakeToBurn);
@@ -511,7 +516,9 @@ contract Constructor is GovLstTest {
       _lstOwner,
       _payoutAmount,
       _delegateeGuardian,
-      _stakeToBurn
+      _stakeToBurn,
+      _maxOverrideTip,
+      _minQualifyingEarningPowerBips
     );
     assertEq(address(_lst.STAKER()), address(staker));
     assertEq(address(_lst.STAKE_TOKEN()), address(stakeToken));
@@ -521,6 +528,8 @@ contract Constructor is GovLstTest {
     assertEq(_lst.payoutAmount(), _payoutAmount);
     assertEq(_lst.owner(), _lstOwner);
     assertEq(_lst.delegateeGuardian(), _delegateeGuardian);
+    assertEq(_lst.maxOverrideTip(), _maxOverrideTip);
+    assertEq(_lst.minQualifyingEarningPowerBips(), _minQualifyingEarningPowerBips);
   }
 }
 
@@ -4607,7 +4616,7 @@ contract SetRewardParameters is GovLstTest {
 
 contract SetMaxOverrideTip is GovLstTest {
   function testFuzz_CorrectlySetsNewMaxOverrideTip(uint256 _newMaxOverrideTip) public {
-    _newMaxOverrideTip = bound(_newMaxOverrideTip, 0, lst.MAXIMUM_MAX_OVERRIDE_TIP());
+    _newMaxOverrideTip = bound(_newMaxOverrideTip, 0, lst.MAX_OVERRIDE_TIP_CAP());
 
     vm.prank(lstOwner);
     lst.setMaxOverrideTip(_newMaxOverrideTip);
@@ -4615,8 +4624,8 @@ contract SetMaxOverrideTip is GovLstTest {
   }
 
   function testFuzz_CorrectlyEmitsMaxOverrideTipSetEvent(uint256 _oldMaxOverrideTip, uint256 _newMaxOverrideTip) public {
-    _oldMaxOverrideTip = bound(_oldMaxOverrideTip, 0, lst.MAXIMUM_MAX_OVERRIDE_TIP());
-    _newMaxOverrideTip = bound(_newMaxOverrideTip, 0, lst.MAXIMUM_MAX_OVERRIDE_TIP());
+    _oldMaxOverrideTip = bound(_oldMaxOverrideTip, 0, lst.MAX_OVERRIDE_TIP_CAP());
+    _newMaxOverrideTip = bound(_newMaxOverrideTip, 0, lst.MAX_OVERRIDE_TIP_CAP());
     vm.prank(lstOwner);
     lst.setMaxOverrideTip(_oldMaxOverrideTip);
 
@@ -4635,7 +4644,7 @@ contract SetMaxOverrideTip is GovLstTest {
   }
 
   function testFuzz_RevertIf_AboveMaximumValue(uint256 _newMaxOverrideTip) public {
-    _newMaxOverrideTip = bound(_newMaxOverrideTip, lst.MAXIMUM_MAX_OVERRIDE_TIP() + 1, type(uint256).max);
+    _newMaxOverrideTip = bound(_newMaxOverrideTip, lst.MAX_OVERRIDE_TIP_CAP() + 1, type(uint256).max);
 
     vm.prank(lstOwner);
     vm.expectRevert(GovLst.GovLst__InvalidParameter.selector);
@@ -4646,7 +4655,7 @@ contract SetMaxOverrideTip is GovLstTest {
 contract SetMinQualifyingEarningPowerBips is GovLstTest {
   function testFuzz_CorrectlySetsNewMinQualifyingEarningPowerBips(uint256 _newMinQualifyingEarningPowerBips) public {
     _newMinQualifyingEarningPowerBips =
-      bound(_newMinQualifyingEarningPowerBips, 0, lst.MAXIMUM_MINIMUM_QUALIFYING_EARNING_POWER_BIPS());
+      bound(_newMinQualifyingEarningPowerBips, 0, lst.MINIMUM_QUALIFYING_EARNING_POWER_BIPS_CAP());
 
     vm.prank(lstOwner);
     lst.setMinQualifyingEarningPowerBips(_newMinQualifyingEarningPowerBips);
@@ -4658,9 +4667,9 @@ contract SetMinQualifyingEarningPowerBips is GovLstTest {
     uint256 _newMinQualifyingEarningPowerBips
   ) public {
     _oldMinQualifyingEarningPowerBips =
-      bound(_oldMinQualifyingEarningPowerBips, 0, lst.MAXIMUM_MINIMUM_QUALIFYING_EARNING_POWER_BIPS());
+      bound(_oldMinQualifyingEarningPowerBips, 0, lst.MINIMUM_QUALIFYING_EARNING_POWER_BIPS_CAP());
     _newMinQualifyingEarningPowerBips =
-      bound(_newMinQualifyingEarningPowerBips, 0, lst.MAXIMUM_MINIMUM_QUALIFYING_EARNING_POWER_BIPS());
+      bound(_newMinQualifyingEarningPowerBips, 0, lst.MINIMUM_QUALIFYING_EARNING_POWER_BIPS_CAP());
 
     vm.prank(lstOwner);
     lst.setMinQualifyingEarningPowerBips(_oldMinQualifyingEarningPowerBips);
@@ -4681,7 +4690,7 @@ contract SetMinQualifyingEarningPowerBips is GovLstTest {
 
   function testFuzz_RevertIf_AboveMaxmimumValue(uint256 _minQualifyingEarningPowerBips) public {
     _minQualifyingEarningPowerBips =
-      bound(_minQualifyingEarningPowerBips, lst.MAXIMUM_MINIMUM_QUALIFYING_EARNING_POWER_BIPS() + 1, type(uint256).max);
+      bound(_minQualifyingEarningPowerBips, lst.MINIMUM_QUALIFYING_EARNING_POWER_BIPS_CAP() + 1, type(uint256).max);
 
     vm.expectRevert(GovLst.GovLst__InvalidParameter.selector);
     vm.prank(lstOwner);
@@ -4690,7 +4699,7 @@ contract SetMinQualifyingEarningPowerBips is GovLstTest {
 
   function testFuzz_RevertIf_BelowMinimumValue(uint256 _minQualifyingEarningPowerBips) public {
     _minQualifyingEarningPowerBips =
-      bound(_minQualifyingEarningPowerBips, lst.MAXIMUM_MINIMUM_QUALIFYING_EARNING_POWER_BIPS() + 1, type(uint256).max);
+      bound(_minQualifyingEarningPowerBips, lst.MINIMUM_QUALIFYING_EARNING_POWER_BIPS_CAP() + 1, type(uint256).max);
 
     vm.expectRevert(GovLst.GovLst__InvalidParameter.selector);
     vm.prank(lstOwner);
