@@ -16,7 +16,12 @@ contract WrappedGovLstTest is GovLstTest {
 
   function setUp() public virtual override {
     super.setUp();
+    Staker.DepositIdentifier _depositId = lst.fetchOrInitializeDepositForDelegatee(delegatee);
+    _stakeOnDelegateeDeposit(_depositId, delegateeFunder);
+
     wrappedLst = new WrappedGovLst(NAME, SYMBOL, lst, delegatee, wrappedLstOwner);
+
+    _unstakeOnDelegateeDeposit(delegateeFunder);
   }
 
   function _assumeSafeWrapHolder(address _holder) public view {
@@ -361,6 +366,9 @@ contract SetDelegatee is WrappedGovLstTest {
   function testFuzz_SetsTheNewDelegatee(address _newDelegatee) public {
     _assumeSafeDelegatee(_newDelegatee);
 
+    Staker.DepositIdentifier _depositId = lst.fetchOrInitializeDepositForDelegatee(_newDelegatee);
+    _stakeOnDelegateeDeposit(_depositId, delegateeFunder);
+
     vm.prank(wrappedLstOwner);
     wrappedLst.setDelegatee(_newDelegatee);
 
@@ -370,6 +378,9 @@ contract SetDelegatee is WrappedGovLstTest {
   function testFuzz_UpdatesTheDelegateeOnTheLst(address _newDelegatee) public {
     _assumeSafeDelegatee(_newDelegatee);
 
+    Staker.DepositIdentifier _depositId = lst.fetchOrInitializeDepositForDelegatee(_newDelegatee);
+    _stakeOnDelegateeDeposit(_depositId, delegateeFunder);
+
     vm.prank(wrappedLstOwner);
     wrappedLst.setDelegatee(_newDelegatee);
 
@@ -378,6 +389,8 @@ contract SetDelegatee is WrappedGovLstTest {
 
   function testFuzz_EmitsADelegateeSetEvent(address _newDelegatee) public {
     _assumeSafeDelegatee(_newDelegatee);
+    Staker.DepositIdentifier _depositId = lst.fetchOrInitializeDepositForDelegatee(_newDelegatee);
+    _stakeOnDelegateeDeposit(_depositId, delegateeFunder);
 
     vm.prank(wrappedLstOwner);
     vm.expectEmit();

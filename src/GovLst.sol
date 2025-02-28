@@ -157,6 +157,9 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   /// threshold.
   error GovLst__EarningPowerNotQualified(uint256 earningPower, uint256 thresholdEarningPower);
 
+  /// @notice Thrown when a holder tries to update their deposit to an invalid deposit.
+  error GovLst__InvalidDeposit();
+
   /// @notice The Staker instance in which staked tokens will be deposited to earn rewards.
   Staker public immutable STAKER;
 
@@ -1117,6 +1120,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
       (, address _owner,,,,,) = STAKER.deposits(_newDepositId);
       if (_owner == address(this)) {
         holderStates[_account].depositId = _depositIdToUInt32(_newDepositId);
+        _revertIfInvalidDeposit(_newDepositId);
         return _oldDepositId;
       }
     }
@@ -1143,6 +1147,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
       _holderState.depositId = _depositIdToUInt32(_newDepositId);
       STAKER.withdraw(DEFAULT_DEPOSIT_ID, uint96(_balanceOf));
       STAKER.stakeMore(_newDepositId, uint96(_balanceOf));
+      _revertIfInvalidDeposit(_newDepositId);
     } else {
       _holderState.balanceCheckpoint = uint96(_balanceOf);
       _holderState.depositId = _depositIdToUInt32(_newDepositId);
@@ -1151,6 +1156,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
       }
       STAKER.withdraw(_oldDepositId, uint96(_delegatedBalance));
       STAKER.stakeMore(_newDepositId, uint96(_balanceOf));
+      _revertIfInvalidDeposit(_newDepositId);
     }
 
     // Write updated states back to storage.
@@ -1491,6 +1497,26 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   function _revertIfGreaterThanMaxTip(uint256 _tip) internal view {
     if (_tip > maxOverrideTip) {
       revert GovLst__GreaterThanMaxTip();
+    }
+  }
+
+  /// @notice Internal helper which reverts if an action for example, updating a deposit, is taken on an invalid
+  /// deposit.
+  /// @param _depositId The id of the deposit to check.
+  function _revertIfInvalidDeposit(Staker.DepositIdentifier _depositId) internal view {
+    if (isOverridden[_depositId]) {
+      revert GovLst__InvalidDeposit();
+    }
+    (uint96 _balance,, uint96 _earningPower,,,,) = STAKER.deposits(_depositId);
+    bool _isBelowMin = uint256(_earningPower) * BIPS < minQualifyingEarningPowerBips * _balance;
+    if (_isBelowMin) {
+      revert GovLst__EarningPowerNotQualified(
+        uint256(_earningPower) * BIPS, uint256(minQualifyingEarningPowerBips) * _balance
+      );
+    }
+
+    if (_balance == 0) {
+      revert GovLst__InvalidDeposit();
     }
   }
 
