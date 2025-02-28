@@ -284,7 +284,11 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   /// @param _initialDefaultDelegatee The initial delegatee to which the default deposit will be delegated.
   /// @param _initialOwner The address of the initial LST owner.
   /// @param _initialPayoutAmount The initial amount that must be provided to win the MEV race and claim the LST's
-  /// stake rewards.
+  /// @param _stakeToBurn The stake amount to burn in order to avoid divide by 0 errors. A reasonable value for this
+  /// would be 1e15.
+  /// @param _maxOverrideTip The max tip an overrider can request for performing an override action.
+  /// @param _minQualifyingEarningPowerBips The minimum qualifying earning power amount in BIPs (1/10,000) for a deposit
+  /// to not be overridden.
   constructor(
     string memory _name,
     string memory _symbol,
