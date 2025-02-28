@@ -81,7 +81,21 @@ contract GovLstTest is UnitTestBase, PercentAssertions, TestHelpers, Eip712Helpe
 
     // Finally, deploy the lst for tests.
     lst = new GovLstHarness(
-      tokenName, tokenSymbol, staker, defaultDelegatee, lstOwner, initialPayoutAmount, delegateeGuardian, 0, maxTip, 0
+      GovLst.ConstructorParams({
+        fixedLstName: tokenName,
+        fixedLstSymbol: tokenSymbol,
+        rebasingLstName: string.concat("Rebased ", tokenName),
+        rebasingLstSymbol: string.concat("r", tokenSymbol),
+        version: "2",
+        staker: staker,
+        initialDefaultDelegatee: defaultDelegatee,
+        initialOwner: lstOwner,
+        initialPayoutAmount: initialPayoutAmount,
+        initialDelegateeGuardian: delegateeGuardian,
+        stakeToBurn: 0,
+        maxOverrideTip: maxTip,
+        minQualifyingEarningPowerBips: 0
+      })
     );
     // Store the withdraw gate for convenience, set a non-zero withdrawal delay
     withdrawGate = lst.WITHDRAW_GATE();
@@ -509,17 +523,23 @@ contract Constructor is GovLstTest {
     stakeToken.approve(address(lstAddr), _stakeToBurn);
 
     GovLst _lst = new GovLstHarness(
-      _tokenName,
-      _tokenSymbol,
-      Staker(staker),
-      _defaultDelegatee,
-      _lstOwner,
-      _payoutAmount,
-      _delegateeGuardian,
-      _stakeToBurn,
-      _maxOverrideTip,
-      _minQualifyingEarningPowerBips
+      GovLst.ConstructorParams({
+        fixedLstName: _tokenName,
+        fixedLstSymbol: _tokenSymbol,
+        rebasingLstName: string.concat("Rebased ", _tokenName),
+        rebasingLstSymbol: string.concat("r", _tokenSymbol),
+        version: "2",
+        staker: Staker(staker),
+        initialDefaultDelegatee: _defaultDelegatee,
+        initialOwner: _lstOwner,
+        initialPayoutAmount: _payoutAmount,
+        initialDelegateeGuardian: _delegateeGuardian,
+        stakeToBurn: _stakeToBurn,
+        maxOverrideTip: _maxOverrideTip,
+        minQualifyingEarningPowerBips: _minQualifyingEarningPowerBips
+      })
     );
+
     assertEq(address(_lst.STAKER()), address(staker));
     assertEq(address(_lst.STAKE_TOKEN()), address(stakeToken));
     assertEq(address(_lst.REWARD_TOKEN()), address(rewardToken));
