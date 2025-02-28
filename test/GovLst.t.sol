@@ -197,7 +197,7 @@ contract GovLstTest is UnitTestBase, PercentAssertions, TestHelpers, Eip712Helpe
     return uint80(bound(_payoutAmount, 0.0001e18, type(uint80).max));
   }
 
-  function _boundToValidTipAmount(uint256 _tipAmount) internal returns (uint160) {
+  function _boundToValidTipAmount(uint256 _tipAmount) internal view returns (uint160) {
     return uint160(bound(_tipAmount, 0, maxTip));
   }
 
@@ -1818,8 +1818,7 @@ contract MigrateOverride is GovLstTest {
     uint256 _amount,
     uint256 _minQualifyingEarningPowerBips,
     address _tipReceiver,
-    uint160 _tipAmount,
-    uint256 _earningPower
+    uint160 _tipAmount
   ) public {
     _assumeSafeHolder(_holder);
     _assumeSafeDelegatee(_holder);
