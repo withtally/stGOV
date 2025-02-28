@@ -130,22 +130,22 @@ contract FixedGovLst is IERC20, IERC20Metadata, IERC20Permit, Multicall, EIP712,
   }
 
   /// @notice The decimal precision with which the fixed LST token stores its balances.
-  function decimals() external pure returns (uint8) {
+  function decimals() external pure virtual returns (uint8) {
     return DECIMALS;
   }
 
   /// @inheritdoc IERC20Metadata
-  function name() external view returns (string memory) {
+  function name() external view virtual returns (string memory) {
     return NAME;
   }
 
   /// @inheritdoc IERC20Metadata
-  function symbol() external view returns (string memory) {
+  function symbol() external view virtual returns (string memory) {
     return SYMBOL;
   }
 
   /// @notice The EIP712 signing version of the contract.
-  function version() external view returns (string memory) {
+  function version() external view virtual returns (string memory) {
     return _EIP712Version();
   }
 
@@ -155,13 +155,13 @@ contract FixedGovLst is IERC20, IERC20Metadata, IERC20Permit, Multicall, EIP712,
   /// were to unstake increases.
   /// @param _holder The account whose balance is being queried.
   /// @return The balance of the holder in fixed tokens.
-  function balanceOf(address _holder) public view returns (uint256) {
+  function balanceOf(address _holder) public view virtual returns (uint256) {
     return _scaleDown(shareBalances[_holder]);
   }
 
   /// @notice The total number of fixed LST tokens in existence. As with a holder's balance, this number does not
   /// change when rewards are distributed.
-  function totalSupply() public view returns (uint256) {
+  function totalSupply() public view virtual returns (uint256) {
     return _scaleDown(totalShares);
   }
 
@@ -169,12 +169,12 @@ contract FixedGovLst is IERC20, IERC20Metadata, IERC20Permit, Multicall, EIP712,
   /// @dev This function explicitly overrides both Nonces and IERC20Permit to allow compatibility
   /// @param _owner The address of the owner
   /// @return The current nonce for the owner
-  function nonces(address _owner) public view override(Nonces, IERC20Permit) returns (uint256) {
+  function nonces(address _owner) public view virtual override(Nonces, IERC20Permit) returns (uint256) {
     return Nonces.nonces(_owner);
   }
 
   /// @notice The domain separator used by this contract for all EIP712 signature based methods.
-  function DOMAIN_SEPARATOR() external view returns (bytes32) {
+  function DOMAIN_SEPARATOR() external view virtual returns (bytes32) {
     return _domainSeparatorV4();
   }
 
@@ -182,7 +182,7 @@ contract FixedGovLst is IERC20, IERC20Metadata, IERC20Permit, Multicall, EIP712,
   /// by specifying the deposit identifier associated with that delegatee.
   /// @param _newDepositId The identifier of a deposit which must be one owned by the rebasing LST. Underlying tokens
   /// staked in the fixed LST will be moved into this deposit.
-  function updateDeposit(Staker.DepositIdentifier _newDepositId) public {
+  function updateDeposit(Staker.DepositIdentifier _newDepositId) public virtual {
     _updateDeposit(msg.sender, _newDepositId);
   }
 
@@ -193,7 +193,7 @@ contract FixedGovLst is IERC20, IERC20Metadata, IERC20Permit, Multicall, EIP712,
   /// @dev The caller must approve *the rebasing LST contract* to transfer at least the number of stake tokens being
   /// staked before calling this method. This is different from a typical experience, where one would expect to approve
   /// the address on which the `stake` method was being called.
-  function stake(uint256 _stakeTokens) public returns (uint256) {
+  function stake(uint256 _stakeTokens) public virtual returns (uint256) {
     return _stake(msg.sender, _stakeTokens);
   }
 
@@ -201,7 +201,7 @@ contract FixedGovLst is IERC20, IERC20Metadata, IERC20Permit, Multicall, EIP712,
   /// @param _lstTokens The number of rebasing LST tokens that will be converted to fixed balance LST tokens.
   /// @return _fixedTokens The number of fixed balance LST tokens received upon fixing. These tokens are *not*
   /// exchanged 1:1 with the stake tokens.
-  function convertToFixed(uint256 _lstTokens) external returns (uint256) {
+  function convertToFixed(uint256 _lstTokens) external virtual returns (uint256) {
     return _convertToFixed(msg.sender, _lstTokens);
   }
 
@@ -210,7 +210,7 @@ contract FixedGovLst is IERC20, IERC20Metadata, IERC20Permit, Multicall, EIP712,
   /// @param _fixedTokens The number of tokens to send.
   /// @return Whether the transfer was successful or not.
   /// @dev This method will always return true. It reverts in conditions where the transfer was not successful.
-  function transfer(address _to, uint256 _fixedTokens) external returns (bool) {
+  function transfer(address _to, uint256 _fixedTokens) external virtual returns (bool) {
     _transfer(msg.sender, _to, _fixedTokens);
     return true;
   }
@@ -222,7 +222,7 @@ contract FixedGovLst is IERC20, IERC20Metadata, IERC20Permit, Multicall, EIP712,
   /// @param _fixedTokens The number of tokens to transfer.
   /// @return Whether the transfer was successful or not.
   /// @dev This method will always return true. It reverts in conditions where the transfer was not successful.
-  function transferFrom(address _from, address _to, uint256 _fixedTokens) external returns (bool) {
+  function transferFrom(address _from, address _to, uint256 _fixedTokens) external virtual returns (bool) {
     _checkAndUpdateAllowance(_from, _fixedTokens);
     _transfer(_from, _to, _fixedTokens);
     return true;
@@ -231,7 +231,7 @@ contract FixedGovLst is IERC20, IERC20Metadata, IERC20Permit, Multicall, EIP712,
   /// @notice Convert fixed LST tokens to rebasing LST tokens.
   /// @param _fixedTokens The number of fixed LST tokens to convert.
   /// @return _lstTokens The number of rebasing LST tokens received.
-  function convertToRebasing(uint256 _fixedTokens) external returns (uint256) {
+  function convertToRebasing(uint256 _fixedTokens) external virtual returns (uint256) {
     return _convertToRebasing(msg.sender, _fixedTokens);
   }
 
@@ -239,7 +239,7 @@ contract FixedGovLst is IERC20, IERC20Metadata, IERC20Permit, Multicall, EIP712,
   /// enforced by the rebasing LST, tokens will be moved into the withdrawal gate.
   /// @param _fixedTokens The number of fixed LST tokens to unstake.
   /// @return _stakeTokens The number of underlying governance tokens received in exchange.
-  function unstake(uint256 _fixedTokens) external returns (uint256 _stakeTokens) {
+  function unstake(uint256 _fixedTokens) external virtual returns (uint256 _stakeTokens) {
     return _unstake(msg.sender, _fixedTokens);
   }
 
@@ -261,7 +261,7 @@ contract FixedGovLst is IERC20, IERC20Metadata, IERC20Permit, Multicall, EIP712,
   /// the receiver of those tokens to reclaim them as part of their balance here in the LST.
   /// @return _fixedTokens The number of fixed LST tokens rescued by reclaiming rebasing LST tokens sent the caller's
   /// alias address.
-  function rescue() external returns (uint256 _fixedTokens) {
+  function rescue() external virtual returns (uint256 _fixedTokens) {
     return _rescue(msg.sender);
   }
 
@@ -422,7 +422,7 @@ contract FixedGovLst is IERC20, IERC20Metadata, IERC20Permit, Multicall, EIP712,
   /// message sender does not have sufficient allowance.
   /// @param _from The address for which the message sender's allowance should be checked & updated.
   /// @param _fixedTokens The amount of the allowance to check and decrement.
-  function _checkAndUpdateAllowance(address _from, uint256 _fixedTokens) internal {
+  function _checkAndUpdateAllowance(address _from, uint256 _fixedTokens) internal virtual {
     uint256 allowed = allowance[_from][msg.sender];
     if (allowed != type(uint256).max) {
       allowance[_from][msg.sender] = allowed - _fixedTokens;
@@ -432,14 +432,14 @@ contract FixedGovLst is IERC20, IERC20Metadata, IERC20Permit, Multicall, EIP712,
   /// @notice Internal helper that converts fixed LST tokens up to rebasing LST shares.
   /// @param _fixedTokens The number of fixed LST tokens.
   /// @return _lstShares The number of LST shares.
-  function _scaleUp(uint256 _fixedTokens) internal view returns (uint256 _lstShares) {
+  function _scaleUp(uint256 _fixedTokens) internal view virtual returns (uint256 _lstShares) {
     _lstShares = _fixedTokens * SHARE_SCALE_FACTOR;
   }
 
   /// @notice Internal helper that converts rebasing LST shares down to fixed LST tokens
   /// @param _lstShares The number of LST shares.
   /// @return _fixedTokens The number of fixed LST tokens.
-  function _scaleDown(uint256 _lstShares) internal view returns (uint256 _fixedTokens) {
+  function _scaleDown(uint256 _lstShares) internal view virtual returns (uint256 _fixedTokens) {
     _fixedTokens = _lstShares / SHARE_SCALE_FACTOR;
   }
 }

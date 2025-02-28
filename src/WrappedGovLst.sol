@@ -52,7 +52,7 @@ contract WrappedGovLst is ERC20Permit, Ownable {
   }
 
   /// @notice The address of the delegatee to which the wrapped token's voting weight is currently delegated.
-  function delegatee() public view returns (address) {
+  function delegatee() public view virtual returns (address) {
     return LST.delegateeForHolder(address(this));
   }
 
@@ -61,7 +61,7 @@ contract WrappedGovLst is ERC20Permit, Ownable {
   /// @return _wrappedAmount The quantity of wrapped tokens issued to the caller.
   /// @dev The caller must approve at least the amount of tokens to wrap on the lst contract before calling. Amount to
   /// wrap may not be zero.
-  function wrap(uint256 _lstAmountToWrap) external returns (uint256 _wrappedAmount) {
+  function wrap(uint256 _lstAmountToWrap) external virtual returns (uint256 _wrappedAmount) {
     if (_lstAmountToWrap == 0) {
       revert WrappedGovLst__InvalidAmount();
     }
@@ -82,7 +82,7 @@ contract WrappedGovLst is ERC20Permit, Ownable {
   /// @param _wrappedAmount The quantity of wrapped tokens to burn.
   /// @return _lstAmountUnwrapped The quantity of liquid staked tokens received in exchange for the wrapped tokens.
   /// @dev The caller must approve at least the amount wrapped tokens on the wrapper token contract.
-  function unwrap(uint256 _wrappedAmount) external returns (uint256 _lstAmountUnwrapped) {
+  function unwrap(uint256 _wrappedAmount) external virtual returns (uint256 _lstAmountUnwrapped) {
     _lstAmountUnwrapped = LST.stakeForShares(_wrappedAmount * SHARE_SCALE_FACTOR);
 
     if (_lstAmountUnwrapped == 0) {
@@ -98,13 +98,13 @@ contract WrappedGovLst is ERC20Permit, Ownable {
 
   /// @notice Method that can be called only by the owner to update the address to which all the wrapped token's voting
   /// weight will be delegated.
-  function setDelegatee(address _newDelegatee) public {
+  function setDelegatee(address _newDelegatee) public virtual {
     _checkOwner();
     _setDelegatee(_newDelegatee);
   }
 
   /// @notice Internal method that sets the deposit identifier for the delegate specified on the LST.
-  function _setDelegatee(address _newDelegatee) internal {
+  function _setDelegatee(address _newDelegatee) internal virtual {
     emit DelegateeSet(delegatee(), _newDelegatee);
     depositId = LST.fetchOrInitializeDepositForDelegatee(_newDelegatee);
     LST.updateDeposit(depositId);

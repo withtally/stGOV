@@ -121,7 +121,7 @@ abstract contract OverwhelmingSupportAutoDelegate is Ownable, IERC6372 {
   /// @notice Sets the voting window.
   /// @param _votingWindow The new voting window value, in timepoint units.
   /// @dev Can only be called by the contract owner.
-  function setVotingWindow(uint256 _votingWindow) external {
+  function setVotingWindow(uint256 _votingWindow) external virtual {
     _checkOwner();
     _setVotingWindow(_votingWindow);
   }
@@ -136,7 +136,7 @@ abstract contract OverwhelmingSupportAutoDelegate is Ownable, IERC6372 {
   /// @param _subQuorumBips The percentage of the live quorum (in basis points) that must be FOR votes before this
   /// auto delegate can vote on a proposal.
   /// @dev For example, 10,000 basis points (BIP) represent 100%. 5000 BIP represents 50%.
-  function setSubQuorumBips(uint256 _subQuorumBips) external {
+  function setSubQuorumBips(uint256 _subQuorumBips) external virtual {
     _checkOwner();
     _setSubQuorumBips(_subQuorumBips);
   }
@@ -146,7 +146,7 @@ abstract contract OverwhelmingSupportAutoDelegate is Ownable, IERC6372 {
   /// votes required for proposal approval. For example, 7500 represents 75%.
   /// @dev Can only be called by the contract owner. Value is expressed in basis points (BIP) where 10,000 represents
   /// 100%.
-  function setSupportThreshold(uint256 _supportThreshold) external {
+  function setSupportThreshold(uint256 _supportThreshold) external virtual {
     _checkOwner();
     _setSupportThreshold(_supportThreshold);
   }
@@ -160,7 +160,7 @@ abstract contract OverwhelmingSupportAutoDelegate is Ownable, IERC6372 {
   /// @param _governor The Governor contract containing the proposal.
   /// @param _proposalId The ID of the proposal to check
   /// @dev This function reverts if any voting requirement is not met.
-  function checkVoteRequirements(address _governor, uint256 _proposalId) public view {
+  function checkVoteRequirements(address _governor, uint256 _proposalId) public view virtual {
     // Fetch proposal data once
     (uint256 _proposalDeadline, uint256 _forVotes, uint256 _againstVotes, uint256 _quorumVotes) =
       _getProposalDetails(_governor, _proposalId);
@@ -198,7 +198,7 @@ abstract contract OverwhelmingSupportAutoDelegate is Ownable, IERC6372 {
   /// @notice Checks if the current timepoint is within the voting window of a proposal's deadline.
   /// @param _proposalDeadline The proposal's deadline.
   /// @return bool Returns true if within the voting window, false otherwise.
-  function _isWithinVotingWindow(uint256 _proposalDeadline) internal view returns (bool) {
+  function _isWithinVotingWindow(uint256 _proposalDeadline) internal view virtual returns (bool) {
     return clock() >= (_proposalDeadline - votingWindow);
   }
 
@@ -207,7 +207,7 @@ abstract contract OverwhelmingSupportAutoDelegate is Ownable, IERC6372 {
   /// @param _quorumVotes The number of quorum votes.
   /// @return bool Returns true if the proposal has received enough "For" votes to meet the subQuorumBips threshold,
   /// false otherwise.
-  function _hasReachedSubQuorum(uint256 _forVotes, uint256 _quorumVotes) internal view returns (bool) {
+  function _hasReachedSubQuorum(uint256 _forVotes, uint256 _quorumVotes) internal view virtual returns (bool) {
     return _forVotes >= ((_quorumVotes * subQuorumBips) / BIP);
   }
 
@@ -218,7 +218,7 @@ abstract contract OverwhelmingSupportAutoDelegate is Ownable, IERC6372 {
   /// supportThreshold, and false otherwise.
   /// @dev The percentage is calculated as (_forVotes / (_forVotes + _againstVotes)) * BIP, where BIP = 10,000
   /// represents 100%. This calculation determines if the percentage of "For" votes meets the required threshold.
-  function _isAboveSupportThreshold(uint256 _forVotes, uint256 _againstVotes) internal view returns (bool) {
+  function _isAboveSupportThreshold(uint256 _forVotes, uint256 _againstVotes) internal view virtual returns (bool) {
     return _forVotes * BIP >= supportThreshold * (_forVotes + _againstVotes);
   }
 
@@ -234,7 +234,7 @@ abstract contract OverwhelmingSupportAutoDelegate is Ownable, IERC6372 {
 
   /// @notice Internal function to set the sub-quorum votes percentage.
   /// @param _subQuorumBips The new percentage of the live quorum that's required to be FOR votes.
-  function _setSubQuorumBips(uint256 _subQuorumBips) internal {
+  function _setSubQuorumBips(uint256 _subQuorumBips) internal virtual {
     if (_subQuorumBips < MIN_SUB_QUORUM_BIPS || _subQuorumBips > MAX_SUB_QUORUM_BIPS) {
       revert OverwhelmingSupportAutoDelegate__InvalidSubQuorumBips();
     }
@@ -246,7 +246,7 @@ abstract contract OverwhelmingSupportAutoDelegate is Ownable, IERC6372 {
   /// @param _supportThreshold The new minimum percentage of "For" votes in for + against votes required for a
   /// proposal to pass.
   /// @dev Value is expressed in basis points (BIP) where 10,000 represents 100%.
-  function _setSupportThreshold(uint256 _supportThreshold) internal {
+  function _setSupportThreshold(uint256 _supportThreshold) internal virtual {
     if (_supportThreshold < MIN_SUPPORT_THRESHOLD || _supportThreshold > MAX_SUPPORT_THRESHOLD) {
       revert OverwhelmingSupportAutoDelegate__InvalidSupportThreshold();
     }

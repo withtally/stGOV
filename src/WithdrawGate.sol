@@ -104,7 +104,7 @@ contract WithdrawGate is Ownable, Multicall, EIP712 {
   /// @param _newDelay The new delay period to set.
   /// @dev Only the contract owner can call this function.
   /// @dev Reverts if the new delay exceeds DELAY_MAX.
-  function setDelay(uint256 _newDelay) external {
+  function setDelay(uint256 _newDelay) external virtual {
     _checkOwner();
     _setDelay(_newDelay);
   }
@@ -112,7 +112,7 @@ contract WithdrawGate is Ownable, Multicall, EIP712 {
   /// @notice Internal function to set the delay period.
   /// @param _newDelay The new delay period to set.
   /// @dev Reverts if the new delay exceeds DELAY_MAX.
-  function _setDelay(uint256 _newDelay) internal {
+  function _setDelay(uint256 _newDelay) internal virtual {
     if (_newDelay > DELAY_MAX) {
       revert WithdrawGate__InvalidDelay();
     }
@@ -129,7 +129,7 @@ contract WithdrawGate is Ownable, Multicall, EIP712 {
   /// @return _identifier The unique identifier for this withdrawal.
   /// @dev Can only be called by the LST contract.
   /// @dev Assumes the WITHDRAW_TOKENs have already been transferred to this contract.
-  function initiateWithdrawal(uint96 _amount, address _receiver) external returns (uint256 _identifier) {
+  function initiateWithdrawal(uint96 _amount, address _receiver) external virtual returns (uint256 _identifier) {
     if (msg.sender != LST) {
       revert WithdrawGate__CallerNotLST();
     }
@@ -147,7 +147,7 @@ contract WithdrawGate is Ownable, Multicall, EIP712 {
 
   /// @notice Completes a previously initiated withdrawal.
   /// @param _identifier The unique identifier of the withdrawal to complete.
-  function completeWithdrawal(uint256 _identifier) external {
+  function completeWithdrawal(uint256 _identifier) external virtual {
     if (nextWithdrawalId <= _identifier) {
       revert WithdrawGate__WithdrawalNotFound();
     }
@@ -165,7 +165,7 @@ contract WithdrawGate is Ownable, Multicall, EIP712 {
   /// @param _deadline The deadline by which the withdrawal must be completed.
   /// @param _identifier The unique identifier of the withdrawal to complete.
   /// @param _signature The EIP-712 or EIP-1271 signature authorizing the withdrawal.
-  function completeWithdrawalOnBehalf(uint256 _identifier, uint256 _deadline, bytes memory _signature) external {
+  function completeWithdrawalOnBehalf(uint256 _identifier, uint256 _deadline, bytes memory _signature) external virtual {
     if (nextWithdrawalId <= _identifier) {
       revert WithdrawGate__WithdrawalNotFound();
     }
@@ -188,7 +188,7 @@ contract WithdrawGate is Ownable, Multicall, EIP712 {
   /// @notice Internal function to complete a withdrawal.
   /// @param _identifier The unique identifier of the withdrawal to complete.
   /// @param _withdrawal The memory reference to the Withdrawal struct.
-  function _completeWithdrawal(uint256 _identifier, Withdrawal memory _withdrawal) internal {
+  function _completeWithdrawal(uint256 _identifier, Withdrawal memory _withdrawal) internal virtual {
     if (block.timestamp < _withdrawal.eligibleTimestamp || _withdrawal.eligibleTimestamp == 0) {
       revert WithdrawGate__WithdrawalNotEligible();
     }
@@ -204,7 +204,7 @@ contract WithdrawGate is Ownable, Multicall, EIP712 {
 
   /// @notice Gets the next withdrawal identifier.
   /// @return The next withdrawal identifier.
-  function getNextWithdrawalId() external view returns (uint256) {
+  function getNextWithdrawalId() external view virtual returns (uint256) {
     return nextWithdrawalId;
   }
 }

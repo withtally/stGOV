@@ -318,33 +318,33 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   }
 
   /// @notice The name of the liquid stake token.
-  function name() external view override returns (string memory) {
+  function name() external view virtual override returns (string memory) {
     return NAME;
   }
 
   /// @notice The symbol for the liquid stake token.
-  function symbol() external view override returns (string memory) {
+  function symbol() external view virtual override returns (string memory) {
     return SYMBOL;
   }
 
   /// @notice The decimal precision which the LST tokens stores its balances with.
-  function decimals() external pure override returns (uint8) {
+  function decimals() external pure virtual override returns (uint8) {
     return 18;
   }
 
   /// @notice The EIP712 signing version of the contract.
-  function version() external view returns (string memory) {
+  function version() external view virtual returns (string memory) {
     return _EIP712Version();
   }
 
   /// @notice The total amount of LST token supply, also equal to the total number of stake tokens in the system.
-  function totalSupply() external view returns (uint256) {
+  function totalSupply() external view virtual returns (uint256) {
     return uint256(totals.supply);
   }
 
   /// @notice The total number of outstanding shares issued to LST token holders. Each shares represents a proportional
   /// claim on the LST's total supply. As rewards are distributed, each share becomes worth proportionally more.
-  function totalShares() external view returns (uint256) {
+  function totalShares() external view virtual returns (uint256) {
     return uint256(totals.shares);
   }
 
@@ -352,7 +352,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   /// scale factor of `SHARE_SCALE_FACTOR` applied to minimize precision loss due to truncation.
   /// @param _amount The quantity of stake token that will be converted to a number of shares.
   /// @return The quantity of shares that is worth the requested quantity of stake token.
-  function sharesForStake(uint256 _amount) external view returns (uint256) {
+  function sharesForStake(uint256 _amount) external view virtual returns (uint256) {
     Totals memory _totals = totals;
     return _calcSharesForStakeUp(_amount, _totals);
   }
@@ -361,7 +361,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   /// ownership of a given number of shares translates to a claim on the quantity of stake tokens returned.
   /// @param _amount The quantity of shares that will be converted to stake tokens.
   /// @return The quantity of stake tokens which backs the provided quantity of shares.
-  function stakeForShares(uint256 _amount) public view returns (uint256) {
+  function stakeForShares(uint256 _amount) public view virtual returns (uint256) {
     Totals memory _totals = totals;
     return _calcStakeForShares(_amount, _totals);
   }
@@ -371,7 +371,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   /// balance will increase, even if they take no actions. In certain circumstances, a holder's balance can also
   /// decrease by tiny amounts without any action taken by the holder. This is due to changes in the global number of
   /// shares and supply resulting in a slightly different balance calculation after rounding.
-  function balanceOf(address _holder) external view returns (uint256) {
+  function balanceOf(address _holder) external view virtual returns (uint256) {
     HolderState memory _holderState = holderStates[_holder];
     Totals memory _totals = totals;
 
@@ -381,7 +381,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   /// @notice The number of shares a given holder owns. Unlike a holder's balance, shares are stored statically and do
   /// not change unless the user is subject to some action, such as staking, unstaking, or transferring. The user's
   /// balance is calculated based on their proportion of the total outstanding shares.
-  function sharesOf(address _holder) external view returns (uint256 _sharesOf) {
+  function sharesOf(address _holder) external view virtual returns (uint256 _sharesOf) {
     _sharesOf = holderStates[_holder].shares;
   }
 
@@ -393,14 +393,14 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   /// the user's live balance and their balance checkpoint represents the number of tokens the holder has claim to that
   /// are currently held in the default deposit. Holders who leave their delegatee set to the default have a balance
   /// checkpoint of zero by definition.
-  function balanceCheckpoint(address _holder) external view returns (uint256 _balanceCheckpoint) {
+  function balanceCheckpoint(address _holder) external view virtual returns (uint256 _balanceCheckpoint) {
     _balanceCheckpoint = holderStates[_holder].balanceCheckpoint;
   }
 
   /// @notice The delegatee to which a given holder of LST tokens has assigned their voting weight.
   /// @param _holder The holder in question.
   /// @return _delegatee The address to which this holder has assigned his staked voting weight.
-  function delegateeForHolder(address _holder) external view returns (address _delegatee) {
+  function delegateeForHolder(address _holder) external view virtual returns (address _delegatee) {
     HolderState memory _holderState = holderStates[_holder];
     (,,, _delegatee,,,) = STAKER.deposits(_calcDepositId(_holderState));
   }
@@ -408,7 +408,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   /// @notice The stake deposit identifier associated with a given delegatee address.
   /// @param _delegatee The delegatee in question.
   /// @return The deposit identifier of the deposit in question.
-  function depositForDelegatee(address _delegatee) public view returns (Staker.DepositIdentifier) {
+  function depositForDelegatee(address _delegatee) public view virtual returns (Staker.DepositIdentifier) {
     if (_delegatee == defaultDelegatee || _delegatee == address(0)) {
       return DEFAULT_DEPOSIT_ID;
     } else {
@@ -418,23 +418,23 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
 
   /// @notice Returns the stake deposit identifier a given LST holder address is currently assigned to. If the
   /// address has not set a deposit identifier, it returns the default deposit.
-  function depositIdForHolder(address _holder) external view returns (Staker.DepositIdentifier) {
+  function depositIdForHolder(address _holder) external view virtual returns (Staker.DepositIdentifier) {
     HolderState memory _holderState = holderStates[_holder];
     return _calcDepositId(_holderState);
   }
 
   /// @notice Returns the current fee amount based on feeBips and payoutAmount.
-  function feeAmount() external view returns (uint256) {
+  function feeAmount() external view virtual returns (uint256) {
     return _calcFeeAmount(rewardParams);
   }
 
   /// @notice Returns the current fee collector address.
-  function feeCollector() external view returns (address) {
+  function feeCollector() external view virtual returns (address) {
     return rewardParams.feeCollector;
   }
 
   /// @notice Returns the current payout amount.
-  function payoutAmount() external view returns (uint256) {
+  function payoutAmount() external view virtual returns (uint256) {
     return uint256(rewardParams.payoutAmount);
   }
 
@@ -442,12 +442,12 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   /// @dev This function explicitly overrides both Nonces and IERC20Permit to allow compatibility
   /// @param _owner The address of the owner
   /// @return The current nonce for the owner
-  function nonces(address _owner) public view override(Nonces, IERC20Permit) returns (uint256) {
+  function nonces(address _owner) public view virtual override(Nonces, IERC20Permit) returns (uint256) {
     return Nonces.nonces(_owner);
   }
 
   /// @notice The domain separator used by this contract for all EIP712 signature based methods.
-  function DOMAIN_SEPARATOR() external view returns (bytes32) {
+  function DOMAIN_SEPARATOR() external view virtual returns (bytes32) {
     return _domainSeparatorV4();
   }
 
@@ -456,7 +456,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   /// previously initialized.
   /// @param _delegatee The address of the delegatee.
   /// @return The deposit identifier of the existing, or newly created, stake deposit for this delegatee.
-  function fetchOrInitializeDepositForDelegatee(address _delegatee) public returns (Staker.DepositIdentifier) {
+  function fetchOrInitializeDepositForDelegatee(address _delegatee) public virtual returns (Staker.DepositIdentifier) {
     Staker.DepositIdentifier _depositId = depositForDelegatee(_delegatee);
 
     if (Staker.DepositIdentifier.unwrap(_depositId) != 0) {
@@ -478,7 +478,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   /// calling this method again, even with their existing deposit identifier.
   /// @param _newDepositId The stake deposit identifier to which this holder's staked tokens will be moved to and
   /// kept in henceforth.
-  function updateDeposit(Staker.DepositIdentifier _newDepositId) public {
+  function updateDeposit(Staker.DepositIdentifier _newDepositId) public virtual {
     Staker.DepositIdentifier _oldDepositId = _updateDeposit(msg.sender, _newDepositId);
     _emitDepositUpdatedEvent(msg.sender, _oldDepositId, _newDepositId);
   }
@@ -488,7 +488,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   /// @param _amount The quantity of tokens that will be staked.
   /// @dev The increase in the holder's balance after staking may be slightly less than the amount staked due to
   /// rounding.
-  function stake(uint256 _amount) external returns (uint256) {
+  function stake(uint256 _amount) external virtual returns (uint256) {
     STAKE_TOKEN.safeTransferFrom(msg.sender, address(this), _amount);
     _emitStakedEvent(msg.sender, _amount);
     _emitTransferEvent(address(0), msg.sender, _amount);
@@ -502,7 +502,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   /// @param _amount The quantity of tokens that will be staked.
   /// @param _referrer The address the holder is declaring has referred them to the LST. It will be emitted in an
   /// attribution event, but not otherwise used.
-  function stakeWithAttribution(uint256 _amount, address _referrer) external returns (uint256) {
+  function stakeWithAttribution(uint256 _amount, address _referrer) external virtual returns (uint256) {
     Staker.DepositIdentifier _depositId = _calcDepositId(holderStates[msg.sender]);
     emit StakedWithAttribution(_depositId, _amount, _referrer);
     STAKE_TOKEN.safeTransferFrom(msg.sender, address(this), _amount);
@@ -515,7 +515,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   /// the default deposit, if any are present, then from holder's specified deposit if any are needed.
   /// @param _amount The amount of tokens to unstake.
   /// @dev The amount of tokens actually unstaked may be slightly less than the amount specified due to rounding.
-  function unstake(uint256 _amount) external returns (uint256) {
+  function unstake(uint256 _amount) external virtual returns (uint256) {
     _emitUnstakedEvent(msg.sender, _amount);
     _emitTransferEvent(msg.sender, address(0), _amount);
     return _unstake(msg.sender, _amount);
@@ -575,7 +575,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   /// sender's specified deposit, if any are needed. All tokens are moved into the receiver's specified deposit.
   /// @dev The amount of tokens received by the user can be slightly less than the amount lost by the sender.
   /// Furthermore, both amounts can be less the value requested by the sender. All such effects are due to truncation.
-  function transfer(address _to, uint256 _value) external returns (bool) {
+  function transfer(address _to, uint256 _value) external virtual returns (bool) {
     _emitTransferEvent(msg.sender, _to, _value);
     _transfer(msg.sender, _to, _value);
     return true;
@@ -592,6 +592,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   /// Furthermore, both amounts can be less the value requested by the sender. All such effects are due to truncation.
   function transferAndReturnBalanceDiffs(address _receiver, uint256 _value)
     external
+    virtual
     returns (uint256 _senderBalanceDecrease, uint256 _receiverBalanceIncrease)
   {
     _emitTransferEvent(msg.sender, _receiver, _value);
@@ -608,7 +609,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   /// sender's specified deposit, if any are needed. All tokens are moved into the receiver's specified deposit.
   /// @dev The amount of tokens received by the receiver can be slightly less than the amount lost by the sender.
   /// Furthermore, both amounts can be less the value requested by the sender. All such effects are due to truncation.
-  function transferFrom(address _from, address _to, uint256 _value) external returns (bool) {
+  function transferFrom(address _from, address _to, uint256 _value) external virtual returns (bool) {
     _checkAndUpdateAllowance(_from, _value);
     _emitTransferEvent(_from, _to, _value);
     _transfer(_from, _to, _value);
@@ -628,6 +629,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   /// Furthermore, both amounts can be less the value requested by the sender. All such effects are due to truncation.
   function transferFromAndReturnBalanceDiffs(address _from, address _to, uint256 _value)
     external
+    virtual
     returns (uint256 _senderBalanceDecrease, uint256 _receiverBalanceIncrease)
   {
     _checkAndUpdateAllowance(_from, _value);
@@ -668,7 +670,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
     address _recipient,
     uint256 _minExpectedReward,
     Staker.DepositIdentifier[] calldata _depositIds
-  ) external {
+  ) external virtual {
     RewardParameters memory _rewardParams = rewardParams;
 
     uint256 _feeAmount = _calcFeeAmount(_rewardParams);
@@ -737,7 +739,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   /// @param _amount The quantity of stake tokens that will be sent to the deposit.
   /// @dev Caller must approve the LST contract for at least the `_amount` on the stake token before calling this
   /// method.
-  function subsidizeDeposit(Staker.DepositIdentifier _depositId, uint256 _amount) external {
+  function subsidizeDeposit(Staker.DepositIdentifier _depositId, uint256 _amount) external virtual {
     STAKE_TOKEN.safeTransferFrom(msg.sender, address(this), _amount);
 
     // This will revert if the deposit is not owned by this contract
@@ -752,7 +754,10 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   /// @param _depositId The id of the deposit to override the delegatee.
   /// @param _tipReceiver The address that receives the reward for carrying out the override action.
   /// @param _requestedTip The amount to reward the tip receiver for carrying out the override action.
-  function enactOverride(Staker.DepositIdentifier _depositId, address _tipReceiver, uint160 _requestedTip) external {
+  function enactOverride(Staker.DepositIdentifier _depositId, address _tipReceiver, uint160 _requestedTip)
+    external
+    virtual
+  {
     _revertIfGreaterThanMaxTip(_requestedTip);
     (uint96 _balance,, uint96 _earningPower,,,,) = STAKER.deposits(_depositId);
     Staker.DepositIdentifier _defaultDepositId = depositForDelegatee(defaultDelegatee);
@@ -789,7 +794,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
     address _originalDelegatee,
     address _tipReceiver,
     uint160 _requestedTip
-  ) external {
+  ) external virtual {
     _revertIfGreaterThanMaxTip(_requestedTip);
     if (!_isSameDepositId(storedDepositIdForDelegatee[_originalDelegatee], _depositId) || !isOverridden[_depositId]) {
       revert GovLst__InvalidOverride();
@@ -824,7 +829,10 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   /// @param _depositId The id of the deposit in the override state.
   /// @param _tipReceiver The address that receives the reward for carrying out the migrate action.
   /// @param _requestedTip The amount to reward the tip receiver for carrying out the migrate action.
-  function migrateOverride(Staker.DepositIdentifier _depositId, address _tipReceiver, uint160 _requestedTip) external {
+  function migrateOverride(Staker.DepositIdentifier _depositId, address _tipReceiver, uint160 _requestedTip)
+    external
+    virtual
+  {
     // Requested tip cannot be above the max tip
     _revertIfGreaterThanMaxTip(_requestedTip);
     // Deposit must be overridden
@@ -850,7 +858,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
 
   /// @notice Sets the reward parameters including payout amount, fee in bips, and fee collector.
   /// @param _params The new reward parameters.
-  function setRewardParameters(RewardParameters memory _params) external {
+  function setRewardParameters(RewardParameters memory _params) external virtual {
     _checkOwner();
     _setRewardParams(_params.payoutAmount, _params.feeBips, _params.feeCollector);
   }
@@ -859,7 +867,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   /// @param _maxOverrideTip The new maximum requested tip an overrider can request.
   /// @dev Keep in mind that this value is in tokens and must be converted into shares. The conversion into shares can
   /// lead to overflow errors if the maximum tip is too high.
-  function setMaxOverrideTip(uint256 _maxOverrideTip) external {
+  function setMaxOverrideTip(uint256 _maxOverrideTip) external virtual {
     _checkOwner();
     if (MAXIMUM_MAX_OVERRIDE_TIP < _maxOverrideTip) {
       revert GovLst__InvalidParameter();
@@ -870,7 +878,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   /// @notice Sets the minimum qualifying earning power amount in bips (1/10,000). This value determines whether a
   /// deposits delegatee needs to be overridden because it isn't earning enough of its possible staking rewards.
   /// @param _minQualifyingEarningPowerBips The new minimum qualifying earning power amount in bips (1/10,000).
-  function setMinQualifyingEarningPowerBips(uint256 _minQualifyingEarningPowerBips) external {
+  function setMinQualifyingEarningPowerBips(uint256 _minQualifyingEarningPowerBips) external virtual {
     _checkOwner();
     if (MAXIMUM_MINIMUM_QUALIFYING_EARNING_POWER_BIPS < _minQualifyingEarningPowerBips) {
       revert GovLst__InvalidParameter();
@@ -881,7 +889,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   /// @notice Update the default delegatee. Can only be called by the delegatee guardian or by the LST owner. Once the
   /// guardian takes an action on the LST, the owner can no longer override it.
   /// @param _newDelegatee The address which will be assigned as the delegatee for the default staker deposit.
-  function setDefaultDelegatee(address _newDelegatee) external {
+  function setDefaultDelegatee(address _newDelegatee) external virtual {
     _checkAndToggleGuardianControlOrOwner();
     _setDefaultDelegatee(_newDelegatee);
     STAKER.alterDelegatee(DEFAULT_DEPOSIT_ID, _newDelegatee);
@@ -890,7 +898,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   /// @notice Update the delegatee guardian. Can only be called by the delegatee guardian or by the LST owner. Once the
   /// guardian takes an action on the LST, the owner can no longer override it.
   /// @param _newDelegateeGuardian The address which will become the new delegatee guardian.
-  function setDelegateeGuardian(address _newDelegateeGuardian) external {
+  function setDelegateeGuardian(address _newDelegateeGuardian) external virtual {
     _checkAndToggleGuardianControlOrOwner();
     _setDelegateeGuardian(_newDelegateeGuardian);
   }
@@ -905,6 +913,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   /// moved.
   function updateFixedDeposit(address _account, Staker.DepositIdentifier _newDepositId)
     external
+    virtual
     returns (Staker.DepositIdentifier _oldDepositId)
   {
     _revertIfNotFixedLst();
@@ -916,7 +925,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   /// @param _account The holder staking in the fixed LST.
   /// @param _amount The quantity of tokens that will be staked in the fixed LST.
   /// @return The number of _shares_ received by the holder's fixed alias address.
-  function stakeAndConvertToFixed(address _account, uint256 _amount) external returns (uint256) {
+  function stakeAndConvertToFixed(address _account, uint256 _amount) external virtual returns (uint256) {
     _revertIfNotFixedLst();
     uint256 _initialShares = holderStates[_account.fixedAlias()].shares;
 
@@ -935,7 +944,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   /// @param _account The holder converting rebasing LST tokens into fixed LST tokens.
   /// @param _amount The number of rebasing LST tokens to convert.
   /// @return The number of _shares_ received by the holder's fixed alias address.
-  function convertToFixed(address _account, uint256 _amount) external returns (uint256) {
+  function convertToFixed(address _account, uint256 _amount) external virtual returns (uint256) {
     _revertIfNotFixedLst();
     uint256 _initialShares = holderStates[_account.fixedAlias()].shares;
 
@@ -955,6 +964,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   /// @return _receiverSharesIncrease The increase in the receiver alias address' shares.
   function transferFixed(address _sender, address _receiver, uint256 _shares)
     external
+    virtual
     returns (uint256 _senderSharesDecrease, uint256 _receiverSharesIncrease)
   {
     _revertIfNotFixedLst();
@@ -973,7 +983,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   /// @param _shares The number of _shares_ worth of rebasing LST tokens to be moved from the holder's fixed alias
   /// to their standard address.
   /// @return The number of rebasing LST tokens moved back into the holder's address.
-  function convertToRebasing(address _account, uint256 _shares) external returns (uint256) {
+  function convertToRebasing(address _account, uint256 _shares) external virtual returns (uint256) {
     _revertIfNotFixedLst();
     uint256 _amount = stakeForShares(_shares);
     uint256 _amountUnfixed;
@@ -993,7 +1003,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   /// @return The number of governance tokens unstaked.
   /// @dev If their is a withdrawal delay being enforced, the tokens will be moved into the withdrawal gate on behalf
   /// of the holder's account, not his alias.
-  function convertToRebasingAndUnstake(address _account, uint256 _shares) external returns (uint256) {
+  function convertToRebasingAndUnstake(address _account, uint256 _shares) external virtual returns (uint256) {
     _revertIfNotFixedLst();
     uint256 _amount = stakeForShares(_shares);
     uint256 _amountUnfixed;
@@ -1029,7 +1039,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   /// @param _amount The quantity of stake token that will be converted to a number of shares.
   /// @param _totals The metadata representing current global conditions.
   /// @return The quantity of shares that is worth the provided quantity of stake token.
-  function _calcSharesForStake(uint256 _amount, Totals memory _totals) internal pure returns (uint256) {
+  function _calcSharesForStake(uint256 _amount, Totals memory _totals) internal pure virtual returns (uint256) {
     if (_totals.supply == 0) {
       return SHARE_SCALE_FACTOR * _amount;
     }
@@ -1044,7 +1054,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   /// @param _amount The quantity of stake token that will be converted to a number of shares.
   /// @param _totals The metadata representing current global conditions.
   /// @return The quantity of shares that is worth the provided quantity of stake token, __rounded up__.
-  function _calcSharesForStakeUp(uint256 _amount, Totals memory _totals) internal pure returns (uint256) {
+  function _calcSharesForStakeUp(uint256 _amount, Totals memory _totals) internal pure virtual returns (uint256) {
     uint256 _result = _calcSharesForStake(_amount, _totals);
 
     if (mulmod(_amount, _totals.shares, _totals.supply) > 0) {
@@ -1060,7 +1070,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   /// @param _amount The quantity of shares that will be converted to stake tokens.
   /// @param _totals The metadata representing current global conditions.
   /// @return The quantity of stake tokens which backs the provide quantity of shares.
-  function _calcStakeForShares(uint256 _amount, Totals memory _totals) internal pure returns (uint256) {
+  function _calcStakeForShares(uint256 _amount, Totals memory _totals) internal pure virtual returns (uint256) {
     if (_totals.shares == 0) {
       return _amount / SHARE_SCALE_FACTOR;
     }
@@ -1073,7 +1083,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   /// @param _holder The metadata associated with a given holder.
   /// @param _totals The metadata representing current global conditions.
   /// @return The calculated balance of the holder given the global conditions.
-  function _calcBalanceOf(HolderState memory _holder, Totals memory _totals) internal pure returns (uint256) {
+  function _calcBalanceOf(HolderState memory _holder, Totals memory _totals) internal pure virtual returns (uint256) {
     if (_holder.shares == 0) {
       return 0;
     }
@@ -1083,7 +1093,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
 
   /// @notice Internal helper method that takes the metadata representing an LST holder and returns the staker
   /// deposit identifier that holder has assigned his voting weight to.
-  function _calcDepositId(HolderState memory _holder) internal view returns (Staker.DepositIdentifier) {
+  function _calcDepositId(HolderState memory _holder) internal view virtual returns (Staker.DepositIdentifier) {
     if (_holder.depositId == 0) {
       return DEFAULT_DEPOSIT_ID;
     } else {
@@ -1094,6 +1104,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   function _calcFeeShares(uint256 _feeAmount, uint256 _newTotalSupply, uint256 _totalShares)
     internal
     pure
+    virtual
     returns (uint160)
   {
     return SafeCast.toUint160((uint256(_feeAmount) * _totalShares) / (_newTotalSupply - _feeAmount));
@@ -1104,6 +1115,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   /// @dev See public updateDeposit methods for additional documentation.
   function _updateDeposit(address _account, Staker.DepositIdentifier _newDepositId)
     internal
+    virtual
     returns (Staker.DepositIdentifier _oldDepositId)
   {
     // Read required state from storage once.
@@ -1168,7 +1180,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
     address _account,
     Staker.DepositIdentifier _oldDepositId,
     Staker.DepositIdentifier _newDepositId
-  ) internal {
+  ) internal virtual {
     emit DepositUpdated(_account, _oldDepositId, _newDepositId);
   }
 
@@ -1176,7 +1188,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   /// @dev This method must only be called after proper authorization has been completed.
   /// @dev See public stake methods for additional documentation.
   /// @return The difference in LST token balance of the account after the stake operation.
-  function _stake(address _account, uint256 _amount) internal returns (uint256) {
+  function _stake(address _account, uint256 _amount) internal virtual returns (uint256) {
     // Read required state from storage once.
     Totals memory _totals = totals;
     HolderState memory _holderState = holderStates[_account];
@@ -1205,7 +1217,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   }
 
   /// @notice Internal helper method that emits a Staked event with the parameters provided.
-  function _emitStakedEvent(address _account, uint256 _amount) internal {
+  function _emitStakedEvent(address _account, uint256 _amount) internal virtual {
     emit Staked(_account, _amount);
   }
 
@@ -1214,7 +1226,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   /// @dev See public unstake methods for additional documentation.
   /// @return The amount of LST tokens unstaked and either transferred to the user directly or placed in the withdrawal
   /// gate.
-  function _unstake(address _account, uint256 _amount) internal returns (uint256) {
+  function _unstake(address _account, uint256 _amount) internal virtual returns (uint256) {
     // Read required state from storage once.
     Totals memory _totals = totals;
     HolderState memory _holderState = holderStates[_account];
@@ -1278,7 +1290,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   }
 
   /// @notice Internal helper method that emits an Unstaked event with the parameters provided.
-  function _emitUnstakedEvent(address _account, uint256 _amount) internal {
+  function _emitUnstakedEvent(address _account, uint256 _amount) internal virtual {
     emit Unstaked(_account, _amount);
   }
 
@@ -1286,7 +1298,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   /// @dev This method must only be called after proper authorization has been completed.
   /// @dev See public transfer methods for additional documentation.
   /// @return A tuple containing the sender's balance decrease and the receiver's balance increase in that order.
-  function _transfer(address _sender, address _receiver, uint256 _value) internal returns (uint256, uint256) {
+  function _transfer(address _sender, address _receiver, uint256 _value) internal virtual returns (uint256, uint256) {
     // Early check for self-transfer
     if (_sender == _receiver) {
       emit Transfer(_sender, _receiver, _value);
@@ -1401,7 +1413,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   }
 
   /// @notice Internal helper method that emits an IERC20.Transfer event with the parameters provided.
-  function _emitTransferEvent(address _sender, address _receiver, uint256 _value) internal {
+  function _emitTransferEvent(address _sender, address _receiver, uint256 _value) internal virtual {
     emit Transfer(_sender, _receiver, _value);
   }
 
@@ -1409,7 +1421,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   /// @param _payoutAmount The new payout amount
   /// @param _feeBips The new fee in basis points
   /// @param _feeCollector The new fee collector address
-  function _setRewardParams(uint80 _payoutAmount, uint16 _feeBips, address _feeCollector) internal {
+  function _setRewardParams(uint80 _payoutAmount, uint16 _feeBips, address _feeCollector) internal virtual {
     if (_feeBips > MAX_FEE_BIPS) {
       revert GovLst__FeeBipsExceedMaximum(_feeBips, MAX_FEE_BIPS);
     }
@@ -1424,25 +1436,25 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   }
 
   /// @notice Internal helper method that sets the max override tip and emits an event.
-  function _setMaxOverrideTip(uint256 _maxOverrideTip) internal {
+  function _setMaxOverrideTip(uint256 _maxOverrideTip) internal virtual {
     emit MaxOverrideTipSet(maxOverrideTip, _maxOverrideTip);
     maxOverrideTip = _maxOverrideTip;
   }
 
   /// @notice Internal helper method that sets the min qualifying earning power and emits an event.
-  function _setMinQualifyingEarningPowerBips(uint256 _minQualifyingEarningPowerBips) internal {
+  function _setMinQualifyingEarningPowerBips(uint256 _minQualifyingEarningPowerBips) internal virtual {
     emit MinQualifyingEarningPowerBipsSet(minQualifyingEarningPowerBips, _minQualifyingEarningPowerBips);
     minQualifyingEarningPowerBips = _minQualifyingEarningPowerBips;
   }
 
   /// @notice Internal helper method that sets the delegatee and emits an event.
-  function _setDefaultDelegatee(address _newDelegatee) internal {
+  function _setDefaultDelegatee(address _newDelegatee) internal virtual {
     emit DefaultDelegateeSet(defaultDelegatee, _newDelegatee);
     defaultDelegatee = _newDelegatee;
   }
 
   /// @notice Internal helper method that sets the guardian and emits an event.
-  function _setDelegateeGuardian(address _newDelegateeGuardian) internal {
+  function _setDelegateeGuardian(address _newDelegateeGuardian) internal virtual {
     emit DelegateeGuardianSet(delegateeGuardian, _newDelegateeGuardian);
     delegateeGuardian = _newDelegateeGuardian;
   }
@@ -1451,7 +1463,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   /// message sender does not have sufficient allowance.
   /// @param _from The address for which the message sender's allowance should be checked & updated.
   /// @param _value The amount of the allowance to check and decrement.
-  function _checkAndUpdateAllowance(address _from, uint256 _value) internal {
+  function _checkAndUpdateAllowance(address _from, uint256 _value) internal virtual {
     uint256 allowed = allowance[_from][msg.sender];
     if (allowed != type(uint256).max) {
       allowance[_from][msg.sender] = allowed - _value;
@@ -1461,7 +1473,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   /// @notice Internal helper to compensate a receiver in shares based on a provided token amount.
   /// @param  _feeAmount The amount of tokens to convert to shares while diluting other shareholders.
   /// @param _feeReceiver The address that will receives the shares.
-  function _transferFeeInShares(uint256 _feeAmount, address _feeReceiver) internal returns (uint160) {
+  function _transferFeeInShares(uint256 _feeAmount, address _feeReceiver) internal virtual returns (uint160) {
     Totals memory _totals = totals;
     uint160 _feeShares = _calcFeeShares(_feeAmount, _totals.supply, _totals.shares);
     totals.shares += _feeShares;
@@ -1473,7 +1485,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   /// reverts otherwise. If the caller is the owner, it also validates the guardian has never performed an action
   /// before, and reverts if it has. If the caller is the guardian, it toggles the guardian control flag to true if it
   /// hasn't yet been.
-  function _checkAndToggleGuardianControlOrOwner() internal {
+  function _checkAndToggleGuardianControlOrOwner() internal virtual {
     if (msg.sender != owner() && msg.sender != delegateeGuardian) {
       revert GovLst__Unauthorized();
     }
@@ -1486,7 +1498,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   }
 
   /// @notice Internal helper which reverts if the caller is not the fixed lst contract.
-  function _revertIfNotFixedLst() internal view {
+  function _revertIfNotFixedLst() internal view virtual {
     if (msg.sender != address(FIXED_LST)) {
       revert GovLst__Unauthorized();
     }
@@ -1494,7 +1506,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
 
   /// @notice Internal helper which reverts if the tip is greater than the max tip.
   /// @param _tip The tip amount to check against the max tip.
-  function _revertIfGreaterThanMaxTip(uint256 _tip) internal view {
+  function _revertIfGreaterThanMaxTip(uint256 _tip) internal view virtual {
     if (_tip > maxOverrideTip) {
       revert GovLst__GreaterThanMaxTip();
     }
@@ -1523,7 +1535,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   /// @notice Internal helper function to calculate the fee amount based on the payout amount and fee percentage.
   /// @param _rewardParams The reward parameters containing payout amount and fee percentage.
   /// @return The calculated fee amount.
-  function _calcFeeAmount(RewardParameters memory _rewardParams) internal pure returns (uint256) {
+  function _calcFeeAmount(RewardParameters memory _rewardParams) internal pure virtual returns (uint256) {
     return (uint256(_rewardParams.payoutAmount) * uint256(_rewardParams.feeBips)) / BIPS;
   }
 
@@ -1534,6 +1546,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   function _isSameDepositId(Staker.DepositIdentifier _depositIdA, Staker.DepositIdentifier _depositIdB)
     internal
     pure
+    virtual
     returns (bool)
   {
     return Staker.DepositIdentifier.unwrap(_depositIdA) == Staker.DepositIdentifier.unwrap(_depositIdB);
@@ -1542,12 +1555,12 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   /// @notice Internal helper function to convert a Staker DepositIdentifier to a uint32
   /// @param _depositId The DepositIdentifier to convert
   /// @return The uint32 representation of the DepositIdentifier
-  function _depositIdToUInt32(Staker.DepositIdentifier _depositId) private pure returns (uint32) {
+  function _depositIdToUInt32(Staker.DepositIdentifier _depositId) internal pure virtual returns (uint32) {
     return SafeCast.toUint32(Staker.DepositIdentifier.unwrap(_depositId));
   }
 
   /// @notice Internal helper that returns the lesser of the two parameters passed.
-  function _min(uint96 _a, uint96 _b) internal pure returns (uint96) {
+  function _min(uint96 _a, uint96 _b) internal pure virtual returns (uint96) {
     return (_a < _b) ? _a : _b;
   }
 }
