@@ -233,10 +233,10 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   uint16 public constant MAX_FEE_BIPS = 2000;
 
   /// @notice Maximum BIPs value for minimum qualifying earning power BIPs.
-  uint256 public immutable MAXIMUM_MINIMUM_QUALIFYING_EARNING_POWER_BIPS = 20_000;
+  uint256 public immutable MINIMUM_QUALIFYING_EARNING_POWER_BIPS_CAP = 20_000;
 
   /// @notice Maximum value to set the max override tip.
-  uint256 public immutable MAXIMUM_MAX_OVERRIDE_TIP = 2000e18;
+  uint256 public immutable MAX_OVERRIDE_TIP_CAP = 2000e18;
 
   /// @notice The global total supply and total shares for the LST.
   Totals internal totals;
@@ -294,7 +294,9 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
     address _initialOwner,
     uint80 _initialPayoutAmount,
     address _initialDelegateeGuardian,
-    uint256 _stakeToBurn
+    uint256 _stakeToBurn,
+    uint256 _maxOverrideTip,
+    uint256 _minQualifyingEarningPowerBips
   ) Ownable(_initialOwner) EIP712(string.concat("Rebased ", _name), _version) {
     STAKER = _staker;
     STAKE_TOKEN = IERC20(_staker.STAKE_TOKEN());
@@ -305,6 +307,8 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
     _setDefaultDelegatee(_initialDefaultDelegatee);
     _setRewardParams(_initialPayoutAmount, 0, _initialOwner);
     _setDelegateeGuardian(_initialDelegateeGuardian);
+    _setMaxOverrideTip(_maxOverrideTip);
+    _setMinQualifyingEarningPowerBips(_minQualifyingEarningPowerBips);
 
     STAKE_TOKEN.approve(address(_staker), type(uint256).max);
     // Create initial deposit for default so other methods can assume it exists.
@@ -869,7 +873,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   /// lead to overflow errors if the maximum tip is too high.
   function setMaxOverrideTip(uint256 _maxOverrideTip) external virtual {
     _checkOwner();
-    if (MAXIMUM_MAX_OVERRIDE_TIP < _maxOverrideTip) {
+    if (MAX_OVERRIDE_TIP_CAP < _maxOverrideTip) {
       revert GovLst__InvalidParameter();
     }
     _setMaxOverrideTip(_maxOverrideTip);
@@ -880,7 +884,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   /// @param _minQualifyingEarningPowerBips The new minimum qualifying earning power amount in bips (1/10,000).
   function setMinQualifyingEarningPowerBips(uint256 _minQualifyingEarningPowerBips) external virtual {
     _checkOwner();
-    if (MAXIMUM_MINIMUM_QUALIFYING_EARNING_POWER_BIPS < _minQualifyingEarningPowerBips) {
+    if (MINIMUM_QUALIFYING_EARNING_POWER_BIPS_CAP < _minQualifyingEarningPowerBips) {
       revert GovLst__InvalidParameter();
     }
     _setMinQualifyingEarningPowerBips(_minQualifyingEarningPowerBips);

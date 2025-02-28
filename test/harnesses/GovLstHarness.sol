@@ -18,7 +18,9 @@ contract GovLstHarness is GovLst, GovLstOnBehalf, GovLstPermitAndStake {
     address _initialOwner,
     uint80 _initialPayoutAmount,
     address _initialDelegateeGuardian,
-    uint256 _stakeToBurn
+    uint256 _stakeToBurn,
+    uint256 _maxOverrideTip,
+    uint256 _minQualifyingEarningPowerBips
   )
     GovLst(
       _name,
@@ -29,7 +31,9 @@ contract GovLstHarness is GovLst, GovLstOnBehalf, GovLstPermitAndStake {
       _initialOwner,
       _initialPayoutAmount,
       _initialDelegateeGuardian,
-      _stakeToBurn
+      _stakeToBurn,
+      _maxOverrideTip,
+      _minQualifyingEarningPowerBips
     )
   {}
 

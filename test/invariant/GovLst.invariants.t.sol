@@ -20,6 +20,7 @@ contract GovStakerInvariants is Test, UnitTestBase {
   GovLst lst;
   address lstOwner;
   uint80 initialPayoutAmount = 2500e18;
+  uint256 maxTip = 1e18; // Higher values cause overflow issues
 
   // vars for reducers
   Staker.DepositIdentifier public currentId;
@@ -57,7 +58,7 @@ contract GovStakerInvariants is Test, UnitTestBase {
 
     // Finally, deploy the lst for tests.
     lst = new GovLstHarness(
-      "Gov Lst", "stGov", staker, defaultDelegatee, lstOwner, initialPayoutAmount, delegateeGuardian, 0
+      "Gov Lst", "stGov", staker, defaultDelegatee, lstOwner, initialPayoutAmount, delegateeGuardian, 0, maxTip, 0
     );
 
     // Set the withdrawal delay to a non-zero amount
