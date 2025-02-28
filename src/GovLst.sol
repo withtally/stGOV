@@ -298,7 +298,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
     address _initialOwner,
     uint80 _initialPayoutAmount,
     address _initialDelegateeGuardian,
-    uint64 _stakeToBurn,
+    uint256 _stakeToBurn,
     uint256 _maxOverrideTip,
     uint256 _minQualifyingEarningPowerBips
   ) Ownable(_initialOwner) EIP712(string.concat("Rebased ", _name), _version) {
