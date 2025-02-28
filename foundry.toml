@@ -18,7 +18,7 @@
 
 [profile.ci]
   fuzz = { runs = 3000 }
-  invariant = { runs = 1 }
+  invariant = { runs = 100 }
   optimizer = false
 
 [profile.prod]
@@ -36,8 +36,8 @@
 
 [invariant]
   call_override = false
-  depth = 100
-  dictionary_weight = 80
+  depth = 50
+  dictionary_weight = 40
   fail_on_revert = false
   include_push_bytes = true
   include_storage = true
