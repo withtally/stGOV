@@ -58,7 +58,21 @@ contract GovStakerInvariants is Test, UnitTestBase {
 
     // Finally, deploy the lst for tests.
     lst = new GovLstHarness(
-      "Gov Lst", "stGov", staker, defaultDelegatee, lstOwner, initialPayoutAmount, delegateeGuardian, 0, maxTip, 0
+      GovLst.ConstructorParams({
+        fixedLstName: "Gov Lst",
+        fixedLstSymbol: "stGov",
+        rebasingLstName: "Rebased Gov Lst",
+        rebasingLstSymbol: "rstGov",
+        version: "2",
+        staker: staker,
+        initialDefaultDelegatee: defaultDelegatee,
+        initialOwner: lstOwner,
+        initialPayoutAmount: initialPayoutAmount,
+        initialDelegateeGuardian: delegateeGuardian,
+        stakeToBurn: 0,
+        maxOverrideTip: maxTip,
+        minQualifyingEarningPowerBips: 0
+      })
     );
 
     // Set the withdrawal delay to a non-zero amount

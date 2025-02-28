@@ -215,6 +215,36 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
     uint96 balanceCheckpoint;
     uint128 shares;
   }
+  /// @param _fixedLstName The name for the fixed liquid stake token.
+  /// @param _fixedLstSymbol The symbol for the fixed liquid stake token.
+  /// @param _rebasingLstName The name for the rebasing liquid stake token.
+  /// @param _rebasingLstSymbol The symbol for the rebasing liquid stake token.
+  /// @param _staker The staker deployment where tokens will be staked.
+  /// @param _initialDefaultDelegatee The initial delegatee to which the default deposit will be delegated.
+  /// @param _initialOwner The address of the initial LST owner.
+  /// @param _initialPayoutAmount The initial amount that must be provided to win the MEV race and claim the LST's
+  /// stake rewards.
+  /// @param _stakeToBurn The stake amount to burn in order to avoid divide by 0 errors. A reasonable value for this
+  /// would be 1e15.
+  /// @param _maxOverrideTip The max tip an overrider can request for performing an override action.
+  /// @param _minQualifyingEarningPowerBips The minimum qualifying earning power amount in BIPs (1/10,000) for a deposit
+  /// to not be overridden.
+
+  struct ConstructorParams {
+    string fixedLstName;
+    string fixedLstSymbol;
+    string rebasingLstName;
+    string rebasingLstSymbol;
+    string version;
+    Staker staker;
+    address initialDefaultDelegatee;
+    address initialOwner;
+    uint80 initialPayoutAmount;
+    address initialDelegateeGuardian;
+    uint256 stakeToBurn;
+    uint256 maxOverrideTip;
+    uint256 minQualifyingEarningPowerBips;
+  }
 
   /// @notice Type hash used when encoding data for `permit` calls.
   bytes32 public constant PERMIT_TYPEHASH =
@@ -278,51 +308,33 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   /// @notice A mapping used to determine if a deposit's delegatee has been overridden to the default delegatee.
   mapping(Staker.DepositIdentifier depositId => bool isOverridden) public isOverridden;
 
-  /// @param _name The name for the liquid stake token.
-  /// @param _symbol The symbol for the liquid stake token.
-  /// @param _staker The staker deployment where tokens will be staked.
-  /// @param _initialDefaultDelegatee The initial delegatee to which the default deposit will be delegated.
-  /// @param _initialOwner The address of the initial LST owner.
-  /// @param _initialPayoutAmount The initial amount that must be provided to win the MEV race and claim the LST's
-  /// @param _stakeToBurn The stake amount to burn in order to avoid divide by 0 errors. A reasonable value for this
-  /// would be 1e15.
-  /// @param _maxOverrideTip The max tip an overrider can request for performing an override action.
-  /// @param _minQualifyingEarningPowerBips The minimum qualifying earning power amount in BIPs (1/10,000) for a deposit
-  /// to not be overridden.
-  constructor(
-    string memory _name,
-    string memory _symbol,
-    string memory _version,
-    Staker _staker,
-    address _initialDefaultDelegatee,
-    address _initialOwner,
-    uint80 _initialPayoutAmount,
-    address _initialDelegateeGuardian,
-    uint256 _stakeToBurn,
-    uint256 _maxOverrideTip,
-    uint256 _minQualifyingEarningPowerBips
-  ) Ownable(_initialOwner) EIP712(string.concat("Rebased ", _name), _version) {
-    STAKER = _staker;
-    STAKE_TOKEN = IERC20(_staker.STAKE_TOKEN());
-    REWARD_TOKEN = IERC20(_staker.REWARD_TOKEN());
+  constructor(ConstructorParams memory _params)
+    Ownable(_params.initialOwner)
+    EIP712(_params.rebasingLstName, _params.version)
+  {
+    STAKER = _params.staker;
+    STAKE_TOKEN = IERC20(_params.staker.STAKE_TOKEN());
+    REWARD_TOKEN = IERC20(_params.staker.REWARD_TOKEN());
     NAME = _EIP712Name();
-    SYMBOL = string.concat("r", _symbol);
+    SYMBOL = _params.rebasingLstSymbol;
 
-    _setDefaultDelegatee(_initialDefaultDelegatee);
-    _setRewardParams(_initialPayoutAmount, 0, _initialOwner);
-    _setDelegateeGuardian(_initialDelegateeGuardian);
-    _setMaxOverrideTip(_maxOverrideTip);
-    _setMinQualifyingEarningPowerBips(_minQualifyingEarningPowerBips);
+    _setDefaultDelegatee(_params.initialDefaultDelegatee);
+    _setRewardParams(_params.initialPayoutAmount, 0, _params.initialOwner);
+    _setDelegateeGuardian(_params.initialDelegateeGuardian);
+    _setMaxOverrideTip(_params.maxOverrideTip);
+    _setMinQualifyingEarningPowerBips(_params.minQualifyingEarningPowerBips);
 
-    STAKE_TOKEN.approve(address(_staker), type(uint256).max);
+    STAKE_TOKEN.approve(address(_params.staker), type(uint256).max);
     // Create initial deposit for default so other methods can assume it exists.
-    DEFAULT_DEPOSIT_ID = STAKER.stake(0, _initialDefaultDelegatee);
-    STAKE_TOKEN.safeTransferFrom(msg.sender, address(this), _stakeToBurn);
-    _stake(address(this), _stakeToBurn);
+    DEFAULT_DEPOSIT_ID = STAKER.stake(0, _params.initialDefaultDelegatee);
+    STAKE_TOKEN.safeTransferFrom(msg.sender, address(this), _params.stakeToBurn);
+    _stake(address(this), _params.stakeToBurn);
 
     // Deploy the WithdrawGate
-    WITHDRAW_GATE = new WithdrawGate(_initialOwner, address(this), address(STAKE_TOKEN), 0);
-    FIXED_LST = _deployFixedGovLst(_name, _symbol, _version, this, STAKE_TOKEN, SHARE_SCALE_FACTOR);
+    WITHDRAW_GATE = new WithdrawGate(_params.initialOwner, address(this), address(STAKE_TOKEN), 0);
+    FIXED_LST = _deployFixedGovLst(
+      _params.fixedLstName, _params.fixedLstSymbol, _params.version, this, STAKE_TOKEN, SHARE_SCALE_FACTOR
+    );
   }
 
   /// @notice The name of the liquid stake token.
