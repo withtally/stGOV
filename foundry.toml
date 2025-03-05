@@ -8,11 +8,6 @@
   ignored_warnings_from = ["src/interfaces/IWETH9.sol"]
   optimizer = true
   optimizer_runs = 200
-  remappings = [
-    "lib/staker:src=lib/staker/src/",
-    "forge-std/=lib/forge-std/src",
-    "@openzeppelin/contracts/=lib/staker/lib/openzeppelin-contracts/contracts",
-  ]
   solc_version = "0.8.28"
   verbosity = 3
   via-ir = false

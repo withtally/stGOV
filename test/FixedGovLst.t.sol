@@ -2,11 +2,11 @@
 pragma solidity ^0.8.23;
 
 import {console2, stdStorage, StdStorage, stdError, Vm} from "forge-std/Test.sol";
-import {GovLstTest} from "test/GovLst.t.sol";
-import {Staker} from "../lib/staker/src/Staker.sol";
-import {FixedGovLst} from "src/FixedGovLst.sol";
-import {FixedGovLstHarness} from "test/harnesses/FixedGovLstHarness.sol";
-import {FixedLstAddressAlias} from "src/FixedLstAddressAlias.sol";
+import {GovLstTest} from "./GovLst.t.sol";
+import {FixedGovLst} from "../src/FixedGovLst.sol";
+import {FixedGovLstHarness} from "./harnesses/FixedGovLstHarness.sol";
+import {FixedLstAddressAlias} from "../src/FixedLstAddressAlias.sol";
+import {Staker} from "staker/Staker.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ERC20Votes} from "@openzeppelin/contracts/token/ERC20/extensions/ERC20Votes.sol";
 import {ERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/ERC20Permit.sol";

@@ -4,13 +4,13 @@ pragma solidity ^0.8.23;
 import {Test, console2} from "forge-std/Test.sol";
 import {GovLst} from "../../src/GovLst.sol";
 import {GovLstHandler} from "./GovLst.handler.sol";
-import {GovLstHarness} from "test/harnesses/GovLstHarness.sol";
-import {UnitTestBase} from "test/UnitTestBase.sol";
-import {Staker} from "../../lib/staker/src/Staker.sol";
+import {GovLstHarness} from "../harnesses/GovLstHarness.sol";
+import {UnitTestBase} from "../UnitTestBase.sol";
 import {MockFullEarningPowerCalculator} from "test/mocks/MockFullEarningPowerCalculator.sol";
-import {FakeStaker} from "test/fakes/FakeStaker.sol";
+import {FakeStaker} from "../fakes/FakeStaker.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {IERC20Staking} from "../../lib/staker/src/interfaces/IERC20Staking.sol";
+import {Staker} from "staker/Staker.sol";
+import {IERC20Staking} from "staker/interfaces/IERC20Staking.sol";
 
 contract GovStakerInvariants is Test, UnitTestBase {
   GovLstHandler handler;

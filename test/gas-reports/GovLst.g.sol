@@ -4,7 +4,7 @@ pragma solidity ^0.8.23;
 import {GasReport} from "./GasReport.sol";
 import {GovLst} from "../../src/GovLst.sol";
 import {WithdrawGate} from "../../src/WithdrawGate.sol";
-import {Staker} from "../../lib/staker/src/Staker.sol";
+import {Staker} from "staker/Staker.sol";
 import {GovLstTest} from "../GovLst.t.sol";
 
 contract GovLstGasReport is GovLstTest, GasReport {

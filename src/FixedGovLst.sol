@@ -3,7 +3,7 @@ pragma solidity ^0.8.23;
 
 import {GovLst} from "./GovLst.sol";
 import {FixedLstAddressAlias} from "./FixedLstAddressAlias.sol";
-import {Staker} from "../lib/staker/src/Staker.sol";
+import {Staker} from "staker/Staker.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/interfaces/IERC20Metadata.sol";

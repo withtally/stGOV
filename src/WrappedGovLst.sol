@@ -4,7 +4,7 @@ pragma solidity ^0.8.23;
 import {ERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/ERC20Permit.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {GovLst} from "./GovLst.sol";
-import {Staker} from "../lib/staker/src/Staker.sol";
+import {Staker} from "staker/Staker.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 /// @title WrappedGovLst

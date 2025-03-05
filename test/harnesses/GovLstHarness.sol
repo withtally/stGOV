@@ -5,8 +5,8 @@ import {GovLst} from "../../src/GovLst.sol";
 import {GovLstOnBehalf} from "../../src/extensions/GovLstOnBehalf.sol";
 import {GovLstPermitAndStake} from "../../src/extensions/GovLstPermitAndStake.sol";
 import {FixedGovLst} from "../../src/FixedGovLst.sol";
-import {Staker} from "../../lib/staker/src/Staker.sol";
 import {FixedGovLstHarness} from "./FixedGovLstHarness.sol";
+import {Staker} from "staker/Staker.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 contract GovLstHarness is GovLst, GovLstOnBehalf, GovLstPermitAndStake {
