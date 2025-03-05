@@ -2,7 +2,7 @@
 pragma solidity ^0.8.23;
 
 import {Test} from "forge-std/Test.sol";
-import {Staker} from "../../lib/staker/src/Staker.sol";
+import {Staker} from "staker/Staker.sol";
 
 contract TestHelpers is Test {
   function _assumeSafeMockAddress(address _address) internal pure {

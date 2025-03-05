@@ -2,7 +2,7 @@
 pragma solidity ^0.8.23;
 
 import {GasReport} from "./GasReport.sol";
-import {Staker} from "../../lib/staker/src/Staker.sol";
+import {Staker} from "staker/Staker.sol";
 import {FixedLstAddressAlias} from "../../src/FixedLstAddressAlias.sol";
 import {FixedGovLstTest} from "../FixedGovLst.t.sol";
 

@@ -10,7 +10,7 @@ import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 import {Nonces} from "@openzeppelin/contracts/utils/Nonces.sol";
 import {Multicall} from "@openzeppelin/contracts/utils/Multicall.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
-import {Staker} from "../lib/staker/src/Staker.sol";
+import {Staker} from "staker/Staker.sol";
 import {WithdrawGate} from "./WithdrawGate.sol";
 import {FixedGovLst} from "./FixedGovLst.sol";
 import {FixedLstAddressAlias} from "./FixedLstAddressAlias.sol";

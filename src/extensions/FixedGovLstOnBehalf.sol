@@ -2,7 +2,7 @@
 pragma solidity ^0.8.23;
 
 import {FixedGovLst} from "../FixedGovLst.sol";
-import {Staker} from "../../lib/staker/src/Staker.sol";
+import {Staker} from "staker/Staker.sol";
 import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 
 /// @title FixedGovLstOnBehalf

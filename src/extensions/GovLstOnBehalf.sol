@@ -2,7 +2,7 @@
 pragma solidity ^0.8.23;
 
 import {GovLst} from "../GovLst.sol";
-import {Staker} from "../../lib/staker/src/Staker.sol";
+import {Staker} from "staker/Staker.sol";
 import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
