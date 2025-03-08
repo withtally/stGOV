@@ -483,43 +483,43 @@ contract GovLstTest is UnitTestBase, PercentAssertions, TestHelpers, Eip712Helpe
   }
 
   // Example POC test - replace with your own vulnerability demonstration
-  function test_POC() public { 
+  function test_POC() public {
     address user1 = makeAddr("User 1");
     address attacker = makeAddr("Attacker");
 
     // ========== SETUP ==========
     // Configure the initial conditions for the vulnerability
-    
+
     uint256 stakeAmount = 1000e18;
     _mintStakeToken(user1, stakeAmount);
     _stake(user1, stakeAmount);
     assertEq(lst.balanceOf(user1), stakeAmount, "User1 should have 1000 LST tokens");
-      
+
     // Distribute a reward
     _distributeReward(100e18);
-    
+
     // Advance time to simulate passing of time
     _advanceTime(1 days);
-    
+
     // ========== EXPLOIT ==========
     // Demonstrate the vulnerability here
-    
+
     vm.startPrank(attacker);
     // Replace with your exploit code
     // Example: stakeToken.approve(address(lst), 100e18);
     //          lst.stake(100e18);
     vm.stopPrank();
-    
+
     // For demonstration, we'll just do a simple check
     // In a real POC, this would be replaced with the actual exploit
-    
+
     // ========== VERIFICATION ==========
     // Verify that the exploit worked using assertions
-    
+
     // Example verification (replace with actual exploit verification)
     uint256 user1BalanceAfter = lst.balanceOf(user1);
     assertGt(user1BalanceAfter, 1000e18, "User1 balance should have increased due to rewards");
-    
+
     // In a real exploit, you would assert conditions that prove the vulnerability
     // Example: assertEq(stakeToken.balanceOf(attacker), expectedValue);
   }
