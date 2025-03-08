@@ -483,7 +483,7 @@ contract GovLstTest is UnitTestBase, PercentAssertions, TestHelpers, Eip712Helpe
   }
 
   // Example POC test - replace with your own vulnerability demonstration
-  function testPOC() public { 
+  function test_POC() public { 
     address user1 = makeAddr("User 1");
     address attacker = makeAddr("Attacker");
 
