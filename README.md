@@ -6,14 +6,14 @@ stGov is a convenient liquid token wrapper on top of [Staker](https://github.com
 
 ## How it works
 
-- Stake governance tokens to receive that many `stGov`.
+- Stake governance tokens to receive `stGov`.
 - Optionally, delegate the governance token voting power
 - The `stGov` contract deposits the governance tokens in staker. `stGov` assigns the voting power to the holder's chosen delegate, if any. Otherwise, it assigns the voting power using the default delegation strategy
 - The delegation strategy can be configured by governance. This keeps the default voting power aligned with the DAO and mitigates capture risk.
 - The `stGov` contract claims Staker's rewards daily.
 - The rewards are auctioned off for more of the governance token, which is added to each user's staked position. e.g. a balance of `100 stGov` might grow to `100.5 stGov`.
 
-Holders can redeem their `stGOV` 1:1 for the underlying governance token at any time.
+Holders can redeem their `stGOV` for the underlying governance token at any time.
 
 For further documentation, see [Tally's docs](https://docs.tally.xyz/knowledge-base/staking-on-tally).
 
