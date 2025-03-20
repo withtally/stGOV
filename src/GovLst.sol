@@ -1215,7 +1215,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
     uint256 _newShares = _calcSharesForStake(_amount, _totals);
 
     // cast is safe because we have transferred token amount
-    _totals.supply = _totals.supply + uint96(_amount);
+    _totals.supply = _totals.supply + SafeCast.toUint96(_amount);
     // _newShares cast to uint128 later would fail if overflowed
     _totals.shares = _totals.shares + uint160(_newShares);
 
@@ -1260,7 +1260,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
     _holderState.shares -= _sharesDestroyed.toUint128();
 
     // cast is safe because we've validated user has sufficient balance
-    _totals.supply = _totals.supply - uint96(_amount);
+    _totals.supply = _totals.supply - SafeCast.toUint96(_amount);
     // cast is safe because shares fits into uint128
     _totals.shares = _totals.shares - uint160(_sharesDestroyed);
 
@@ -1341,7 +1341,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
     // Move underlying shares.
     {
       uint256 _shares = _calcSharesForStakeUp(_value, _totals);
-      _senderState.shares -= uint128(_shares);
+      _senderState.shares -= SafeCast.toUint128(_shares);
       _receiverState.shares += uint128(_shares);
     }
 
