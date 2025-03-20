@@ -901,9 +901,6 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   /// @param _minQualifyingEarningPowerBips The new minimum qualifying earning power amount in bips (1/10,000).
   function setMinQualifyingEarningPowerBips(uint256 _minQualifyingEarningPowerBips) external virtual {
     _checkOwner();
-    if (_minQualifyingEarningPowerBips > MINIMUM_QUALIFYING_EARNING_POWER_BIPS_CAP) {
-      revert GovLst__InvalidParameter();
-    }
     _setMinQualifyingEarningPowerBips(_minQualifyingEarningPowerBips);
   }
 
@@ -1464,6 +1461,9 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
 
   /// @notice Internal helper method that sets the min qualifying earning power and emits an event.
   function _setMinQualifyingEarningPowerBips(uint256 _minQualifyingEarningPowerBips) internal virtual {
+    if (_minQualifyingEarningPowerBips > MINIMUM_QUALIFYING_EARNING_POWER_BIPS_CAP) {
+      revert GovLst__InvalidParameter();
+    }
     emit MinQualifyingEarningPowerBipsSet(minQualifyingEarningPowerBips, _minQualifyingEarningPowerBips);
     minQualifyingEarningPowerBips = _minQualifyingEarningPowerBips;
   }
