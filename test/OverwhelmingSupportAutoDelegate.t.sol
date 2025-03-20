@@ -7,8 +7,6 @@ import {GovernorBravoDelegateMock} from "./mocks/GovernorBravoDelegateMock.sol";
 import {OpenZeppelinGovernorMock} from "./mocks/OpenZeppelinGovernorMock.sol";
 import {OverwhelmingSupportAutoDelegateBravoGovernorBlockNumberModeMock} from
   "./mocks/OverwhelmingSupportAutoDelegateBravoGovernorBlockNumberModeMock.sol";
-import {OverwhelmingSupportAutoDelegateBravoGovernorTimestampModeMock} from
-  "./mocks/OverwhelmingSupportAutoDelegateBravoGovernorTimestampModeMock.sol";
 import {OverwhelmingSupportAutoDelegateOZGovernorBlockNumberModeMock} from
   "./mocks/OverwhelmingSupportAutoDelegateOZGovernorBlockNumberModeMock.sol";
 import {OverwhelmingSupportAutoDelegateOZGovernorTimestampModeMock} from
