@@ -3,13 +3,14 @@ pragma solidity ^0.8.23;
 
 import {OverwhelmingSupportAutoDelegate} from "../OverwhelmingSupportAutoDelegate.sol";
 import {IGovernorBravoDelegate} from "../../interfaces/IGovernorBravoDelegate.sol";
+import {BlockNumberClockMode} from "./BlockNumberClockMode.sol";
 
 /// @title AutoDelegateBravoGovernor
 /// @author [ScopeLift](https://scopelift.co)
 /// @notice Extension for the OverwhelmingSupportAutoDelegate that integrates with Compound's Governor Bravo contracts.
 /// @dev This contract provides implementations for the abstract functions in OverwhelmingSupportAutoDelegate
 /// that are specific to Governor Bravo contracts.
-abstract contract AutoDelegateBravoGovernor {
+abstract contract AutoDelegateBravoGovernor is BlockNumberClockMode {
   /// @notice The constant value representing a "For" vote.
   /// @dev Aligns with FOR value in Governor's VoteType enum.
   uint8 public constant FOR = 1;

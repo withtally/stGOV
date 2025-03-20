@@ -7,8 +7,7 @@ import {AutoDelegateBravoGovernor} from "../../src/auto-delegates/extensions/Aut
 
 contract OverwhelmingSupportAutoDelegateBravoGovernorBlockNumberModeMock is
   OverwhelmingSupportAutoDelegate,
-  AutoDelegateBravoGovernor,
-  BlockNumberClockMode
+  AutoDelegateBravoGovernor
 {
   uint256 public constant MIN_VOTING_WINDOW_IN_BLOCKS = 300;
   uint256 public constant MAX_VOTING_WINDOW_IN_BLOCKS = 50_400;
