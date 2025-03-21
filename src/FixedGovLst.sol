@@ -178,6 +178,33 @@ contract FixedGovLst is IERC20, IERC20Metadata, IERC20Permit, Multicall, EIP712,
     return _domainSeparatorV4();
   }
 
+  /// @notice The delegatee to whom the voting weight in the default deposit is delegated.
+  /// @dev This method is a pass through to the method of the same name and signature on the Rebasing LST. It is
+  /// provided here as a convenience for integrators.
+  function defaultDelegatee() external view virtual returns (address) {
+    return LST.defaultDelegatee();
+  }
+
+  /// @notice The stake deposit identifier associated with a given delegatee address.
+  /// @param _delegatee The delegatee in question.
+  /// @return The deposit identifier of the deposit in question.
+  /// @dev This method is a pass through to the method of the same name and signature on the Rebasing LST. It is
+  /// provided here as a convenience for integrators.
+  function depositForDelegatee(address _delegatee) external view virtual returns (Staker.DepositIdentifier) {
+    return LST.depositForDelegatee(_delegatee);
+  }
+
+  /// @notice Returns the deposit identifier managed by the LST for a given delegatee. If that deposit does not yet
+  /// exist, it initializes it. A depositor can call this method if the deposit for their chosen delegatee has not been
+  /// previously initialized.
+  /// @param _delegatee The address of the delegatee.
+  /// @return The deposit identifier of the existing, or newly created, stake deposit for this delegatee.
+  /// @dev This method is a pass through to the method of the same name and signature on the Rebasing LST. It is
+  /// provided here as a convenience for integrators.
+  function fetchOrInitializeDepositForDelegatee(address _delegatee) external virtual returns (Staker.DepositIdentifier) {
+    return LST.fetchOrInitializeDepositForDelegatee(_delegatee);
+  }
+
   /// @notice Sets the delegatee which will receive the voting weight of the caller's tokens staked in the fixed LST
   /// by specifying the deposit identifier associated with that delegatee.
   /// @param _newDepositId The identifier of a deposit which must be one owned by the rebasing LST. Underlying tokens
