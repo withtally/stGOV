@@ -20,7 +20,6 @@ contract GovStakerInvariants is Test, UnitTestBase {
   GovLst lst;
   address lstOwner;
   uint80 initialPayoutAmount = 2500e18;
-  uint256 maxTip = 1e18; // Higher values cause overflow issues
 
   // vars for reducers
   Staker.DepositIdentifier public currentId;
@@ -70,7 +69,6 @@ contract GovStakerInvariants is Test, UnitTestBase {
         initialPayoutAmount: initialPayoutAmount,
         initialDelegateeGuardian: delegateeGuardian,
         stakeToBurn: 0,
-        maxOverrideTip: maxTip,
         minQualifyingEarningPowerBips: 0
       })
     );
