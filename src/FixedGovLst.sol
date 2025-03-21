@@ -217,9 +217,8 @@ contract FixedGovLst is IERC20, IERC20Metadata, IERC20Permit, Multicall, EIP712,
   /// @param _stakeTokens The number of governance tokens that will be staked.
   /// @return _fixedTokens The number of fixed balance LST tokens received upon staking. These tokens are *not*
   /// exchanged 1:1 with the stake tokens.
-  /// @dev The caller must approve *the rebasing LST contract* to transfer at least the number of stake tokens being
-  /// staked before calling this method. This is different from a typical experience, where one would expect to approve
-  /// the address on which the `stake` method was being called.
+  /// @dev The caller must approve the Fixed LST contract to transfer at least the number of stake tokens being
+  /// staked before calling this method.
   function stake(uint256 _stakeTokens) public virtual returns (uint256) {
     return _stake(msg.sender, _stakeTokens);
   }
