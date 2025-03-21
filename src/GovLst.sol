@@ -316,6 +316,8 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
     DEFAULT_DEPOSIT_ID = STAKER.stake(0, _params.initialDefaultDelegatee);
     STAKE_TOKEN.safeTransferFrom(msg.sender, address(this), _params.stakeToBurn);
     _stake(address(this), _params.stakeToBurn);
+    _emitStakedEvent(address(this), _params.stakeToBurn);
+    _emitTransferEvent(address(0), address(this), _params.stakeToBurn);
 
     // Deploy the WithdrawGate
     WITHDRAW_GATE = new WithdrawGate(_params.initialOwner, address(this), address(STAKE_TOKEN), 0);

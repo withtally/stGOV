@@ -566,6 +566,48 @@ contract Constructor is GovLstTest {
       })
     );
   }
+
+  function testFuzz_EmitsStakeEventsOnContractCreation(
+    address _defaultDelegatee,
+    uint80 _payoutAmount,
+    address _lstOwner,
+    string memory _tokenName,
+    string memory _tokenSymbol,
+    address _delegateeGuardian,
+    uint64 _stakeToBurn,
+    uint256 _minQualifyingEarningPowerBips
+  ) public {
+    vm.assume(_lstOwner != address(0) && _defaultDelegatee != address(0));
+    _minQualifyingEarningPowerBips =
+      bound(_minQualifyingEarningPowerBips, 0, lst.MINIMUM_QUALIFYING_EARNING_POWER_BIPS_CAP());
+
+    address lstAddr = _computeCreate1Address(address(this), uint8(vm.getNonce(address(this))));
+    _mintStakeToken(address(this), _stakeToBurn);
+    stakeToken.approve(address(lstAddr), _stakeToBurn);
+
+    vm.expectEmit();
+    emit GovLst.Staked(lstAddr, _stakeToBurn);
+
+    vm.expectEmit();
+    emit IERC20.Transfer(address(0), lstAddr, _stakeToBurn);
+
+    new GovLstHarness(
+      GovLst.ConstructorParams({
+        fixedLstName: _tokenName,
+        fixedLstSymbol: _tokenSymbol,
+        rebasingLstName: string.concat("Rebased ", _tokenName),
+        rebasingLstSymbol: string.concat("r", _tokenSymbol),
+        version: "2",
+        staker: Staker(staker),
+        initialDefaultDelegatee: _defaultDelegatee,
+        initialOwner: _lstOwner,
+        initialPayoutAmount: _payoutAmount,
+        initialDelegateeGuardian: _delegateeGuardian,
+        stakeToBurn: _stakeToBurn,
+        minQualifyingEarningPowerBips: _minQualifyingEarningPowerBips
+      })
+    );
+  }
 }
 
 contract DelegateeForHolder is GovLstTest {
