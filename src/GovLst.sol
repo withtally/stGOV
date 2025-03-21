@@ -31,6 +31,7 @@ import {FixedLstAddressAlias} from "./FixedLstAddressAlias.sol";
 /// its share of the total staked supply, the balance is subject to truncation. Care must be taken to ensure all
 /// deposits remain solvent. Where a deposit might be left short due to truncation, we aim to accumulate these
 /// shortfalls in the default deposit, which can be subsidized to remain solvent.
+/// @dev Not all tokens are compatible with GovLST.
 abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multicall, EIP712, Nonces {
   using FixedLstAddressAlias for address;
   using SafeCast for uint256;
@@ -164,9 +165,15 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   Staker public immutable STAKER;
 
   /// @notice The governance token used by the staking system.
+  /// @dev Tokens greater than 18 decimals have a higher potential for overflow issues. Tokens with transfer fees,
+  /// ERC-777 logic, or unorthodox logic are likely incompatible with this system. Only compliant ERC20
+  /// tokens should be used as the stake token.
   IERC20 public immutable STAKE_TOKEN;
 
   /// @notice The token distributed as rewards by the staking instance.
+  /// @dev Tokens greater than 18 decimals have a higher potential for overflow issues. Tokens with transfer fees,
+  /// ERC-777 logic or, unorthodox logic are likely incompatible with this system. Only compliant ERC20
+  /// tokens should be used as the reward token.
   IERC20 public immutable REWARD_TOKEN;
 
   /// @notice A coupled contract used by the LST to enforce an optional delay when withdrawing staked tokens from the
@@ -349,6 +356,8 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   }
 
   /// @notice The decimal precision which the LST tokens stores its balances with.
+  /// @dev Make sure this matches the Stake token's decimals as an incompatibility
+  /// will create an unintuitive UX where 1 LST token does not equal 1 stake token.
   function decimals() external pure virtual override returns (uint8) {
     return 18;
   }
@@ -681,6 +690,10 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   /// 2. Caller's claimAndDistributeReward transaction is in the mempool.
   /// 3. The payoutAmount is changed.
   /// 4. The claimAndDistributeReward transaction is now included in a block.
+  ///
+  /// The number of deposits owned by the LST may grow to such a size that all deposits cannot be included in a single
+  /// call. This can cause the total payout of the LST's deposits to be processed with slight lag temporarily reducing
+  /// the value of liquid staking tokens compared to direct staking.
   /// @param _recipient The address that will receive the stake reward payout.
   /// @param _minExpectedReward The minimum reward payout, in the reward token of the underlying staker contract, that
   /// the caller will accept in exchange for providing the payout amount of stake token. If the amount claimed is less
