@@ -681,6 +681,10 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   /// 2. Caller's claimAndDistributeReward transaction is in the mempool.
   /// 3. The payoutAmount is changed.
   /// 4. The claimAndDistributeReward transaction is now included in a block.
+  ///
+  /// The number of deposits can grow beyond being processed in a single transaction. This can cause the total payout of 
+  /// the LST's deposits to be processed with slight lag temporarily reduce the value of liquid staking tokens compared
+  /// to direct staking.
   /// @param _recipient The address that will receive the stake reward payout.
   /// @param _minExpectedReward The minimum reward payout, in the reward token of the underlying staker contract, that
   /// the caller will accept in exchange for providing the payout amount of stake token. If the amount claimed is less
