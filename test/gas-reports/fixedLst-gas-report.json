@@ -1,274 +1,274 @@
 {
-  "generatedAt": 1743430419,
+  "generatedAt": 1743433678,
   "reportName:": "fixedLstGasReport",
   "results": [
     {
       "scenarioName": "First Stake to Default Delegate",
-      "gasUsed": 200286
+      "gasUsed": 200856
     },
     {
       "scenarioName": "Second Stake To Default Delegatee",
-      "gasUsed": 166405
+      "gasUsed": 166975
     },
     {
       "scenarioName": "First Stake After Updating To A New Delegatee",
-      "gasUsed": 200973
+      "gasUsed": 201543
     },
     {
       "scenarioName": "First Stake After Updating To An Existing LST Delegatee",
-      "gasUsed": 183873
+      "gasUsed": 184443
     },
     {
       "scenarioName": "Second Stake To A Custom Delegatee",
-      "gasUsed": 167092
+      "gasUsed": 167662
     },
     {
       "scenarioName": "Sender With Default Delegatee Transfers Balance To New Receiver With Default Delegatee",
-      "gasUsed": 83708
+      "gasUsed": 84950
     },
     {
       "scenarioName": "Sender With Default Delegatee Transfers Partial Balance To New Receiver With Default Delegatee",
-      "gasUsed": 93627
+      "gasUsed": 94869
     },
     {
       "scenarioName": "Sender With Default Delegatee Transfers Balance To Existing Receiver With Default Delegatee",
-      "gasUsed": 49827
+      "gasUsed": 51069
     },
     {
       "scenarioName": "Sender With Default Delegatee Transfers Partial Balance To Existing Receiver With Default Delegatee",
-      "gasUsed": 59746
+      "gasUsed": 60988
     },
     {
       "scenarioName": "Sender With Custom Delegatee Transfers Balance To New Receiver With Default Delegatee",
-      "gasUsed": 233865
+      "gasUsed": 235104
     },
     {
       "scenarioName": "Sender With Custom Delegatee Transfers Partial Balance To New Receiver With Default Delegatee",
-      "gasUsed": 244103
+      "gasUsed": 245342
     },
     {
       "scenarioName": "Sender With Custom Delegatee Transfers Balance To Existing Receiver With Default Delegatee",
-      "gasUsed": 199984
+      "gasUsed": 201223
     },
     {
       "scenarioName": "Sender With Custom Delegatee Transfers Partial Balance To Existing Receiver With Default Delegatee",
-      "gasUsed": 210222
+      "gasUsed": 211461
     },
     {
       "scenarioName": "Sender With Custom Delegatee Transfers Balance To New Receiver With Same Delegatee",
-      "gasUsed": 233865
+      "gasUsed": 235104
     },
     {
       "scenarioName": "Sender With Custom Delegatee Transfers Partial Balance To New Receiver With Same Delegatee",
-      "gasUsed": 244103
+      "gasUsed": 245342
     },
     {
       "scenarioName": "Sender With Custom Delegatee Transfers Balance To Existing Receiver With Same Delegatee",
-      "gasUsed": 55539
+      "gasUsed": 56781
     },
     {
       "scenarioName": "Sender With Custom Delegatee Transfers Partial Balance To Existing Receiver With Same Delegatee",
-      "gasUsed": 60977
+      "gasUsed": 62219
     },
     {
       "scenarioName": "Sender With Custom Delegatee Transfers Balance To New Receiver With Custom Delegatee",
-      "gasUsed": 200041
+      "gasUsed": 201280
     },
     {
       "scenarioName": "Sender With Custom Delegatee Transfers Partial Balance To New Receiver With Custom Delegatee",
-      "gasUsed": 210279
+      "gasUsed": 211518
     },
     {
       "scenarioName": "Sender With Custom Delegatee Transfers Balance To Existing Receiver With Custom Delegatee",
-      "gasUsed": 200041
+      "gasUsed": 201280
     },
     {
       "scenarioName": "Sender With Custom Delegatee Transfers Partial Balance To Existing Receiver With Custom Delegatee",
-      "gasUsed": 210279
+      "gasUsed": 211518
     },
     {
       "scenarioName": "Sender With Default Delegatee Approves Caller To Transfer Balance To a New Receiver With Default Delegatee",
-      "gasUsed": 84747
+      "gasUsed": 85989
     },
     {
       "scenarioName": "Sender With Default Delegatee Max Approves Caller To Transfer Balance To a New Receiver With Default Delegatee",
-      "gasUsed": 84747
+      "gasUsed": 85989
     },
     {
       "scenarioName": "Sender With Default Delegatee Approves Caller To Transfer Partial Balance To New Receiver With Default Delegatee",
-      "gasUsed": 99466
+      "gasUsed": 100708
     },
     {
       "scenarioName": "Sender With Default Delegatee Approves Caller To Transfer Balance To Existing Receiver With Default Delegatee",
-      "gasUsed": 51501
+      "gasUsed": 52743
     },
     {
       "scenarioName": "Sender With Default Delegatee Approves Caller To Transfer Partial Balance To Existing Receiver With Default Delegatee",
-      "gasUsed": 65585
+      "gasUsed": 66827
     },
     {
       "scenarioName": "Sender With Custom Delegatee Approves Caller To Transfer Balance To New Receiver With Default Delegatee",
-      "gasUsed": 234904
+      "gasUsed": 236143
     },
     {
       "scenarioName": "Sender With Custom Delegatee Approves Caller To Transfer Partial Balance To New Receiver With Default Delegatee",
-      "gasUsed": 249942
+      "gasUsed": 251181
     },
     {
       "scenarioName": "Sender With Custom Delegatee Approves Caller To Transfer Balance To Existing Receiver With Default Delegatee",
-      "gasUsed": 201023
+      "gasUsed": 202262
     },
     {
       "scenarioName": "Sender With Custom Delegatee Approves Caller To Transfer Partial Balance To Existing Receiver With Default Delegatee",
-      "gasUsed": 216061
+      "gasUsed": 217300
     },
     {
       "scenarioName": "Sender With Custom Delegatee Approves Caller To Transfer Balance To New Receiver With Same Delegatee",
-      "gasUsed": 73359
+      "gasUsed": 74601
     },
     {
       "scenarioName": "Sender With Custom Delegatee Approves Caller To Transfer Partial Balance To New Receiver With Same Delegatee",
-      "gasUsed": 83597
+      "gasUsed": 84839
     },
     {
       "scenarioName": "Sender With Custom Delegatee Approves Caller To Transfer Balance To Existing Receiver With Same Delegatee",
-      "gasUsed": 56578
+      "gasUsed": 57820
     },
     {
       "scenarioName": "Sender With Custom Delegatee Approves Caller To Transfer Partial Balance To Existing Receiver With Same Delegatee",
-      "gasUsed": 66804
+      "gasUsed": 68046
     },
     {
       "scenarioName": "Sender With Custom Delegatee Approves Caller To Transfer Balance To New Receiver With Custom Delegatee",
-      "gasUsed": 234961
+      "gasUsed": 236200
     },
     {
       "scenarioName": "Sender With Custom Delegatee Approves Caller To Transfer Partial Balance To New Receiver With Custom Delegatee",
-      "gasUsed": 249999
+      "gasUsed": 251238
     },
     {
       "scenarioName": "Sender With Custom Delegatee Approves Caller To Transfer Balance To Existing Receiver With Custom Delegatee",
-      "gasUsed": 201080
+      "gasUsed": 202319
     },
     {
       "scenarioName": "Sender With Custom Delegatee Approves Caller To Transfer Partial Balance To Existing Receiver With Custom Delegatee",
-      "gasUsed": 216118
+      "gasUsed": 217357
     },
     {
       "scenarioName": "Unstake Full Balance From The Default Delegatee",
-      "gasUsed": 227543
+      "gasUsed": 227728
     },
     {
       "scenarioName": "Unstake Partial Balance From The Default Delegatee",
-      "gasUsed": 237486
+      "gasUsed": 237671
     },
     {
       "scenarioName": "Unstake Full Balance From Unique Custom Delegatee",
-      "gasUsed": 313198
+      "gasUsed": 313346
     },
     {
       "scenarioName": "Unstake Partial Balance From Unique Custom Delegatee",
-      "gasUsed": 313728
+      "gasUsed": 313876
     },
     {
       "scenarioName": "Unstake Full Balance From a Non-Unique Custom Delegatee",
-      "gasUsed": 313198
+      "gasUsed": 313346
     },
     {
       "scenarioName": "Unstake Partial Balance From a Non-Unique Custom Delegatee",
-      "gasUsed": 313728
+      "gasUsed": 313876
     },
     {
       "scenarioName": "Unstake Full Balance From The Default Delegatee After Rewards",
-      "gasUsed": 232814
+      "gasUsed": 232999
     },
     {
       "scenarioName": "Unstake Partial Balance From The Default Delegatee After Rewards",
-      "gasUsed": 237638
+      "gasUsed": 237823
     },
     {
       "scenarioName": "Unstake Full Balance From Unique Custom Delegatee After Rewards",
-      "gasUsed": 366620
+      "gasUsed": 366805
     },
     {
       "scenarioName": "Unstake Partial Balance From Unique Custom Delegatee After Rewards",
-      "gasUsed": 366632
+      "gasUsed": 366817
     },
     {
       "scenarioName": "Unstake Full Balance From a Non-Unique Custom Delegatee After Rewards",
-      "gasUsed": 366632
+      "gasUsed": 366817
     },
     {
       "scenarioName": "Unstake Partial Balance From a Non-Unique Custom Delegatee After Rewards",
-      "gasUsed": 366632
+      "gasUsed": 366817
     },
     {
       "scenarioName": "Unstake Earned Rewards Only From The Default Delegatee After Rewards",
-      "gasUsed": 294176
+      "gasUsed": 294324
     },
     {
       "scenarioName": "Unstake Earned Rewards Only From Unique Custom Delegatee After Rewards",
-      "gasUsed": 294176
+      "gasUsed": 294324
     },
     {
       "scenarioName": "Updating from default deposit with nothing staked",
-      "gasUsed": 73457
+      "gasUsed": 73643
     },
     {
       "scenarioName": "Updating from custom deposit with nothing staked",
-      "gasUsed": 56359
+      "gasUsed": 56545
     },
     {
       "scenarioName": "Updating from default deposit after staking",
-      "gasUsed": 246957
+      "gasUsed": 247143
     },
     {
       "scenarioName": "Updating from custom deposit after staking",
-      "gasUsed": 246971
+      "gasUsed": 247157
     },
     {
       "scenarioName": "Updating from default deposit after staking and earning rewards",
-      "gasUsed": 246957
+      "gasUsed": 247143
     },
     {
       "scenarioName": "Updating from custom deposit after staking and earning rewards",
-      "gasUsed": 327392
+      "gasUsed": 327578
     },
     {
       "scenarioName": "Convert rebasing to fixed with a default delegatee and the full amount",
-      "gasUsed": 94812
+      "gasUsed": 95385
     },
     {
       "scenarioName": "Convert rebasing to fixed with a default delegatee and the partial amount",
-      "gasUsed": 94788
+      "gasUsed": 95361
     },
     {
       "scenarioName": "Convert rebasing to fixed with a custom delegatee and the full amount",
-      "gasUsed": 240491
+      "gasUsed": 241058
     },
     {
       "scenarioName": "Convert rebasing to fixed with a custom delegatee and the partial amount",
-      "gasUsed": 245267
+      "gasUsed": 245834
     },
     {
       "scenarioName": "Convert fixed to rebasing with a default delegatee and the full amount",
-      "gasUsed": 77587
+      "gasUsed": 77761
     },
     {
       "scenarioName": "Convert fixed to rebasing with a default delegatee and the partial amount",
-      "gasUsed": 77587
+      "gasUsed": 77761
     },
     {
       "scenarioName": "Convert fixed to rebasing with a custom delegatee and the full amount",
-      "gasUsed": 228066
+      "gasUsed": 228240
     },
     {
       "scenarioName": "Convert fixed to rebasing with a custom delegatee and the partial amount",
-      "gasUsed": 228066
+      "gasUsed": 228240
     },
     {
       "scenarioName": "Rescue funds sent to alias address",
-      "gasUsed": 61532
+      "gasUsed": 61721
     }
   ]
 }
