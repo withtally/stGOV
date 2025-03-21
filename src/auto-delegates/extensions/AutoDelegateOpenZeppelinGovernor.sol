@@ -43,7 +43,8 @@ abstract contract AutoDelegateOpenZeppelinGovernor {
     returns (uint256 _proposalDeadline, uint256 _forVotes, uint256 _againstVotes, uint256 _quorumVotes)
   {
     _proposalDeadline = IGovernor(_governor).proposalDeadline(_proposalId);
+    uint256 _proposalSnapshot = IGovernor(_governor).proposalSnapshot(_proposalId);
     (_againstVotes, _forVotes,) = IGovernorCountingExtensions(_governor).proposalVotes(_proposalId);
-    _quorumVotes = IGovernor(_governor).quorum(clock());
+    _quorumVotes = IGovernor(_governor).quorum(_proposalSnapshot);
   }
 }
