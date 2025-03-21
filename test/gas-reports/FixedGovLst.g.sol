@@ -1147,6 +1147,12 @@ contract FixedGovLstGasReport is FixedGovLstTest, GasReport {
       _delegatee = makeScenarioAddr("Delegatee");
       _staker = makeScenarioAddr("Staker");
       _depositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+
+      // Someone else must stake first so the deposit isn't empty
+      address _firstStaker = makeScenarioAddr("First Staker");
+      _stakeAmount = 100e18;
+      _stakeOnDelegateeFixedDeposit(_depositId, _firstStaker);
+
       vm.prank(_staker);
       fixedLst.updateDeposit(_depositId);
       recordScenarioGasResult();
@@ -1160,6 +1166,11 @@ contract FixedGovLstGasReport is FixedGovLstTest, GasReport {
       _updateFixedDelegatee(_staker, _delegatee);
       _delegatee = makeScenarioAddr("Updated Delegatee");
       _depositId = lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+
+      // Someone else must stake first so the deposit isn't empty
+      address _firstStaker = makeScenarioAddr("First Staker");
+      _stakeAmount = 100e18;
+      _stakeOnDelegateeFixedDeposit(_depositId, _firstStaker);
 
       vm.prank(_staker);
       fixedLst.updateDeposit(_depositId);
