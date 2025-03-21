@@ -34,7 +34,6 @@ contract GovLstTest is UnitTestBase, PercentAssertions, TestHelpers, Eip712Helpe
   uint80 initialPayoutAmount = 2500e18;
   address claimer = makeAddr("Claimer");
   uint256 rewardTokenAmount = 10e18; // arbitrary amount of reward token
-  uint256 maxTip = 1e18; // Higher values cause overflow issues
 
   address defaultDelegatee = makeAddr("Default Delegatee");
   address delegateeFunder = makeAddr("Delegatee Funder");
@@ -93,7 +92,6 @@ contract GovLstTest is UnitTestBase, PercentAssertions, TestHelpers, Eip712Helpe
         initialPayoutAmount: initialPayoutAmount,
         initialDelegateeGuardian: delegateeGuardian,
         stakeToBurn: 0,
-        maxOverrideTip: maxTip,
         minQualifyingEarningPowerBips: 0
       })
     );
@@ -209,10 +207,6 @@ contract GovLstTest is UnitTestBase, PercentAssertions, TestHelpers, Eip712Helpe
 
   function _boundToReasonablePayoutAmount(uint256 _payoutAmount) internal pure returns (uint80) {
     return uint80(bound(_payoutAmount, 0.0001e18, type(uint80).max));
-  }
-
-  function _boundToValidTipAmount(uint256 _tipAmount) internal view returns (uint160) {
-    return uint160(bound(_tipAmount, 0, maxTip));
   }
 
   function _mintStakeToken(address _to, uint256 _amount) internal {
@@ -425,21 +419,9 @@ contract GovLstTest is UnitTestBase, PercentAssertions, TestHelpers, Eip712Helpe
     stdstore.target(_target).sig("nonces(address)").with_key(_account).checked_write(_currentNonce);
   }
 
-  function _setMaxOverrideTip() internal {
-    address _delegatee = makeAddr("Max tip delegate");
-    address _holder = makeAddr("Max tip holder");
-    _mintUpdateDelegateeAndStake(_delegatee, maxTip, _holder);
-    vm.prank(lstOwner);
-    lst.setMaxOverrideTip(maxTip);
-  }
-
   function _setMinQualifyingEarningPowerBips(uint256 _minQualifyingEarningPowerBips) internal {
     vm.prank(lstOwner);
     lst.setMinQualifyingEarningPowerBips(_minQualifyingEarningPowerBips);
-  }
-
-  function _calcFeeShares(uint256 _tipAmount) internal view returns (uint160) {
-    return uint160((uint256(_tipAmount) * lst.totalShares()) / (lst.totalSupply() - _tipAmount));
   }
 
   function _bumpBelowEarningPowerQualifyingThreshold(
