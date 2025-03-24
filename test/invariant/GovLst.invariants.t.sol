@@ -70,7 +70,6 @@ contract GovStakerInvariants is Test, UnitTestBase {
         initialPayoutAmount: initialPayoutAmount,
         initialDelegateeGuardian: delegateeGuardian,
         stakeToBurn: 0,
-        maxOverrideTip: maxTip,
         minQualifyingEarningPowerBips: 0
       })
     );

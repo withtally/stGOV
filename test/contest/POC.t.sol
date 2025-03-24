@@ -93,7 +93,6 @@ contract GovLstTest is UnitTestBase, PercentAssertions, TestHelpers, Eip712Helpe
         initialPayoutAmount: initialPayoutAmount,
         initialDelegateeGuardian: delegateeGuardian,
         stakeToBurn: 0,
-        maxOverrideTip: maxTip,
         minQualifyingEarningPowerBips: 0
       })
     );
@@ -423,14 +422,6 @@ contract GovLstTest is UnitTestBase, PercentAssertions, TestHelpers, Eip712Helpe
 
   function _setNonce(address _target, address _account, uint256 _currentNonce) internal {
     stdstore.target(_target).sig("nonces(address)").with_key(_account).checked_write(_currentNonce);
-  }
-
-  function _setMaxOverrideTip() internal {
-    address _delegatee = makeAddr("Max tip delegate");
-    address _holder = makeAddr("Max tip holder");
-    _mintUpdateDelegateeAndStake(_delegatee, maxTip, _holder);
-    vm.prank(lstOwner);
-    lst.setMaxOverrideTip(maxTip);
   }
 
   function _setMinQualifyingEarningPowerBips(uint256 _minQualifyingEarningPowerBips) internal {
