@@ -764,7 +764,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
     STAKE_TOKEN.safeTransferFrom(msg.sender, address(this), _amount);
 
     // This will revert if the deposit is not owned by this contract
-    STAKER.stakeMore(_depositId, uint96(_amount));
+    STAKER.stakeMore(_depositId, _amount);
 
     emit DepositSubsidized(_depositId, _amount);
   }
@@ -1165,27 +1165,27 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
       return _oldDepositId;
     } else if (_isSameDepositId(_oldDepositId, _newDepositId)) {
       _holderState.balanceCheckpoint = uint96(_balanceOf);
-      STAKER.withdraw(DEFAULT_DEPOSIT_ID, uint96(_undelegatedBalance));
-      STAKER.stakeMore(_newDepositId, uint96(_undelegatedBalance));
+      STAKER.withdraw(DEFAULT_DEPOSIT_ID, _undelegatedBalance);
+      STAKER.stakeMore(_newDepositId, _undelegatedBalance);
     } else if (_isSameDepositId(_newDepositId, DEFAULT_DEPOSIT_ID)) {
       _holderState.balanceCheckpoint = 0;
       _holderState.depositId = 0;
-      STAKER.withdraw(_oldDepositId, uint96(_delegatedBalance));
-      STAKER.stakeMore(_newDepositId, uint96(_delegatedBalance));
+      STAKER.withdraw(_oldDepositId, _delegatedBalance);
+      STAKER.stakeMore(_newDepositId, _delegatedBalance);
     } else if ((_isSameDepositId(_oldDepositId, DEFAULT_DEPOSIT_ID))) {
       _holderState.balanceCheckpoint = uint96(_balanceOf);
       _holderState.depositId = _depositIdToUInt32(_newDepositId);
-      STAKER.withdraw(DEFAULT_DEPOSIT_ID, uint96(_balanceOf));
-      STAKER.stakeMore(_newDepositId, uint96(_balanceOf));
+      STAKER.withdraw(DEFAULT_DEPOSIT_ID, _balanceOf);
+      STAKER.stakeMore(_newDepositId, _balanceOf);
       _revertIfInvalidDeposit(_newDepositId);
     } else {
       _holderState.balanceCheckpoint = uint96(_balanceOf);
       _holderState.depositId = _depositIdToUInt32(_newDepositId);
       if (_undelegatedBalance > 0) {
-        STAKER.withdraw(DEFAULT_DEPOSIT_ID, uint96(_undelegatedBalance));
+        STAKER.withdraw(DEFAULT_DEPOSIT_ID, _undelegatedBalance);
       }
-      STAKER.withdraw(_oldDepositId, uint96(_delegatedBalance));
-      STAKER.stakeMore(_newDepositId, uint96(_balanceOf));
+      STAKER.withdraw(_oldDepositId, _delegatedBalance);
+      STAKER.stakeMore(_newDepositId, _balanceOf);
       _revertIfInvalidDeposit(_newDepositId);
     }
 
@@ -1230,7 +1230,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
     totals = _totals;
     holderStates[_account] = _holderState;
 
-    STAKER.stakeMore(_calcDepositId(_holderState), uint96(_amount));
+    STAKER.stakeMore(_calcDepositId(_holderState), _amount);
     return _balanceDiff;
   }
 
@@ -1273,7 +1273,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
       // the delegated balance.
       _undelegatedBalanceToWithdraw = _undelegatedBalance;
       uint256 _delegatedBalanceToWithdraw = _amount - _undelegatedBalanceToWithdraw;
-      STAKER.withdraw(_calcDepositId(_holderState), uint96(_delegatedBalanceToWithdraw));
+      STAKER.withdraw(_calcDepositId(_holderState), _delegatedBalanceToWithdraw);
       _holderState.balanceCheckpoint = uint96(_delegatedBalance - _delegatedBalanceToWithdraw);
     } else {
       // Since the amount is less than or equal to the undelegated balance, we'll source all of it from said balance.
@@ -1282,7 +1282,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
 
     // If the staker had zero undelegated balance, we won't waste gas executing the withdraw call.
     if (_undelegatedBalanceToWithdraw > 0) {
-      STAKER.withdraw(DEFAULT_DEPOSIT_ID, uint96(_undelegatedBalanceToWithdraw));
+      STAKER.withdraw(DEFAULT_DEPOSIT_ID, _undelegatedBalanceToWithdraw);
     }
 
     // Ensure the holder's balance checkpoint is updated if it has decreased due to truncation.
@@ -1398,7 +1398,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
           // Staker withdraw and zero out this value so we don't try to "stakeMore" with it later.
           _delegatedBalanceToWithdraw = 0;
         } else {
-          STAKER.withdraw(_calcDepositId(_senderStateRescoped), uint96(_delegatedBalanceToWithdraw));
+          STAKER.withdraw(_calcDepositId(_senderStateRescoped), _delegatedBalanceToWithdraw);
         }
       } else {
         // Since the amount is less than or equal to the undelegated balance, we'll source all of it from said balance.
@@ -1415,14 +1415,14 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
 
       // If the staker had zero undelegated balance, we won't waste gas executing the withdraw call.
       if (_undelegatedBalanceToWithdraw > 0) {
-        STAKER.withdraw(DEFAULT_DEPOSIT_ID, uint96(_undelegatedBalanceToWithdraw));
+        STAKER.withdraw(DEFAULT_DEPOSIT_ID, _undelegatedBalanceToWithdraw);
       }
 
       // If both the delegated balance to withdraw and the undelegated balance to withdraw were zero, then we didn't
       // have to move any tokens out of Staker deposits, and none need to be put back into the receiver's deposit now.
       if ((_delegatedBalanceToWithdraw + _undelegatedBalanceToWithdraw) > 0) {
         STAKER.stakeMore(
-          _calcDepositId(_receiverStateRescoped), uint96(_delegatedBalanceToWithdraw + _undelegatedBalanceToWithdraw)
+          _calcDepositId(_receiverStateRescoped), _delegatedBalanceToWithdraw + _undelegatedBalanceToWithdraw
         );
       }
     }
