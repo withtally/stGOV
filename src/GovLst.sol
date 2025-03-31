@@ -1174,7 +1174,8 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
 
     _holderState.shares = _holderState.shares + _newShares.toUint128();
     uint256 _balanceDiff = _calcBalanceOf(_holderState, _totals) - _initialBalance;
-    if (!_isSameDepositId(_calcDepositId(_holderState), DEFAULT_DEPOSIT_ID)) {
+    Staker.DepositIdentifier _holderDepositId = _calcDepositId(_holderState);
+    if (!_isSameDepositId(_holderDepositId, DEFAULT_DEPOSIT_ID)) {
       _holderState.balanceCheckpoint =
         _min(_holderState.balanceCheckpoint + uint96(_amount), uint96(_calcBalanceOf(_holderState, _totals)));
     }
@@ -1183,7 +1184,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
     totals = _totals;
     holderStates[_account] = _holderState;
 
-    STAKER.stakeMore(_calcDepositId(_holderState), _amount);
+    STAKER.stakeMore(_holderDepositId, _amount);
     return _balanceDiff;
   }
 
