@@ -370,11 +370,11 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
 
   /// @notice Returns the quantity of stake tokens that a given number of shares is valued at. In other words,
   /// ownership of a given number of shares translates to a claim on the quantity of stake tokens returned.
-  /// @param _amount The quantity of shares that will be converted to stake tokens.
+  /// @param _shares The quantity of shares that will be converted to stake tokens.
   /// @return The quantity of stake tokens which backs the provided quantity of shares.
-  function stakeForShares(uint256 _amount) public view virtual returns (uint256) {
+  function stakeForShares(uint256 _shares) public view virtual returns (uint256) {
     Totals memory _totals = totals;
-    return _calcStakeForShares(_amount, _totals);
+    return _calcStakeForShares(_shares, _totals);
   }
 
   /// @notice The current balance of LST tokens owned by the holder. Unlike a standard ERC20, this amount is calculated
@@ -1038,15 +1038,15 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   /// @notice Internal helper method that takes an amount of shares, and metadata representing the global state of
   /// the LST, and returns the quantity of stake tokens that the requested shares are worth. All data for the
   /// calculation is provided in memory and the calculation is performed there, making it a pure function.
-  /// @param _amount The quantity of shares that will be converted to stake tokens.
+  /// @param _shares The quantity of shares that will be converted to stake tokens.
   /// @param _totals The metadata representing current global conditions.
   /// @return The quantity of stake tokens which backs the provide quantity of shares.
-  function _calcStakeForShares(uint256 _amount, Totals memory _totals) internal pure virtual returns (uint256) {
+  function _calcStakeForShares(uint256 _shares, Totals memory _totals) internal pure virtual returns (uint256) {
     if (_totals.shares == 0) {
-      return _amount / SHARE_SCALE_FACTOR;
+      return _shares / SHARE_SCALE_FACTOR;
     }
 
-    return (_amount * _totals.supply) / _totals.shares;
+    return (_shares * _totals.supply) / _totals.shares;
   }
 
   /// @notice Internal method that takes a holder's state and the global state and calculates the holder's would-be
