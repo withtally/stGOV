@@ -396,8 +396,8 @@ contract GovLstTest is UnitTestBase, PercentAssertions, TestHelpers, Eip712Helpe
     bytes memory _version,
     address _verifyingContract
   ) internal view returns (bytes32) {
-    bytes32 _seperator = _domainSeperator(_typeHash, _name, _version, _verifyingContract);
-    return keccak256(abi.encodePacked("\x19\x01", _seperator, _structHash));
+    bytes32 _separator = _domainSeparator(_typeHash, _name, _version, _verifyingContract);
+    return keccak256(abi.encodePacked("\x19\x01", _separator, _structHash));
   }
 
   function _signMessage(
