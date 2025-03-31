@@ -351,7 +351,7 @@ contract CompleteWithdrawalOnBehalf is WithdrawGateTest, Eip712Helper {
     super.setUp();
 
     // Compute the domain separator
-    DOMAIN_SEPARATOR = _domainSeperator(EIP712_DOMAIN_TYPEHASH, "WithdrawGate", "1", address(withdrawGate));
+    DOMAIN_SEPARATOR = _domainSeparator(EIP712_DOMAIN_TYPEHASH, "WithdrawGate", "1", address(withdrawGate));
   }
 
   function _hashTypedDataV4(bytes32 structHash) internal view returns (bytes32) {

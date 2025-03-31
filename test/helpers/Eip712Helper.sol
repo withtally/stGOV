@@ -8,7 +8,7 @@ abstract contract Eip712Helper {
   bytes32 public constant DOMAIN_TYPEHASH =
     keccak256("EIP712Domain(string name,uint256 chainId,address verifyingContract)");
 
-  function _domainSeperator(bytes32 _typeHash, bytes memory _name, bytes memory _version, address _verifyingContract)
+  function _domainSeparator(bytes32 _typeHash, bytes memory _name, bytes memory _version, address _verifyingContract)
     internal
     view
     returns (bytes32)
