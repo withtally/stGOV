@@ -1,26 +1,26 @@
 {
-  "generatedAt": 1743433998,
+  "generatedAt": 1743447557,
   "reportName:": "fixedLstGasReport",
   "results": [
     {
       "scenarioName": "First Stake to Default Delegate",
-      "gasUsed": 200811
+      "gasUsed": 200750
     },
     {
       "scenarioName": "Second Stake To Default Delegatee",
-      "gasUsed": 166930
+      "gasUsed": 166869
     },
     {
       "scenarioName": "First Stake After Updating To A New Delegatee",
-      "gasUsed": 201498
+      "gasUsed": 201435
     },
     {
       "scenarioName": "First Stake After Updating To An Existing LST Delegatee",
-      "gasUsed": 184398
+      "gasUsed": 184335
     },
     {
       "scenarioName": "Second Stake To A Custom Delegatee",
-      "gasUsed": 167617
+      "gasUsed": 167554
     },
     {
       "scenarioName": "Sender With Default Delegatee Transfers Balance To New Receiver With Default Delegatee",
