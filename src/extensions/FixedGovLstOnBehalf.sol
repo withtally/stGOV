@@ -16,7 +16,7 @@ import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/Signa
 abstract contract FixedGovLstOnBehalf is FixedGovLst {
   /// @notice Type hash used when encoding data for `updateDepositOnBehalf` calls.
   bytes32 public constant UPDATE_DEPOSIT_TYPEHASH =
-    keccak256("UpdateDeposit(address account,uint256 depositId,uint256 nonce,uint256 deadline)");
+    keccak256("UpdateDeposit(address account,uint256 newDepositId,uint256 nonce,uint256 deadline)");
 
   /// @notice Type hash used when encoding data for `stakeOnBehalf` calls.
   bytes32 public constant STAKE_TYPEHASH =
