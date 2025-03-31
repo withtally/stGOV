@@ -768,9 +768,8 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   /// @param _depositId The id of the deposit to override the delegatee.
   function enactOverride(Staker.DepositIdentifier _depositId) external virtual {
     (uint96 _balance,, uint96 _earningPower,,,,) = STAKER.deposits(_depositId);
-    Staker.DepositIdentifier _defaultDepositId = depositForDelegatee(defaultDelegatee);
 
-    if (_isSameDepositId(_depositId, _defaultDepositId) || isOverridden[_depositId] || _balance == 0) {
+    if (_isSameDepositId(_depositId, DEFAULT_DEPOSIT_ID) || isOverridden[_depositId] || _balance == 0) {
       revert GovLst__InvalidOverride();
     }
 
