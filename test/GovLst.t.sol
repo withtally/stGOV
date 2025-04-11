@@ -476,6 +476,10 @@ contract Constructor is GovLstTest {
     assertEq(lst.MAX_FEE_BIPS(), 2000); // 20% in bips
   }
 
+  function test_StakeForSharesWithNoShares() public view {
+    assertEq(lst.stakeForShares(5 * SHARE_SCALE_FACTOR), 5);
+  }
+
   function test_MaxApprovesTheStakerContractToTransferStakeToken() public view {
     assertEq(stakeToken.allowance(address(lst), address(staker)), type(uint256).max);
   }
