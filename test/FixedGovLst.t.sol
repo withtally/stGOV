@@ -177,6 +177,44 @@ contract Constructor is FixedGovLstTest {
     assertEq(fixedLst.SHARE_SCALE_FACTOR(), lst.SHARE_SCALE_FACTOR());
     assertEq(fixedLst.name(), tokenName);
     assertEq(fixedLst.symbol(), tokenSymbol);
+    assertEq(fixedLst.decimals(), 18);
+    assertEq(fixedLst.version(), "2");
+  }
+
+  function test_DOMAIN_SEPARATOR() public view {
+    bytes32 _expectedDomainSeparator = keccak256(
+      abi.encode(
+        // keccak256('EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)')
+        0x8b73c3c69bb8fe3d512ecc4cf759cc79239f7b179b0ffacaa9a75d522b39400f,
+        keccak256(bytes(tokenName)),
+        keccak256(bytes("2")),
+        block.chainid,
+        address(fixedLst)
+      )
+    );
+
+    assertEq(fixedLst.DOMAIN_SEPARATOR(), _expectedDomainSeparator);
+  }
+
+  function test_DefaultDelegatee() public view {
+    assertEq(fixedLst.defaultDelegatee(), lst.defaultDelegatee());
+  }
+
+  function testFuzz_DepositForDelegatee(address _delegatee) public view {
+    assertEq(fixedLst.depositForDelegatee(_delegatee), lst.depositForDelegatee(_delegatee));
+  }
+}
+
+contract FetchOrInitializeDepositForDelegatee is FixedGovLstTest {
+  function testFuzz_FetchOrInitializeDepositForDelegatee(address _delegatee) public {
+    // Assume the delegatee is safe
+    _assumeSafeDelegatee(_delegatee);
+
+    // Call the function
+    Staker.DepositIdentifier depositId = fixedLst.fetchOrInitializeDepositForDelegatee(_delegatee);
+
+    // Assert that the returned deposit identifier matches the one from the LST contract
+    assertEq(depositId, lst.fetchOrInitializeDepositForDelegatee(_delegatee));
   }
 }
 
