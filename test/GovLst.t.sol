@@ -3297,6 +3297,24 @@ contract Transfer is GovLstTest {
     assertEq(lst.balanceOf(_receiver), _amount);
   }
 
+  function testFuzz_MovesFullBalanceToAReceiverWithSameDepositId(uint256 _amount, address _sender, address _receiver)
+    public
+  {
+    _assumeSafeHolders(_sender, _receiver);
+    _amount = _boundToReasonableStakeTokenAmount(_amount);
+    _mintAndStake(_sender, _amount);
+
+    vm.prank(_sender);
+    lst.delegate(_sender);
+    uint256 _senderIdentifier = Staker.DepositIdentifier.unwrap(lst.depositIdForHolder(_sender));
+    _updateDeposit(_receiver, Staker.DepositIdentifier.wrap(_senderIdentifier));
+    vm.prank(_sender);
+    lst.transfer(_receiver, _amount);
+
+    assertEq(lst.balanceOf(_sender), 0);
+    assertEq(lst.balanceOf(_receiver), _amount);
+  }
+
   function testFuzz_MovesPartialBalanceToAReceiver(
     uint256 _stakeAmount,
     uint256 _sendAmount,
