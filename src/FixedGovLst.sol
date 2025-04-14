@@ -194,6 +194,26 @@ contract FixedGovLst is IERC20, IERC20Metadata, IERC20Permit, Multicall, EIP712,
     return LST.depositForDelegatee(_delegatee);
   }
 
+  /// @notice The delegatee to whom a given holder's stake is currently delegated. This will be the delegatee to whom
+  /// the user has chosen to assign their voting weight OR the default delegatee, if the user's deposit has been
+  /// moved to the override state.
+  /// @param _holder The holder in question.
+  /// @return _delegatee The address to which this holder's voting weight is currently delegated.
+  function delegateeForHolder(address _holder) public view virtual returns (address _delegatee) {
+    return LST.delegateeForHolder(_holder.fixedAlias());
+  }
+
+  /// @notice The delegatee to whom a given holder's stake is currently delegated. This will be the delegatee to whom
+  /// the user has chosen to assign their voting weight OR the default delegatee, if the user's deposit has been
+  /// moved to the override state.
+  /// @param _holder The holder in question.
+  /// @return The address to which this holder's voting weight is currently delegated.
+  /// @dev This method is included for partial compatibility with the `IVotes` interface. It returns the same data as
+  /// the `delegateeForHolder` method.
+  function delegates(address _holder) external view virtual returns (address) {
+    return LST.delegateeForHolder(_holder.fixedAlias());
+  }
+
   /// @notice Returns the deposit identifier managed by the LST for a given delegatee. If that deposit does not yet
   /// exist, it initializes it. A depositor can call this method if the deposit for their chosen delegatee has not been
   /// previously initialized.
@@ -271,13 +291,12 @@ contract FixedGovLst is IERC20, IERC20Metadata, IERC20Permit, Multicall, EIP712,
 
   /// @notice Allow a depositor to change the address they are delegating their staked tokens.
   /// @param _delegatee The address where voting is delegated.
+  /// @dev This operation can be completed in a more gas efficient manner by calling `updateDeposit` with the depositId
+  /// of the user's chosen delegatee, assuming it has already been initialized. This method is included primarily for
+  /// partial compatibility with the `IVotes` interface.
   function delegate(address _delegatee) public virtual {
     Staker.DepositIdentifier _depositId = LST.fetchOrInitializeDepositForDelegatee(_delegatee);
     updateDeposit(_depositId);
-  }
-
-  function delegates(address _holder) external virtual returns (address) {
-    return LST.delegateeForHolder(_holder.fixedAlias());
   }
 
   /// @notice Save rebasing LST tokens that were mistakenly sent to the fixed holder alias address. Each fixed LST

@@ -408,12 +408,25 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
     _balanceCheckpoint = holderStates[_holder].balanceCheckpoint;
   }
 
-  /// @notice The delegatee to which a given holder of LST tokens has assigned their voting weight.
+  /// @notice The delegatee to whom a given holder's stake is currently delegated. This will be the delegatee to whom
+  /// the user has chosen to assign their voting weight OR the default delegatee, if the user's deposit has been
+  /// moved to the override state.
   /// @param _holder The holder in question.
-  /// @return _delegatee The address to which this holder has assigned his staked voting weight.
-  function delegateeForHolder(address _holder) external view virtual returns (address _delegatee) {
+  /// @return _delegatee The address to which this holder's voting weight is currently delegated.
+  function delegateeForHolder(address _holder) public view virtual returns (address _delegatee) {
     HolderState memory _holderState = holderStates[_holder];
     (,,, _delegatee,,,) = STAKER.deposits(_calcDepositId(_holderState));
+  }
+
+  /// @notice The delegatee to whom a given holder's stake is currently delegated. This will be the delegatee to whom
+  /// the user has chosen to assign their voting weight OR the default delegatee, if the user's deposit has been
+  /// moved to the override state.
+  /// @param _holder The holder in question.
+  /// @return The address to which this holder's voting weight is currently delegated.
+  /// @dev This method is included for partial compatibility with the `IVotes` interface. It returns the same data as
+  /// the `delegateeForHolder` method.
+  function delegates(address _holder) external view virtual returns (address) {
+    return delegateeForHolder(_holder);
   }
 
   /// @notice The stake deposit identifier associated with a given delegatee address.
@@ -739,6 +752,9 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
   /// @notice Allow a depositor to change the address they are delegating their staked tokens.
   /// @param _delegatee The address where voting is delegated.
   /// @return _depositId The deposit identifier for the delegatee.
+  /// @dev This operation can be completed in a more gas efficient manner by calling `updateDeposit` with the depositId
+  /// of the user's chosen delegatee, assuming it has already been initialized. This method is included primarily for
+  /// partial compatibility with the `IVotes` interface.
   function delegate(address _delegatee) public virtual returns (Staker.DepositIdentifier _depositId) {
     _depositId = fetchOrInitializeDepositForDelegatee(_delegatee);
     updateDeposit(_depositId);
