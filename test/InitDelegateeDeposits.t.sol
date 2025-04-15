@@ -27,7 +27,7 @@ contract InitDelegateeDepositsTest is Test {
   IGovLst govLst;
 
   function setUp() public {
-    vm.createSelectFork(vm.envOr("MAINNET_RPC_URL", string("Please set RPC_URL in your .env file")), FORK_BLOCK);
+    vm.createSelectFork(vm.envOr("SEPOLIA_RPC_URL", string("Please set RPC_URL in your .env file")), FORK_BLOCK);
     initDelegateeDeposits = new MockInitDelegateeDeposits();
 
     jsonObj =
