@@ -5042,3 +5042,35 @@ contract ConvertToRebasingAndUnstake is GovLstTest {
     lst.convertToRebasingAndUnstake(_account, _shares);
   }
 }
+
+contract Delegates is GovLstTest {
+  function testFuzz_Delegates(address _holder, address _delegatee, uint256 _amount) public {
+    _assumeSafeHolder(_holder);
+    _assumeSafeDelegatee(_delegatee);
+    _amount = _boundToReasonableStakeTokenAmount(_amount);
+
+    // Stake tokens in the fixed LST.
+    _mintAndStake(_holder, _amount);
+
+    vm.prank(_holder);
+    lst.delegate(_delegatee);
+
+    assertEq(lst.delegates(_holder), _delegatee);
+  }
+}
+
+contract DelegateeForHolderRebasing is GovLstTest {
+  function testFuzz_DelegateeForHolder(address _holder, address _delegatee, uint256 _amount) public {
+    _assumeSafeHolder(_holder);
+    _assumeSafeDelegatee(_delegatee);
+    _amount = _boundToReasonableStakeTokenAmount(_amount);
+
+    // Stake tokens in the fixed LST.
+    _mintAndStake(_holder, _amount);
+
+    vm.prank(_holder);
+    lst.delegate(_delegatee);
+
+    assertEq(lst.delegateeForHolder(_holder), _delegatee);
+  }
+}
