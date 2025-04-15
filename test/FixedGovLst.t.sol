@@ -3006,3 +3006,19 @@ contract Rescue is FixedGovLstTest {
     assertLe(fixedLst.balanceOf(_holder), _expectedBalance);
   }
 }
+
+contract DelegateeForHolderFixed is FixedGovLstTest {
+  function testFuzz_DelegateeForHolder(address _holder, address _delegatee, uint256 _amount) public {
+    _assumeSafeHolder(_holder);
+    _assumeSafeDelegatee(_delegatee);
+    _amount = _boundToReasonableStakeTokenAmount(_amount);
+
+    // Stake tokens in the fixed LST.
+    _mintAndStakeFixed(_holder, _amount);
+
+    vm.prank(_holder);
+    fixedLst.delegate(_delegatee);
+
+    assertEq(fixedLst.delegateeForHolder(_holder), _delegatee);
+  }
+}
