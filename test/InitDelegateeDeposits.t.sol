@@ -4,7 +4,7 @@ pragma solidity ^0.8.23;
 import {Test} from "forge-std/Test.sol";
 import {InitDelegateeDeposits} from "../src/script/InitDelegateeDeposits.s.sol";
 import {stdJson} from "forge-std/StdJson.sol";
-import {IGovLst, Staker} from "../src/interfaces/IGovLst.sol";
+import {GovLst, Staker} from "../src/GovLst.sol";
 
 contract MockInitDelegateeDeposits is InitDelegateeDeposits {
   function getGovLstAddress() public pure override returns (address) {
@@ -24,7 +24,7 @@ contract InitDelegateeDepositsTest is Test {
   uint256 public BATCH_SIZE = 2; // Should match production or mock script.
   string jsonObj; // Test json object.
   address[] delegateeAddresses;
-  IGovLst govLst;
+  GovLst govLst;
 
   function setUp() public {
     vm.createSelectFork(vm.envOr("SEPOLIA_RPC_URL", string("Please set RPC_URL in your .env file")), FORK_BLOCK);
@@ -33,7 +33,7 @@ contract InitDelegateeDepositsTest is Test {
     jsonObj =
       '{ "addresses": ["0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266", "0x70997970C51812dc3A010C7d01b50e0d17dc79C8", "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC", "0x90F79bf6EB2c4f870365E785982E1f101E93b906", "0x15d34AAf54267DB7D7c367839AAf71A00a2C6A65"]}'; // Anvil
     delegateeAddresses = stdJson.readAddressArray(jsonObj, ".addresses");
-    govLst = IGovLst(GOV_LST_ADDRESS);
+    govLst = GovLst(GOV_LST_ADDRESS);
   }
 
   function _unwrapDepositId(Staker.DepositIdentifier _depositId) internal pure returns (uint256) {
@@ -57,7 +57,7 @@ contract GetDepositIdsForDelegateeAddresses is InitDelegateeDepositsTest {
   function testFuzz_ReturnsCorrectDepositIds(uint256 _mockDepositId) public {
     vm.mockCall(
       GOV_LST_ADDRESS,
-      abi.encodeWithSelector(IGovLst.depositForDelegatee.selector, delegateeAddresses[0]),
+      abi.encodeWithSelector(GovLst.depositForDelegatee.selector, delegateeAddresses[0]),
       abi.encode(_mockDepositId)
     );
 
@@ -76,7 +76,7 @@ contract FilterDelegateeAddresses is InitDelegateeDepositsTest {
     vm.assume(_mockDepositId != 0 && _mockDepositId != initDelegateeDeposits.DEFAULT_DEPOSIT_ID());
     vm.mockCall(
       GOV_LST_ADDRESS,
-      abi.encodeWithSelector(IGovLst.depositForDelegatee.selector, delegateeAddresses[0]),
+      abi.encodeWithSelector(GovLst.depositForDelegatee.selector, delegateeAddresses[0]),
       abi.encode(_mockDepositId)
     );
 

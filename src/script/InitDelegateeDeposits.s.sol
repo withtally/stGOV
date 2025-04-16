@@ -5,7 +5,7 @@ import {Script} from "forge-std/Script.sol";
 import {console2} from "forge-std/console2.sol";
 import {stdJson} from "forge-std/StdJson.sol";
 import {Multicall} from "@openzeppelin/contracts/utils/Multicall.sol";
-import {IGovLst, Staker} from "../interfaces/IGovLst.sol";
+import {GovLst, Staker} from "src/GovLst.sol";
 
 /// @title InitDelegateeDeposits
 /// @author [ScopeLift](https://scopelift.co)
@@ -14,7 +14,7 @@ import {IGovLst, Staker} from "../interfaces/IGovLst.sol";
 /// and initializes deposits for those that don't have one yet using multicall batching for efficiency.
 abstract contract InitDelegateeDeposits is Script {
   /// @notice Reference to the GovLst contract.
-  IGovLst govLst = IGovLst(getGovLstAddress());
+  GovLst govLst = GovLst(getGovLstAddress());
 
   /// @notice The default deposit ID value used to identify uninitialized deposits.
   uint256 public immutable DEFAULT_DEPOSIT_ID = Staker.DepositIdentifier.unwrap(govLst.DEFAULT_DEPOSIT_ID());
@@ -76,7 +76,7 @@ abstract contract InitDelegateeDeposits is Script {
 
     bytes[] memory _data = new bytes[](_delegateeAddressesLength);
     for (uint256 i = 0; i < _delegateeAddressesLength; i++) {
-      _data[i] = abi.encodeWithSelector(IGovLst.depositForDelegatee.selector, _delegateeAddresses[i]);
+      _data[i] = abi.encodeWithSelector(GovLst.depositForDelegatee.selector, _delegateeAddresses[i]);
     }
 
     bytes[] memory _results = govLst.multicall(_data);
@@ -136,7 +136,7 @@ abstract contract InitDelegateeDeposits is Script {
 
       for (uint256 i = 0; i < _currentBatchSize; i++) {
         _batchData[i] = abi.encodeWithSelector(
-          IGovLst.fetchOrInitializeDepositForDelegatee.selector, _addressesToInit[_startIndex + i]
+          GovLst.fetchOrInitializeDepositForDelegatee.selector, _addressesToInit[_startIndex + i]
         );
       }
 
