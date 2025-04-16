@@ -5,6 +5,10 @@ import {InitDelegateeDeposits} from "../../../src/script/InitDelegateeDeposits.s
 import {GovLst} from "../../../src/GovLst.sol";
 
 contract MockInitDelegateeDeposits is InitDelegateeDeposits {
+  constructor() {
+    showSummaryOutput = false;
+  }
+
   function getGovLst() public pure override returns (GovLst) {
     return GovLst(0x5991A2dF15A8F6A256D3Ec51E99254Cd3fb576A9); // local deployment address.
   }

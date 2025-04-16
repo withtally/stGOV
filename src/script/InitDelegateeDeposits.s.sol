@@ -16,6 +16,9 @@ abstract contract InitDelegateeDeposits is Script {
   /// @notice Reference to the GovLst contract.
   GovLst govLst = getGovLst();
 
+  /// @notice Whether to show summary output when the script is run.
+  bool showSummaryOutput = true;
+
   /// @notice The default deposit ID value used to identify uninitialized deposits.
   uint256 public immutable DEFAULT_DEPOSIT_ID = Staker.DepositIdentifier.unwrap(govLst.DEFAULT_DEPOSIT_ID());
 
@@ -33,13 +36,15 @@ abstract contract InitDelegateeDeposits is Script {
       filterDelegateeAddresses(_delegateeAddresses, _depositIds);
     (, uint256 _batchCount) = callFetchOrInitializeDepositForDelegatee(_addressesToInit, _numOfAddressesToInit);
 
-    console2.log("\n========== INITIALIZATION SUMMARY ==========");
-    console2.log("Total delegatee addresses processed:", _delegateeAddresses.length);
-    console2.log("Addresses filtered (already have deposits):", _delegateeAddresses.length - _numOfAddressesToInit);
-    console2.log("Addresses included for initialization:", _numOfAddressesToInit);
-    console2.log("Multicall batch size:", BATCH_SIZE);
-    console2.log("Number of multicall batches submitted:", _batchCount);
-    console2.log("===========================================");
+    if (showSummaryOutput) {
+      console2.log("\n========== INITIALIZATION SUMMARY ==========");
+      console2.log("Total delegatee addresses processed:", _delegateeAddresses.length);
+      console2.log("Addresses filtered (already have deposits):", _delegateeAddresses.length - _numOfAddressesToInit);
+      console2.log("Addresses included for initialization:", _numOfAddressesToInit);
+      console2.log("Multicall batch size:", BATCH_SIZE);
+      console2.log("Number of multicall batches submitted:", _batchCount);
+      console2.log("===========================================");
+    }
 
     vm.stopBroadcast();
   }
