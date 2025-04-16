@@ -2,19 +2,10 @@
 pragma solidity ^0.8.23;
 
 import {Test} from "forge-std/Test.sol";
-import {InitDelegateeDeposits} from "../src/script/InitDelegateeDeposits.s.sol";
+import {InitDelegateeDeposits} from "../../src/script/InitDelegateeDeposits.s.sol";
 import {stdJson} from "forge-std/StdJson.sol";
-import {GovLst, Staker} from "../src/GovLst.sol";
-
-contract MockInitDelegateeDeposits is InitDelegateeDeposits {
-  function getGovLst() public pure override returns (GovLst) {
-    return GovLst(0xDfdEB974D0A564d7C25610e568c1D309220236BB); // Sepolia address.
-  }
-
-  function multicallBatchSize() public pure override returns (uint256) {
-    return 2;
-  }
-}
+import {GovLst, Staker} from "../../src/GovLst.sol";
+import {MockInitDelegateeDeposits} from "./mocks/MockInitDelegateeDeposits.s.sol";
 
 contract InitDelegateeDepositsTest is Test {
   MockInitDelegateeDeposits public initDelegateeDeposits;
@@ -31,8 +22,8 @@ contract InitDelegateeDepositsTest is Test {
     initDelegateeDeposits = new MockInitDelegateeDeposits();
 
     jsonObj =
-      '{ "addresses": ["0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266", "0x70997970C51812dc3A010C7d01b50e0d17dc79C8", "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC", "0x90F79bf6EB2c4f870365E785982E1f101E93b906", "0x15d34AAf54267DB7D7c367839AAf71A00a2C6A65"]}'; // Anvil
-    delegateeAddresses = stdJson.readAddressArray(jsonObj, ".addresses");
+      '["0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266", "0x70997970C51812dc3A010C7d01b50e0d17dc79C8", "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC", "0x90F79bf6EB2c4f870365E785982E1f101E93b906", "0x15d34AAf54267DB7D7c367839AAf71A00a2C6A65"]'; // Anvil
+    delegateeAddresses = stdJson.readAddressArray(jsonObj, "");
     govLst = GovLst(GOV_LST_ADDRESS);
   }
 

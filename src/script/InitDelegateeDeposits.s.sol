@@ -52,14 +52,20 @@ abstract contract InitDelegateeDeposits is Script {
   /// @return The number of operations to include in each batch.
   function multicallBatchSize() public pure virtual returns (uint256);
 
+  /// @notice Returns the path to the JSON file containing delegatee addresses.
+  /// @return The path to the JSON file containing delegatee addresses.
+  /// @dev The path should be composed relative to the project root, e.g.:
+  ///      return string.concat(vm.projectRoot(), "/src/script/addresses.json")
+  ///      Note that Foundry requires explicit read permissions in foundry.toml:
+  ///      [profile.default]
+  ///      fs_permissions = [{ access = "read", path = "./src/script/addresses.json" }]
+  function filePath() public view virtual returns (string memory);
+
   /// @notice Reads delegatee addresses from a JSON file.
   /// @return An array of delegatee addresses.
   function readDelegateeAddressesFromFile() public view virtual returns (address[] memory) {
-    string memory _root = vm.projectRoot();
-    string memory _path = string.concat(_root, "/src/script/addresses.json");
-    string memory _json = vm.readFile(_path);
-
-    address[] memory _delegateeAddresses = stdJson.readAddressArray(_json, ".addresses");
+    string memory _json = vm.readFile(filePath());
+    address[] memory _delegateeAddresses = stdJson.readAddressArray(_json, "");
     return _delegateeAddresses;
   }
 
