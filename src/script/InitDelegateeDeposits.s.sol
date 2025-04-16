@@ -126,7 +126,7 @@ abstract contract InitDelegateeDeposits is Script {
     returns (bytes[] memory, uint256)
   {
     uint256 _totalAddresses = _numOfAddressesToInit;
-    uint256 _batchCount = (_totalAddresses + BATCH_SIZE - 1) / BATCH_SIZE;
+    uint256 _batchCount = _totalAddresses / BATCH_SIZE + (_totalAddresses % BATCH_SIZE > 0 ? 1 : 0);
 
     bytes[] memory _allResults = new bytes[](_totalAddresses);
 
