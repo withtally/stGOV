@@ -14,7 +14,7 @@ import {GovLst, Staker} from "src/GovLst.sol";
 /// and initializes deposits for those that don't have one yet using multicall batching for efficiency.
 abstract contract InitDelegateeDeposits is Script {
   /// @notice Reference to the GovLst contract.
-  GovLst govLst = GovLst(getGovLstAddress());
+  GovLst govLst = getGovLst();
 
   /// @notice The default deposit ID value used to identify uninitialized deposits.
   uint256 public immutable DEFAULT_DEPOSIT_ID = Staker.DepositIdentifier.unwrap(govLst.DEFAULT_DEPOSIT_ID());
@@ -46,7 +46,7 @@ abstract contract InitDelegateeDeposits is Script {
 
   /// @notice Returns the address of the GovLst contract.
   /// @return The address of the GovLst contract.
-  function getGovLstAddress() public virtual returns (address);
+  function getGovLst() public virtual returns (GovLst);
 
   /// @notice Returns the batch size for multicall operations.
   /// @return The number of operations to include in each batch.

@@ -7,8 +7,8 @@ import {stdJson} from "forge-std/StdJson.sol";
 import {GovLst, Staker} from "../src/GovLst.sol";
 
 contract MockInitDelegateeDeposits is InitDelegateeDeposits {
-  function getGovLstAddress() public pure override returns (address) {
-    return 0xDfdEB974D0A564d7C25610e568c1D309220236BB; // Sepolia address.
+  function getGovLst() public pure override returns (GovLst) {
+    return GovLst(0xDfdEB974D0A564d7C25610e568c1D309220236BB); // Sepolia address.
   }
 
   function multicallBatchSize() public pure override returns (uint256) {
@@ -41,9 +41,9 @@ contract InitDelegateeDepositsTest is Test {
   }
 }
 
-contract GetGovLstAddress is InitDelegateeDepositsTest {
+contract GetGovLst is InitDelegateeDepositsTest {
   function test_ReturnsCorrectAddress() public view {
-    assertEq(initDelegateeDeposits.getGovLstAddress(), GOV_LST_ADDRESS);
+    assertEq(address(initDelegateeDeposits.getGovLst()), GOV_LST_ADDRESS);
   }
 }
 
