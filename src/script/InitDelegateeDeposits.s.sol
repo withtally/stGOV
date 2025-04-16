@@ -34,7 +34,7 @@ abstract contract InitDelegateeDeposits is Script {
     uint256[] memory _depositIds = getDepositIdsForDelegateeAddresses(_delegateeAddresses);
     (address[] memory _addressesToInit, uint256 _numOfAddressesToInit) =
       filterDelegateeAddresses(_delegateeAddresses, _depositIds);
-    (, uint256 _batchCount) = callFetchOrInitializeDepositForDelegatee(_addressesToInit, _numOfAddressesToInit);
+    uint256 _batchCount = callFetchOrInitializeDepositForDelegatee(_addressesToInit, _numOfAddressesToInit);
 
     if (showSummaryOutput) {
       console2.log("\n========== INITIALIZATION SUMMARY ==========");
@@ -123,41 +123,38 @@ abstract contract InitDelegateeDeposits is Script {
   /// @notice Initializes deposits for delegatee addresses in batches using multicall.
   /// @param _addressesToInit Array of delegatee addresses that need initialization.
   /// @param _numOfAddressesToInit Number of addresses to initialize.
-  /// @return _allResults An array of results from the initialization calls.
   /// @return _batchCount The number of batches processed.
   function callFetchOrInitializeDepositForDelegatee(address[] memory _addressesToInit, uint256 _numOfAddressesToInit)
     public
     virtual
-    returns (bytes[] memory, uint256)
+    returns (uint256)
   {
-    uint256 _totalAddresses = _numOfAddressesToInit;
-    uint256 _batchCount = _totalAddresses / BATCH_SIZE + (_totalAddresses % BATCH_SIZE > 0 ? 1 : 0);
+    uint256 _lastBatchCount = _numOfAddressesToInit % BATCH_SIZE;
+    uint256 _batchCount = _numOfAddressesToInit / BATCH_SIZE + (_lastBatchCount > 0 ? 1 : 0);
+    uint256 _currentBatchNumber = 1;
+    uint256 _currentBatchSize;
+    bytes[] memory _batchData = new bytes[](BATCH_SIZE);
 
-    bytes[] memory _allResults = new bytes[](_totalAddresses);
+    for (uint256 i = 0; i < _numOfAddressesToInit; i++) {
+      _batchData[_currentBatchSize++] =
+        abi.encodeWithSelector(GovLst.fetchOrInitializeDepositForDelegatee.selector, _addressesToInit[i]);
 
-    for (uint256 _batchIndex = 0; _batchIndex < _batchCount; _batchIndex++) {
-      uint256 _startIndex = _batchIndex * BATCH_SIZE;
-      uint256 _endIndex = _startIndex + BATCH_SIZE;
-      if (_endIndex > _totalAddresses) {
-        _endIndex = _totalAddresses;
-      }
+      // Submit the batch if the current batch is full or if it's the last address.
+      if (_currentBatchSize == BATCH_SIZE || i == _numOfAddressesToInit - 1) {
+        govLst.multicall(_batchData);
 
-      uint256 _currentBatchSize = _endIndex - _startIndex;
-      bytes[] memory _batchData = new bytes[](_currentBatchSize);
+        // If the current batch is the one before the last batch, set the next batch data size to the last batch count.
+        if (_currentBatchNumber == _batchCount - 1) {
+          _batchData = new bytes[](_lastBatchCount);
+        } else {
+          _batchData = new bytes[](BATCH_SIZE);
+        }
 
-      for (uint256 i = 0; i < _currentBatchSize; i++) {
-        _batchData[i] = abi.encodeWithSelector(
-          GovLst.fetchOrInitializeDepositForDelegatee.selector, _addressesToInit[_startIndex + i]
-        );
-      }
-
-      bytes[] memory _batchResults = govLst.multicall(_batchData);
-
-      for (uint256 i = 0; i < _currentBatchSize; i++) {
-        _allResults[_startIndex + i] = _batchResults[i];
+        // Reset the current batch size and increment the current batch number.
+        _currentBatchSize = 0;
+        _currentBatchNumber++;
       }
     }
-
-    return (_allResults, _batchCount);
+    return _batchCount;
   }
 }

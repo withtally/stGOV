@@ -81,13 +81,12 @@ contract CallFetchOrInitializeDepositForDelegatee is InitDelegateeDepositsTest {
   function test_ReturnsCorrectResults() public {
     uint256 _delegateeAddressesLength = delegateeAddresses.length;
 
-    (bytes[] memory _results, uint256 _batchCount) =
+    uint256 _batchCount =
       initDelegateeDeposits.callFetchOrInitializeDepositForDelegatee(delegateeAddresses, _delegateeAddressesLength);
 
     assertEq(_batchCount, (_delegateeAddressesLength + BATCH_SIZE - 1) / BATCH_SIZE);
-    assertEq(_results.length, _delegateeAddressesLength);
     for (uint256 i; i < _delegateeAddressesLength; i++) {
-      Staker.DepositIdentifier _depositId = abi.decode(_results[i], (Staker.DepositIdentifier));
+      Staker.DepositIdentifier _depositId = lst.depositForDelegatee(delegateeAddresses[i]);
       assertTrue(
         _unwrapDepositId(_depositId) != 0 && _unwrapDepositId(_depositId) != initDelegateeDeposits.DEFAULT_DEPOSIT_ID()
       );
