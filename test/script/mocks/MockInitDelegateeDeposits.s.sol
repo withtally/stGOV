@@ -6,7 +6,7 @@ import {GovLst} from "../../../src/GovLst.sol";
 
 contract MockInitDelegateeDeposits is InitDelegateeDeposits {
   function getGovLst() public pure override returns (GovLst) {
-    return GovLst(0xDfdEB974D0A564d7C25610e568c1D309220236BB); // Sepolia address.
+    return GovLst(0x5991A2dF15A8F6A256D3Ec51E99254Cd3fb576A9); // local deployment address.
   }
 
   function multicallBatchSize() public pure override returns (uint256) {
