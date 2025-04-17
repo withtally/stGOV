@@ -10,8 +10,11 @@ import {GovLst, Staker} from "src/GovLst.sol";
 /// @title InitDelegateeDeposits
 /// @author [ScopeLift](https://scopelift.co)
 /// @notice A script to initialize deposits for delegatee addresses in the GovLst contract.
-/// @dev This script reads delegatee addresses from a JSON file, checks if they already have deposits,
-/// and initializes deposits for those that don't have one yet using multicall batching for efficiency.
+/// @dev This script reads delegatee addresses from a JSON file, checks if they already have deposits, and initializes
+/// deposits for those that don't have one yet using multicall batching for efficiency.
+/// To use this script, inherit from it and implement the required methods: `getGovLst()`, `multicallBatchSize()`, and
+/// the `filePath()` method that returns the path to your JSON file. Be sure to add fs_permissions for read access to
+/// your JSON file in foundry.toml (e.g., fs_permissions = [{ access = "read", path = "./src/script/addresses.json"}]).
 abstract contract InitDelegateeDeposits is Script {
   /// @notice Reference to the GovLst contract.
   GovLst govLst = getGovLst();
@@ -64,6 +67,8 @@ abstract contract InitDelegateeDeposits is Script {
   ///      Note that Foundry requires explicit read permissions in foundry.toml:
   ///      [profile.default]
   ///      fs_permissions = [{ access = "read", path = "./src/script/addresses.json" }]
+  ///      The JSON file should contain a top-level array of addresses as strings, e.g.:
+  ///      ["0x1234...", "0xabcd...", "0x5678..."]
   function filePath() public view virtual returns (string memory);
 
   /// @notice Reads delegatee addresses from a JSON file.
