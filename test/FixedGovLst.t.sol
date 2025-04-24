@@ -181,21 +181,6 @@ contract Constructor is FixedGovLstTest {
     assertEq(fixedLst.version(), "2");
   }
 
-  function test_DOMAIN_SEPARATOR() public view {
-    bytes32 _expectedDomainSeparator = keccak256(
-      abi.encode(
-        // keccak256('EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)')
-        0x8b73c3c69bb8fe3d512ecc4cf759cc79239f7b179b0ffacaa9a75d522b39400f,
-        keccak256(bytes(tokenName)),
-        keccak256(bytes("2")),
-        block.chainid,
-        address(fixedLst)
-      )
-    );
-
-    assertEq(fixedLst.DOMAIN_SEPARATOR(), _expectedDomainSeparator);
-  }
-
   function test_DefaultDelegatee() public view {
     assertEq(fixedLst.defaultDelegatee(), lst.defaultDelegatee());
   }
@@ -518,6 +503,24 @@ contract Permit is FixedGovLstTest {
     vm.prank(_sender);
     vm.expectRevert(FixedGovLst.FixedGovLst__InvalidSignature.selector);
     fixedLst.permit(_owner, _spender, _value, _deadline, v, r, s);
+  }
+}
+
+contract DOMAIN_SEPARATOR is FixedGovLstTest {
+  function test_MatchesTheExpectedValueRequiredByTheEIP712Standard() public view {
+    bytes32 _expectedDomainSeparator = keccak256(
+      abi.encode(
+        keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
+        keccak256(bytes(tokenName)),
+        keccak256(bytes(fixedLst.version())),
+        block.chainid,
+        address(fixedLst)
+      )
+    );
+
+    bytes32 _actualDomainSeparator = fixedLst.DOMAIN_SEPARATOR();
+
+    assertEq(_actualDomainSeparator, _expectedDomainSeparator);
   }
 }
 
