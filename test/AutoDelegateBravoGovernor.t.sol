@@ -4,28 +4,14 @@ pragma solidity ^0.8.23;
 import {Test} from "forge-std/Test.sol";
 import {GovernorBravoDelegateMock} from "./mocks/GovernorBravoDelegateMock.sol";
 import {IGovernorBravoDelegate} from "../src/interfaces/IGovernorBravoDelegate.sol";
-import {AutoDelegateBravoGovernor} from "../src/auto-delegates/extensions/AutoDelegateBravoGovernor.sol";
-
-contract InstanceOfAutoDelegateBravoGovernor is AutoDelegateBravoGovernor {
-  function exposed_castVote(address _governor, uint256 _proposalId) external {
-    _castVote(_governor, _proposalId);
-  }
-
-  function exposed_getProposalDetails(address _governor, uint256 _proposalId)
-    external
-    view
-    returns (uint256 _proposalDeadline, uint256 _forVotes, uint256 _againstVotes, uint256 _quorumVotes)
-  {
-    return _getProposalDetails(_governor, _proposalId);
-  }
-}
+import {AutoDelegateBravoGovernorHarness} from "./harnesses/AutoDelegateBravoGovernorHarness.sol";
 
 contract AutoDelegateBravoGovernorTest is Test {
-  InstanceOfAutoDelegateBravoGovernor public autoDelegate;
+  AutoDelegateBravoGovernorHarness public autoDelegate;
   GovernorBravoDelegateMock public governor;
 
   function setUp() public {
-    autoDelegate = new InstanceOfAutoDelegateBravoGovernor();
+    autoDelegate = new AutoDelegateBravoGovernorHarness();
     governor = new GovernorBravoDelegateMock();
   }
 }
