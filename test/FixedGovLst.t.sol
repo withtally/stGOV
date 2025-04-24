@@ -180,11 +180,15 @@ contract Constructor is FixedGovLstTest {
     assertEq(fixedLst.decimals(), 18);
     assertEq(fixedLst.version(), "2");
   }
+}
 
+contract DefaultDelegatee is FixedGovLstTest {
   function test_DefaultDelegatee() public view {
     assertEq(fixedLst.defaultDelegatee(), lst.defaultDelegatee());
   }
+}
 
+contract DepositForDelegatee is FixedGovLstTest {
   function testFuzz_DepositForDelegatee(address _delegatee) public view {
     assertEq(fixedLst.depositForDelegatee(_delegatee), lst.depositForDelegatee(_delegatee));
   }

@@ -28,10 +28,8 @@ contract CLOCK_MODE is BlockNumberClockModeTest {
   function test_ReturnsCorrectClockMode() public view {
     assertEq(blockNumberClockMode.CLOCK_MODE(), "mode=blocknumber&from=default");
   }
-}
 
-contract CLOCK_MODE_Revert is BlockNumberClockModeTest {
-  function test_RevertIf_ClockInconsistent() public {
+  function test_RevertIf_ClockIsInconsistent() public {
     // Set a mock clock value inconsistent with the current block number
     mockBlockNumberClockMode.setMockClock(SafeCast.toUint48(block.number + 1));
 

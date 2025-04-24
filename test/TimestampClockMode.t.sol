@@ -41,10 +41,8 @@ contract CLOCK_MODE is TimestampClockModeTest {
   function test_ReturnsCorrectClockMode() public view {
     assertEq(timestampClockMode.CLOCK_MODE(), "mode=timestamp");
   }
-}
 
-contract CLOCK_MODE_Revert is TimestampClockModeTest {
-  function test_RevertIf_ClockInconsistent() public {
+  function test_RevertIf_ClockIsInconsistent() public {
     // Set a mock clock value inconsistent with the current block number
     mockTimestampClockMode.setMockClock(SafeCast.toUint48(block.number + 1));
 

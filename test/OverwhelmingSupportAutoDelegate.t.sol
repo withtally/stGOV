@@ -54,7 +54,7 @@ abstract contract OverwhelmingSupportAutoDelegateTest is Test {
 }
 
 abstract contract Constructor is OverwhelmingSupportAutoDelegateTest {
-  function test_SetsCorrectOwner() public view {
+  function test_SetsConfigurationParameters() public view {
     assertEq(autoDelegate.owner(), owner);
     assertEq(autoDelegate.votingWindow(), votingWindow);
     assertEq(autoDelegate.subQuorumBips(), subQuorumBips);
@@ -338,7 +338,7 @@ contract OZGovernorBlockNumberModeSetSupportThreshold is OverwhelmingSupportAuto
 }
 
 abstract contract CheckVoteRequirementsTest is OverwhelmingSupportAutoDelegateTest {
-  function testFuzz_CheckVoteRequirements_Success(
+  function testFuzz_CheckVoteRequirements(
     uint256 _proposalId,
     uint256 _blocksWithinVotingWindow,
     uint256 _proposalDeadline,
@@ -359,7 +359,7 @@ abstract contract CheckVoteRequirementsTest is OverwhelmingSupportAutoDelegateTe
     autoDelegate.checkVoteRequirements(address(governor), _proposalId);
   }
 
-  function testFuzz_CheckVoteRequirements_RevertIf_OutsideVotingWindow(
+  function testFuzz_RevertIf_OutsideVotingWindow(
     uint256 _proposalId,
     uint256 _blocksOutsideVotingWindow,
     uint256 _proposalDeadline
@@ -376,7 +376,7 @@ abstract contract CheckVoteRequirementsTest is OverwhelmingSupportAutoDelegateTe
     autoDelegate.checkVoteRequirements(address(governor), _proposalId);
   }
 
-  function testFuzz_CheckVoteRequirements_RevertIf_InsufficientForVotes(
+  function testFuzz_RevertIf_InsufficientForVotes(
     uint256 _proposalId,
     uint256 _blocksWithinBuffer,
     uint256 _forVotesBIP
@@ -394,7 +394,7 @@ abstract contract CheckVoteRequirementsTest is OverwhelmingSupportAutoDelegateTe
     autoDelegate.checkVoteRequirements(address(governor), _proposalId);
   }
 
-  function testFuzz_CheckVoteRequirements_RevertIf_BelowSupportThreshold(
+  function testFuzz_RevertIf_BelowSupportThreshold(
     uint256 _proposalId,
     uint256 _blocksWithinBuffer,
     uint256 _totalVotes,
