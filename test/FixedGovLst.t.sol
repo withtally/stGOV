@@ -183,7 +183,7 @@ contract Constructor is FixedGovLstTest {
 }
 
 contract DefaultDelegatee is FixedGovLstTest {
-  function test_DefaultDelegatee() public view {
+  function test_MatchesTheRebasingDefaultDelegateeOfTheRebasingLst() public view {
     assertEq(fixedLst.defaultDelegatee(), lst.defaultDelegatee());
   }
 }
@@ -195,7 +195,7 @@ contract DepositForDelegatee is FixedGovLstTest {
 }
 
 contract FetchOrInitializeDepositForDelegatee is FixedGovLstTest {
-  function testFuzz_FetchOrInitializeDepositForDelegatee(address _delegatee) public {
+  function testFuzz_CorrectlyCreatesDepositId(address _delegatee) public {
     // Assume the delegatee is safe
     _assumeSafeDelegatee(_delegatee);
 
@@ -3015,7 +3015,9 @@ contract Rescue is FixedGovLstTest {
 }
 
 contract DelegateeForHolderFixed is FixedGovLstTest {
-  function testFuzz_DelegateeForHolder(address _holder, address _delegatee, uint256 _amount) public {
+  function testFuzz_CorrectlyDelegatesFromHolderToDelegatee(address _holder, address _delegatee, uint256 _amount)
+    public
+  {
     _assumeSafeHolder(_holder);
     _assumeSafeDelegatee(_delegatee);
     _amount = _boundToReasonableStakeTokenAmount(_amount);

@@ -476,7 +476,7 @@ contract Constructor is GovLstTest {
     assertEq(lst.MAX_FEE_BIPS(), 2000); // 20% in bips
   }
 
-  function test_StakeForShares() public view {
+  function test_CorrectStakeForSharesValueCalculated() public view {
     assertEq(lst.stakeForShares(5 * SHARE_SCALE_FACTOR), 5);
   }
 
@@ -5044,7 +5044,7 @@ contract ConvertToRebasingAndUnstake is GovLstTest {
 }
 
 contract Delegates is GovLstTest {
-  function testFuzz_Delegates(address _holder, address _delegatee, uint256 _amount) public {
+  function testFuzz_CorrectlyDelegatesFromHolderToDelegate(address _holder, address _delegatee, uint256 _amount) public {
     _assumeSafeHolder(_holder);
     _assumeSafeDelegatee(_delegatee);
     _amount = _boundToReasonableStakeTokenAmount(_amount);
@@ -5057,10 +5057,28 @@ contract Delegates is GovLstTest {
 
     assertEq(lst.delegates(_holder), _delegatee);
   }
+
+  function testFuzz_DelegateReturnMatchesDelegateeForHolder(address _holder, address _delegatee, uint256 _amount)
+    public
+  {
+    _assumeSafeHolder(_holder);
+    _assumeSafeDelegatee(_delegatee);
+    _amount = _boundToReasonableStakeTokenAmount(_amount);
+
+    // Stake tokens in the fixed LST.
+    _mintAndStake(_holder, _amount);
+
+    vm.prank(_holder);
+    lst.delegate(_delegatee);
+
+    assertEq(lst.delegates(_holder), lst.delegateeForHolder(_holder));
+  }
 }
 
 contract DelegateeForHolderRebasing is GovLstTest {
-  function testFuzz_DelegateeForHolder(address _holder, address _delegatee, uint256 _amount) public {
+  function testFuzz_CorrectlyDelegatesFromHolderToDelegatee(address _holder, address _delegatee, uint256 _amount)
+    public
+  {
     _assumeSafeHolder(_holder);
     _assumeSafeDelegatee(_delegatee);
     _amount = _boundToReasonableStakeTokenAmount(_amount);

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.23;
 
-import {Test} from "forge-std/Test.sol";
+import {Test, console2} from "forge-std/Test.sol";
 import {OverwhelmingSupportAutoDelegate, Ownable} from "../src/auto-delegates/OverwhelmingSupportAutoDelegate.sol";
 import {GovernorBravoDelegateMock} from "./mocks/GovernorBravoDelegateMock.sol";
 import {OpenZeppelinGovernorMock} from "./mocks/OpenZeppelinGovernorMock.sol";
@@ -338,7 +338,7 @@ contract OZGovernorBlockNumberModeSetSupportThreshold is OverwhelmingSupportAuto
 }
 
 abstract contract CheckVoteRequirementsTest is OverwhelmingSupportAutoDelegateTest {
-  function testFuzz_CheckVoteRequirements(
+  function testFuzz_SuccessfulCheckVoteRequirementsWhenProperlyConfigured(
     uint256 _proposalId,
     uint256 _blocksWithinVotingWindow,
     uint256 _proposalDeadline,
