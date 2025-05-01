@@ -418,6 +418,19 @@ abstract contract CheckVoteRequirementsTest is OverwhelmingSupportAutoDelegateTe
 }
 
 contract OZGovernorBlockModeCheckVoteRequirements is CheckVoteRequirementsTest {
+  function setUp() public override {
+    super.setUp();
+    governor = GovernorBravoDelegateMock(address(new OpenZeppelinGovernorMock()));
+  }
+
+  function autoDelegateUsingBlockNumberOrTimestampMode() public override returns (OverwhelmingSupportAutoDelegate) {
+    return new OverwhelmingSupportAutoDelegateOZGovernorBlockNumberModeMock(
+      owner, votingWindow, subQuorumBips, supportThreshold
+    );
+  }
+}
+
+contract BravoGovernorBlockModeCheckVoteRequirements is CheckVoteRequirementsTest {
   function autoDelegateUsingBlockNumberOrTimestampMode() public override returns (OverwhelmingSupportAutoDelegate) {
     return new OverwhelmingSupportAutoDelegateBravoGovernorBlockNumberModeMock(
       owner, votingWindow, subQuorumBips, supportThreshold
