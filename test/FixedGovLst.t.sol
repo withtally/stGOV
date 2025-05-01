@@ -189,7 +189,13 @@ contract DefaultDelegatee is FixedGovLstTest {
 }
 
 contract DepositForDelegatee is FixedGovLstTest {
-  function testFuzz_DepositForDelegatee(address _delegatee) public view {
+  function testFuzz_CorrectlyDepositsForDelegatee(address _delegatee) public {
+    // Assume the delegatee is safe
+    _assumeSafeDelegatee(_delegatee);
+
+    // Call the function
+    lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+
     assertEq(fixedLst.depositForDelegatee(_delegatee), lst.depositForDelegatee(_delegatee));
   }
 }
