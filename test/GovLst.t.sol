@@ -5058,6 +5058,22 @@ contract Delegates is GovLstTest {
     assertEq(lst.delegates(_holder), _delegatee);
   }
 
+  function testFuzz_VerifyThatDelegateeForHolderValueMatches(address _holder, address _delegatee, uint256 _amount)
+    public
+  {
+    _assumeSafeHolder(_holder);
+    _assumeSafeDelegatee(_delegatee);
+    _amount = _boundToReasonableStakeTokenAmount(_amount);
+
+    // Stake tokens in the fixed LST.
+    _mintAndStake(_holder, _amount);
+
+    vm.prank(_holder);
+    lst.delegate(_delegatee);
+
+    assertEq(lst.delegates(_holder), lst.delegateeForHolder(_holder));
+  }
+
   function testFuzz_DelegateReturnMatchesDelegateeForHolder(address _holder, address _delegatee, uint256 _amount)
     public
   {
