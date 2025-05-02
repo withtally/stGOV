@@ -4,14 +4,14 @@ pragma solidity ^0.8.23;
 import {Test} from "forge-std/Test.sol";
 import {GovernorBravoDelegateMock} from "./mocks/GovernorBravoDelegateMock.sol";
 import {IGovernorBravoDelegate} from "../src/interfaces/IGovernorBravoDelegate.sol";
-import {FakeAutoDelegateBravoGovernor} from "./fakes/FakeAutoDelegateBravoGovernor.sol";
+import {AutoDelegateBravoGovernorHarness} from "./harnesses/AutoDelegateBravoGovernorHarness.sol";
 
 contract AutoDelegateBravoGovernorTest is Test {
-  FakeAutoDelegateBravoGovernor public autoDelegate;
+  AutoDelegateBravoGovernorHarness public autoDelegate;
   GovernorBravoDelegateMock public governor;
 
   function setUp() public {
-    autoDelegate = new FakeAutoDelegateBravoGovernor();
+    autoDelegate = new AutoDelegateBravoGovernorHarness();
     governor = new GovernorBravoDelegateMock();
   }
 }

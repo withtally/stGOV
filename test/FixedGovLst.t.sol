@@ -177,6 +177,39 @@ contract Constructor is FixedGovLstTest {
     assertEq(fixedLst.SHARE_SCALE_FACTOR(), lst.SHARE_SCALE_FACTOR());
     assertEq(fixedLst.name(), tokenName);
     assertEq(fixedLst.symbol(), tokenSymbol);
+    assertEq(fixedLst.decimals(), 18);
+    assertEq(fixedLst.version(), "2");
+  }
+}
+
+contract DefaultDelegatee is FixedGovLstTest {
+  function test_MatchesTheRebasingDefaultDelegateeOfTheRebasingLst() public view {
+    assertEq(fixedLst.defaultDelegatee(), lst.defaultDelegatee());
+  }
+}
+
+contract DepositForDelegatee is FixedGovLstTest {
+  function testFuzz_CorrectlyDepositsForDelegatee(address _delegatee) public {
+    // Assume the delegatee is safe
+    _assumeSafeDelegatee(_delegatee);
+
+    // Call the function
+    lst.fetchOrInitializeDepositForDelegatee(_delegatee);
+
+    assertEq(fixedLst.depositForDelegatee(_delegatee), lst.depositForDelegatee(_delegatee));
+  }
+}
+
+contract FetchOrInitializeDepositForDelegatee is FixedGovLstTest {
+  function testFuzz_CorrectlyCreatesDepositId(address _delegatee) public {
+    // Assume the delegatee is safe
+    _assumeSafeDelegatee(_delegatee);
+
+    // Call the function
+    Staker.DepositIdentifier depositId = fixedLst.fetchOrInitializeDepositForDelegatee(_delegatee);
+
+    // Assert that the returned deposit identifier matches the one from the LST contract
+    assertEq(depositId, lst.fetchOrInitializeDepositForDelegatee(_delegatee));
   }
 }
 
@@ -480,6 +513,24 @@ contract Permit is FixedGovLstTest {
     vm.prank(_sender);
     vm.expectRevert(FixedGovLst.FixedGovLst__InvalidSignature.selector);
     fixedLst.permit(_owner, _spender, _value, _deadline, v, r, s);
+  }
+}
+
+contract DOMAIN_SEPARATOR is FixedGovLstTest {
+  function test_MatchesTheExpectedValueRequiredByTheEIP712Standard() public view {
+    bytes32 _expectedDomainSeparator = keccak256(
+      abi.encode(
+        keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
+        keccak256(bytes(tokenName)),
+        keccak256(bytes(fixedLst.version())),
+        block.chainid,
+        address(fixedLst)
+      )
+    );
+
+    bytes32 _actualDomainSeparator = fixedLst.DOMAIN_SEPARATOR();
+
+    assertEq(_actualDomainSeparator, _expectedDomainSeparator);
   }
 }
 
@@ -2966,5 +3017,23 @@ contract Rescue is FixedGovLstTest {
     // Because `sharesForStake` rounds up we may have up to 1 wei less than calculated expected balance.
     assertApproxEqAbs(fixedLst.balanceOf(_holder), _expectedBalance, 1);
     assertLe(fixedLst.balanceOf(_holder), _expectedBalance);
+  }
+}
+
+contract DelegateeForHolderFixed is FixedGovLstTest {
+  function testFuzz_CorrectlyDelegatesFromHolderToDelegatee(address _holder, address _delegatee, uint256 _amount)
+    public
+  {
+    _assumeSafeHolder(_holder);
+    _assumeSafeDelegatee(_delegatee);
+    _amount = _boundToReasonableStakeTokenAmount(_amount);
+
+    // Stake tokens in the fixed LST.
+    _mintAndStakeFixed(_holder, _amount);
+
+    vm.prank(_holder);
+    fixedLst.delegate(_delegatee);
+
+    assertEq(fixedLst.delegateeForHolder(_holder), _delegatee);
   }
 }

@@ -5,11 +5,27 @@ import {Test} from "forge-std/Test.sol";
 import {TimestampClockMode} from "../src/auto-delegates/extensions/TimestampClockMode.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 
+contract MockTimestampClockMode is TimestampClockMode {
+  uint48 private mockClockValue;
+
+  /// @notice Allows overriding the clock value for testing.
+  function setMockClock(uint48 _mockClockValue) public {
+    mockClockValue = _mockClockValue;
+  }
+
+  /// @notice Overrides the clock function to return the mocked value.
+  function clock() public view override returns (uint48) {
+    return mockClockValue;
+  }
+}
+
 contract TimestampClockModeTest is Test {
   TimestampClockMode public timestampClockMode;
+  MockTimestampClockMode public mockTimestampClockMode;
 
   function setUp() public {
     timestampClockMode = new TimestampClockMode();
+    mockTimestampClockMode = new MockTimestampClockMode();
   }
 }
 
@@ -24,5 +40,14 @@ contract Clock is TimestampClockModeTest {
 contract CLOCK_MODE is TimestampClockModeTest {
   function test_ReturnsCorrectClockMode() public view {
     assertEq(timestampClockMode.CLOCK_MODE(), "mode=timestamp");
+  }
+
+  function test_RevertIf_ClockIsInconsistent() public {
+    // Set a mock clock value inconsistent with the current block number
+    mockTimestampClockMode.setMockClock(SafeCast.toUint48(block.number + 1));
+
+    // Expect the ERC6372InconsistentClock error to be reverted
+    vm.expectRevert(TimestampClockMode.ERC6372InconsistentClock.selector);
+    mockTimestampClockMode.CLOCK_MODE();
   }
 }

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.23;
 
-import {Test} from "forge-std/Test.sol";
+import {Test, console2} from "forge-std/Test.sol";
 import {OverwhelmingSupportAutoDelegate, Ownable} from "../src/auto-delegates/OverwhelmingSupportAutoDelegate.sol";
 import {GovernorBravoDelegateMock} from "./mocks/GovernorBravoDelegateMock.sol";
 import {OpenZeppelinGovernorMock} from "./mocks/OpenZeppelinGovernorMock.sol";
@@ -54,7 +54,7 @@ abstract contract OverwhelmingSupportAutoDelegateTest is Test {
 }
 
 abstract contract Constructor is OverwhelmingSupportAutoDelegateTest {
-  function test_SetsCorrectOwner() public view {
+  function test_SetsConfigurationParameters() public view {
     assertEq(autoDelegate.owner(), owner);
     assertEq(autoDelegate.votingWindow(), votingWindow);
     assertEq(autoDelegate.subQuorumBips(), subQuorumBips);
@@ -332,6 +332,107 @@ contract OZGovernorBlockNumberModeSetSubQuorumBips is OverwhelmingSupportAutoDel
 contract OZGovernorBlockNumberModeSetSupportThreshold is OverwhelmingSupportAutoDelegateTest, SetSupportThreshold {
   function autoDelegateUsingBlockNumberOrTimestampMode() public override returns (OverwhelmingSupportAutoDelegate) {
     return new OverwhelmingSupportAutoDelegateOZGovernorBlockNumberModeMock(
+      owner, votingWindow, subQuorumBips, supportThreshold
+    );
+  }
+}
+
+abstract contract CheckVoteRequirementsTest is OverwhelmingSupportAutoDelegateTest {
+  function testFuzz_SuccessfulCheckVoteRequirementsWhenProperlyConfigured(
+    uint256 _proposalId,
+    uint256 _blocksWithinVotingWindow,
+    uint256 _proposalDeadline,
+    uint256 _forVotesBIP,
+    uint256 _forVotes
+  ) public {
+    _blocksWithinVotingWindow = bound(_blocksWithinVotingWindow, 0, votingWindow);
+    _proposalDeadline = bound(_proposalDeadline, getTimepoint() + governor.votingPeriod(), type(uint48).max);
+    _forVotesBIP = bound(_forVotesBIP, subQuorumBips, BIP);
+    uint256 _forVotesLowerBound = governor.quorumVotes() * _forVotesBIP / BIP;
+    _forVotes = bound(_forVotes, _forVotesLowerBound, GOV_SUPPLY);
+
+    // Set the proposal details
+    governor.__setProposals(_proposalId, _proposalDeadline, _forVotes, /*Against*/ 0);
+    rollOrWarpToTimepoint(_proposalDeadline - _blocksWithinVotingWindow);
+
+    // Call the function and ensure no revert
+    autoDelegate.checkVoteRequirements(address(governor), _proposalId);
+  }
+
+  function testFuzz_RevertIf_OutsideVotingWindow(
+    uint256 _proposalId,
+    uint256 _blocksOutsideVotingWindow,
+    uint256 _proposalDeadline
+  ) public {
+    _proposalDeadline = bound(_proposalDeadline, getTimepoint() + governor.votingPeriod(), type(uint48).max);
+    _blocksOutsideVotingWindow = bound(_blocksOutsideVotingWindow, votingWindow + 1, _proposalDeadline);
+
+    // Set the proposal details
+    governor.__setProposals(_proposalId, _proposalDeadline, /*For*/ 0, /*Against*/ 0);
+    rollOrWarpToTimepoint(_proposalDeadline - _blocksOutsideVotingWindow);
+
+    // Expect revert due to being outside the voting window
+    vm.expectRevert(OverwhelmingSupportAutoDelegate.OverwhelmingSupportAutoDelegate__OutsideVotingWindow.selector);
+    autoDelegate.checkVoteRequirements(address(governor), _proposalId);
+  }
+
+  function testFuzz_RevertIf_InsufficientForVotes(
+    uint256 _proposalId,
+    uint256 _blocksWithinBuffer,
+    uint256 _forVotesBIP
+  ) public {
+    _blocksWithinBuffer = bound(_blocksWithinBuffer, 0, votingWindow);
+    _forVotesBIP = bound(_forVotesBIP, 0, subQuorumBips - 1);
+    uint256 _forVotes = governor.quorumVotes() * _forVotesBIP / BIP;
+
+    // Set the proposal details
+    governor.__setProposals(_proposalId, proposalDeadline, _forVotes, /*Against*/ 0);
+    rollOrWarpToTimepoint(proposalDeadline - _blocksWithinBuffer);
+
+    // Expect revert due to insufficient FOR votes
+    vm.expectRevert(OverwhelmingSupportAutoDelegate.OverwhelmingSupportAutoDelegate__InsufficientForVotes.selector);
+    autoDelegate.checkVoteRequirements(address(governor), _proposalId);
+  }
+
+  function testFuzz_RevertIf_BelowSupportThreshold(
+    uint256 _proposalId,
+    uint256 _blocksWithinBuffer,
+    uint256 _totalVotes,
+    uint256 _forVotes,
+    uint256 _againstVotes
+  ) public {
+    _blocksWithinBuffer = bound(_blocksWithinBuffer, 0, votingWindow);
+    uint256 _subQuorumVotes = (governor.quorumVotes() * subQuorumBips / BIP);
+    _totalVotes = bound(_totalVotes, _subQuorumVotes * 2, GOV_SUPPLY);
+    _forVotes = bound(_forVotes, _subQuorumVotes, _totalVotes * supportThreshold / BIP - 1);
+    _againstVotes = _totalVotes - _forVotes;
+
+    // Set the proposal details
+    governor.__setProposals(_proposalId, proposalDeadline, _forVotes, _againstVotes);
+    rollOrWarpToTimepoint(proposalDeadline - _blocksWithinBuffer);
+
+    // Expect revert due to insufficient support threshold
+    vm.expectRevert(OverwhelmingSupportAutoDelegate.OverwhelmingSupportAutoDelegate__BelowSupportThreshold.selector);
+    autoDelegate.checkVoteRequirements(address(governor), _proposalId);
+  }
+}
+
+contract OZGovernorBlockModeCheckVoteRequirements is CheckVoteRequirementsTest {
+  function setUp() public override {
+    super.setUp();
+    governor = GovernorBravoDelegateMock(address(new OpenZeppelinGovernorMock()));
+  }
+
+  function autoDelegateUsingBlockNumberOrTimestampMode() public override returns (OverwhelmingSupportAutoDelegate) {
+    return new OverwhelmingSupportAutoDelegateOZGovernorBlockNumberModeMock(
+      owner, votingWindow, subQuorumBips, supportThreshold
+    );
+  }
+}
+
+contract BravoGovernorBlockModeCheckVoteRequirements is CheckVoteRequirementsTest {
+  function autoDelegateUsingBlockNumberOrTimestampMode() public override returns (OverwhelmingSupportAutoDelegate) {
+    return new OverwhelmingSupportAutoDelegateBravoGovernorBlockNumberModeMock(
       owner, votingWindow, subQuorumBips, supportThreshold
     );
   }
