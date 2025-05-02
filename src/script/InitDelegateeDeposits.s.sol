@@ -17,16 +17,26 @@ import {GovLst, Staker} from "src/GovLst.sol";
 /// your JSON file in foundry.toml (e.g., fs_permissions = [{ access = "read", path = "./src/script/addresses.json"}]).
 abstract contract InitDelegateeDeposits is Script {
   /// @notice Reference to the GovLst contract.
-  GovLst govLst = getGovLst();
+  GovLst govLst;
 
   /// @notice Whether to show summary output when the script is run.
-  bool showSummaryOutput = true;
+  bool showSummaryOutput;
 
   /// @notice The default deposit ID value used to identify uninitialized deposits.
-  uint256 public immutable DEFAULT_DEPOSIT_ID = Staker.DepositIdentifier.unwrap(govLst.DEFAULT_DEPOSIT_ID());
+  uint256 public immutable DEFAULT_DEPOSIT_ID;
 
   /// @notice The number of operations to include in each multicall batch.
-  uint256 public immutable BATCH_SIZE = multicallBatchSize();
+  uint256 public immutable BATCH_SIZE;
+
+  constructor() {
+    govLst = getGovLst();
+    showSummaryOutput = true;
+    BATCH_SIZE = multicallBatchSize();
+
+    vm.startBroadcast();
+    DEFAULT_DEPOSIT_ID = Staker.DepositIdentifier.unwrap(govLst.DEFAULT_DEPOSIT_ID());
+    vm.stopBroadcast();
+  }
 
   /// @notice Main entry point for the script.
   /// @dev Reads addresses from file, filters those needing initialization, and processes them in batches.
