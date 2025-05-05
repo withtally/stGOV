@@ -28,6 +28,9 @@ abstract contract InitDelegateeDeposits is Script {
   /// @notice The number of operations to include in each multicall batch.
   uint256 public BATCH_SIZE;
 
+  /// @notice Storage array used to build multicall batches.
+  bytes[] private batchData;
+
   function setUp() public virtual {
     govLst = getGovLst();
     showSummaryOutput = true;
@@ -128,8 +131,6 @@ abstract contract InitDelegateeDeposits is Script {
     return (_addressesToInit, _numOfAddressesToInit);
   }
 
-  bytes[] batchData;
-
   /// @notice Initializes deposits for delegatee addresses in batches using multicall.
   /// @param _addressesToInit Array of delegatee addresses that need initialization.
   /// @param _numOfAddressesToInit Number of addresses to initialize.
@@ -141,10 +142,10 @@ abstract contract InitDelegateeDeposits is Script {
   {
     uint256 _batchCount = 0;
 
+    // Iterate over all addresses building multicall batches and broadcasting them when the batch
+    // size is reached.
     for (uint256 i = 0; i < _numOfAddressesToInit; i++) {
-      batchData.push(
-        abi.encodeWithSelector(GovLst.fetchOrInitializeDepositForDelegatee.selector, _addressesToInit[i])
-      );
+      batchData.push(abi.encodeWithSelector(GovLst.fetchOrInitializeDepositForDelegatee.selector, _addressesToInit[i]));
 
       if (batchData.length == BATCH_SIZE) {
         _broadcastAndClearBatch();
@@ -153,7 +154,7 @@ abstract contract InitDelegateeDeposits is Script {
     }
 
     // If the number of addresses does not divide evenly into the batch size, this will broadcast
-    /// the leftovers.
+    // the leftovers.
     if (batchData.length > 0) {
       _broadcastAndClearBatch();
       _batchCount += 1;
@@ -162,16 +163,11 @@ abstract contract InitDelegateeDeposits is Script {
     return _batchCount;
   }
 
+  /// @notice Internal helper that broadcasts the batch and clears the current batch array.
   function _broadcastAndClearBatch() internal virtual {
-    bytes[] memory _broadcastBatch = new bytes[](batchData.length);
-
-    for (uint256 _i = 0; _i < batchData.length; _i++) {
-      _broadcastBatch[_i] = batchData[_i];
-    }
+    vm.broadcast();
+    govLst.multicall(batchData);
 
     delete batchData;
-
-    vm.broadcast();
-    govLst.multicall(_broadcastBatch);
   }
 }
