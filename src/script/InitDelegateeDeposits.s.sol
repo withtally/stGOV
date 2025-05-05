@@ -23,26 +23,21 @@ abstract contract InitDelegateeDeposits is Script {
   bool showSummaryOutput;
 
   /// @notice The default deposit ID value used to identify uninitialized deposits.
-  uint256 public immutable DEFAULT_DEPOSIT_ID;
+  uint256 public DEFAULT_DEPOSIT_ID;
 
   /// @notice The number of operations to include in each multicall batch.
-  uint256 public immutable BATCH_SIZE;
+  uint256 public BATCH_SIZE;
 
-  constructor() {
+  function setUp() public virtual {
     govLst = getGovLst();
     showSummaryOutput = true;
     BATCH_SIZE = multicallBatchSize();
-
-    vm.startBroadcast();
     DEFAULT_DEPOSIT_ID = Staker.DepositIdentifier.unwrap(govLst.DEFAULT_DEPOSIT_ID());
-    vm.stopBroadcast();
   }
 
   /// @notice Main entry point for the script.
   /// @dev Reads addresses from file, filters those needing initialization, and processes them in batches.
   function run() public virtual {
-    vm.startBroadcast();
-
     address[] memory _delegateeAddresses = readDelegateeAddressesFromFile();
     uint256[] memory _depositIds = getDepositIdsForDelegateeAddresses(_delegateeAddresses);
     (address[] memory _addressesToInit, uint256 _numOfAddressesToInit) =
@@ -58,8 +53,6 @@ abstract contract InitDelegateeDeposits is Script {
       console2.log("Number of multicall batches submitted:", _batchCount);
       console2.log("===========================================");
     }
-
-    vm.stopBroadcast();
   }
 
   /// @notice Returns the address of the GovLst contract.
@@ -135,6 +128,8 @@ abstract contract InitDelegateeDeposits is Script {
     return (_addressesToInit, _numOfAddressesToInit);
   }
 
+  bytes[] batchData;
+
   /// @notice Initializes deposits for delegatee addresses in batches using multicall.
   /// @param _addressesToInit Array of delegatee addresses that need initialization.
   /// @param _numOfAddressesToInit Number of addresses to initialize.
@@ -144,32 +139,39 @@ abstract contract InitDelegateeDeposits is Script {
     virtual
     returns (uint256)
   {
-    uint256 _lastBatchCount = _numOfAddressesToInit % BATCH_SIZE;
-    uint256 _batchCount = _numOfAddressesToInit / BATCH_SIZE + (_lastBatchCount > 0 ? 1 : 0);
-    uint256 _currentBatchNumber = 1;
-    uint256 _currentBatchSize;
-    bytes[] memory _batchData = new bytes[](BATCH_SIZE);
+    uint256 _batchCount = 0;
 
     for (uint256 i = 0; i < _numOfAddressesToInit; i++) {
-      _batchData[_currentBatchSize++] =
-        abi.encodeWithSelector(GovLst.fetchOrInitializeDepositForDelegatee.selector, _addressesToInit[i]);
+      batchData.push(
+        abi.encodeWithSelector(GovLst.fetchOrInitializeDepositForDelegatee.selector, _addressesToInit[i])
+      );
 
-      // Submit the batch if the current batch is full or if it's the last address.
-      if (_currentBatchSize == BATCH_SIZE || i == _numOfAddressesToInit - 1) {
-        govLst.multicall(_batchData);
-
-        // If the current batch is the one before the last batch, set the next batch data size to the last batch count.
-        if (_currentBatchNumber == _batchCount - 1) {
-          _batchData = new bytes[](_lastBatchCount);
-        } else {
-          _batchData = new bytes[](BATCH_SIZE);
-        }
-
-        // Reset the current batch size and increment the current batch number.
-        _currentBatchSize = 0;
-        _currentBatchNumber++;
+      if (batchData.length == BATCH_SIZE) {
+        _broadcastAndClearBatch();
+        _batchCount += 1;
       }
     }
+
+    // If the number of addresses does not divide evenly into the batch size, this will broadcast
+    /// the leftovers.
+    if (batchData.length > 0) {
+      _broadcastAndClearBatch();
+      _batchCount += 1;
+    }
+
     return _batchCount;
+  }
+
+  function _broadcastAndClearBatch() internal virtual {
+    bytes[] memory _broadcastBatch = new bytes[](batchData.length);
+
+    for (uint256 _i = 0; _i < batchData.length; _i++) {
+      _broadcastBatch[_i] = batchData[_i];
+    }
+
+    delete batchData;
+
+    vm.broadcast();
+    govLst.multicall(_broadcastBatch);
   }
 }
