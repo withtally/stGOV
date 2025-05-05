@@ -5,7 +5,8 @@ import {InitDelegateeDeposits} from "../../../src/script/InitDelegateeDeposits.s
 import {GovLst} from "../../../src/GovLst.sol";
 
 contract MockInitDelegateeDeposits is InitDelegateeDeposits {
-  constructor() {
+  function setUp() public override {
+    super.setUp();
     showSummaryOutput = false;
   }
 
