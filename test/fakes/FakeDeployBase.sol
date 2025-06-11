@@ -1,17 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 pragma solidity ^0.8.23;
 
-import {Staker, IEarningPowerCalculator} from "lib/staker/src/Staker.sol";
+import {Staker} from "lib/staker/src/Staker.sol";
 import {GovLst} from "src/GovLst.sol";
 import {GovLstHarness} from "stGOV-test/harnesses/GovLstHarness.sol";
 import {OverwhelmingSupportAutoDelegateOZGovernorTimestampModeMock} from
   "stGOV-test/mocks/OverwhelmingSupportAutoDelegateOZGovernorTimestampModeMock.sol";
 import {DeployBase} from "src/script/DeployBase.sol";
+import {DeployStaker} from "lib/staker/src/script/DeployStaker.sol";
+import {DeployLstStaker} from "src/script/DeployLstStaker.sol";
 import {DeployBaseFake} from "lib/staker/test/fakes/DeployBaseFake.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {console2} from "forge-std/Test.sol";
 
-contract FakeDeployBase is DeployBase {
+contract FakeDeployBase is DeployBase, DeployLstStaker {
   address public admin = makeAddr("Staker admin");
   IERC20 public rewardToken;
   IERC20 public stakeToken;
@@ -34,14 +36,8 @@ contract FakeDeployBase is DeployBase {
     return address(_autoDelegate);
   }
 
-  function _fetchOrDeployStakerStakingSystem()
-    internal
-    virtual
-    override
-    returns (IEarningPowerCalculator _calculator, Staker _staker, address[] memory _notifiers)
-  {
-    DeployBaseFake _deployScript = new DeployBaseFake(rewardToken, stakeToken);
-    (_calculator, _staker, _notifiers) = _deployScript.run();
+  function _getStakerDeployScript() internal override returns (DeployStaker) {
+    return new DeployBaseFake(rewardToken, stakeToken);
   }
 
   function _govLstConfiguration(Staker _staker, address _delegatee)

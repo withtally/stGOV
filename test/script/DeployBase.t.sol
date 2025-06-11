@@ -5,7 +5,6 @@ import {Test} from "forge-std/Test.sol";
 import {GovLst} from "src/GovLst.sol";
 import {Staker} from "staker/Staker.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {IEarningPowerCalculator} from "staker/interfaces/IEarningPowerCalculator.sol";
 import {DeployBase} from "src/script/DeployBase.sol";
 import {ERC20VotesMock} from "lib/staker/test/mocks/MockERC20Votes.sol";
 import {FakeDeployBase} from "../fakes/FakeDeployBase.sol";
@@ -41,13 +40,11 @@ contract Run is DeployBaseTest {
 
     FakeDeployBase deployScript = new FakeDeployBase(IERC20(address(rewardToken)), IERC20(address(stakeToken)));
 
-    (Staker staker, IEarningPowerCalculator calculator, GovLst govLst, address deployedAutoDelegate) =
-      deployScript.run();
+    (Staker staker, GovLst govLst, address deployedAutoDelegate) = deployScript.run();
 
     // Verify staker params
     assertEq(address(staker.REWARD_TOKEN()), address(rewardToken));
     assertEq(address(staker.STAKE_TOKEN()), address(stakeToken));
-    assertEq(address(staker.earningPowerCalculator()), address(calculator));
     assertEq(staker.admin(), deployScript.admin());
 
     // Verify GovLst deployment
