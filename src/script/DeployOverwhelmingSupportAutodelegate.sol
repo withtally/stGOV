@@ -13,5 +13,5 @@ abstract contract DeployOverwhelmingSupportAutodelegate is DeployBase {
     uint256 supportThresholdBips;
   }
 
-  function _autoDelegateConfiguration() public virtual returns (AutoDelegateConfiguration memory);
+  function _overwhelmingSupportAutoDelegateConfiguration() public virtual returns (AutoDelegateConfiguration memory);
 }
