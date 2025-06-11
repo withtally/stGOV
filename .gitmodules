@@ -4,4 +4,4 @@
 [submodule "lib/staker"]
 	path = lib/staker
 	url = https://github.com/withtally/staker
-	branch = feature/modular-deploy-scripts
+	branch = main
