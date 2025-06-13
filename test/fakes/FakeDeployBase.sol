@@ -9,14 +9,15 @@ import {OverwhelmingSupportAutoDelegateOZGovernorTimestampModeMock} from
 import {DeployBase} from "src/script/DeployBase.sol";
 import {DeployStaker} from "lib/staker/src/script/DeployStaker.sol";
 import {DeployLstStaker} from "src/script/DeployLstStaker.sol";
+import {DeployOverwhelmingSupportAutodelegate} from "src/script/DeployOverwhelmingSupportAutodelegate.sol";
 import {DeployBaseFake} from "lib/staker/test/fakes/DeployBaseFake.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {console2} from "forge-std/Test.sol";
 
-contract FakeDeployBase is DeployBase, DeployLstStaker {
-  address public admin = makeAddr("Staker admin");
+contract FakeDeployBase is DeployBase, DeployOverwhelmingSupportAutodelegate, DeployLstStaker {
   IERC20 public rewardToken;
   IERC20 public stakeToken;
+  address public admin = makeAddr("Staker admin");
   uint256 public initialVotingWindowTimepoints = 14_400; // copied from Rari
   uint256 public subQuorumBips = 6600;
   uint256 public supportThresholdBips = 9000;
@@ -26,10 +27,20 @@ contract FakeDeployBase is DeployBase, DeployLstStaker {
     stakeToken = _stakeToken;
   }
 
+  function _overwhelmingSupportAutoDelegateConfiguration() public override returns (AutoDelegateConfiguration memory) {
+    return AutoDelegateConfiguration({
+      owner: admin,
+      initialVotingWindowTimepoints: initialVotingWindowTimepoints,
+      subQuorumBips: subQuorumBips,
+      supportThresholdBips: supportThresholdBips
+    });
+  }
+
   function _fetchOrDeployAutoDelegate() internal virtual override returns (address) {
+    AutoDelegateConfiguration memory _config = _overwhelmingSupportAutoDelegateConfiguration();
     vm.broadcast(deployer);
     OverwhelmingSupportAutoDelegateOZGovernorTimestampModeMock _autoDelegate = new OverwhelmingSupportAutoDelegateOZGovernorTimestampModeMock(
-      admin, initialVotingWindowTimepoints, subQuorumBips, supportThresholdBips
+      _config.owner, _config.initialVotingWindowTimepoints, _config.subQuorumBips, _config.supportThresholdBips
     );
     console2.log("Deployed Auto Delegate:", address(_autoDelegate));
 
