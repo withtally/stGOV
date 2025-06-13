@@ -9,7 +9,7 @@ import {DeployBase} from "./DeployBase.sol";
 /// OverwhelmingSupportAutoDelegate contract. This contract is part of our modular deployment
 /// system and can be combined with other script contracts in order to deploy an entire GovLst
 /// system.
-abstract contract DeployOverwhelmingSupportAutodelegate is DeployBase {
+abstract contract DeployOverwhelmingSupportAutoDelegate is DeployBase {
   /// @notice The configuration for the overwhelming support auto delegate.
   /// @param owner The address that will be set as the initial owner of the contract.
   /// @param initialVotingWindowTimepoints The initial voting window timepoints.
