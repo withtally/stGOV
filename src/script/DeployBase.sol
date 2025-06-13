@@ -3,7 +3,7 @@
 pragma solidity ^0.8.23;
 
 import {Script, console2} from "forge-std/Script.sol";
-import {Staker, IERC20} from "lib/staker/src/Staker.sol";
+import {Staker, IERC20} from "staker/Staker.sol";
 import {GovLst} from "src/GovLst.sol";
 
 /// @title DeployBase
