@@ -6,24 +6,49 @@ import {Script, console2} from "forge-std/Script.sol";
 import {Staker, IERC20} from "lib/staker/src/Staker.sol";
 import {GovLst} from "src/GovLst.sol";
 
+/// @title DeployBase
+/// @author [ScopeLift](https://scopelift.co)
+/// @notice The base contract for the GovLst modular deployment system. Any deployment script or extension should
+/// inherit from this contract as it defines all of the necessary pieces for a GovLst system deployment. These pieces
+/// are the gov lst contract, auto delegate and staker. Each of these components will have an implementation specific
+/// extension that will be combined to create a concrete implementation of the deployment script. An example of what
+/// this may look like can be found in test/fakes/FakeDeployBase.sol.
 abstract contract DeployBase is Script {
   address internal _autoDelegate;
   GovLst public _rebasingLst;
   address public deployer;
 
+  /// @notice Thrown if the deployer does not have sufficient stake to burn.
   error DeployBase__InsufficientStakeToBurn();
 
+  /// @notice An interface method that fetches the auto delegate contract for the GovLst system.
+  /// @dev Implementer can also deploy an auto delegate within the same transaction by inheriting
+  /// DeployOverwhelmingSupportAutoDelegate.
+  /// @return The address of the auto delegate contract.
   function _fetchOrDeployAutoDelegate() internal virtual returns (address);
 
+  /// @notice An interface method that fetches the staker contract for the lst system.
+  /// @dev Implementer can also deploy a staker within the same transaction by inheriting DeployLstStaker.
+  /// @return The Staker contract for the lst system.
   function _fetchStaker() internal virtual returns (Staker);
 
+  /// @notice An interface method that returns a set configuration for the lst system.
+  /// @param _staker The Staker contract for the lst system.
+  /// @param _autoDelegate The auto delegate contract for the lst system.
+  /// @return The GovLst configuration for the lst system.
   function _govLstConfiguration(Staker _staker, address _autoDelegate)
     internal
     virtual
     returns (GovLst.ConstructorParams memory);
 
+  /// @notice An interface method that deploys the GovLst contract for the lst system.
+  /// @param _staker The Staker contract for the lst system.
+  /// @param _autoDelegate The auto delegate contract for the lst system.
+  /// @return _govLst The GovLst contract for the lst system.
   function _deployGovLst(Staker _staker, address _autoDelegate) internal virtual returns (GovLst _govLst);
 
+  /// @notice The method that is executed when the script runs which deploys the entire lst system.
+  /// @return The Staker contract, the GovLst contract, and the address of the auto delegate.
   function run() public virtual returns (Staker, GovLst, address) {
     uint256 deployerPrivateKey =
       vm.envOr("DEPLOYER_PRIVATE_KEY", uint256(0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80));
