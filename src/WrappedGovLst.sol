@@ -108,16 +108,24 @@ contract WrappedGovLst is ERC20Permit, Ownable {
     return _wrappedAmount;
   }
 
-  function previewWrapRebasing(uint256 _stakeTokensToWrap) internal virtual returns (uint256) {
-    // LST transfer
-    // - Get the shares for stake
-    uint256 _shares = _calcSharesForStakeUp(_stakeTokensToWrap);
-    // - Convert the shares to stake
-    uint256 _convertedStake = _calcStakeForShares(_shares);
-    // - Calculate shares with rounding up from stake
-    uint256 _finalShares = _calcSharesForStakeUp(_convertedStake);
-    // Than rebase
-    return _finalShares;
+  function previewWrapRebasing(uint256 _stakeTokensToWrap) internal view virtual returns (uint256) {
+    // Calculate the shares that will be transferred when converting to fixed
+    // This needs to match the rounding behavior of _calcSharesForStakeUp in GovLst
+    if (LST.totalSupply() == 0) {
+      return _stakeTokensToWrap; // Initial case: 1:1 for first staker
+    }
+    
+    uint256 _totalSupply = LST.totalSupply();
+    uint256 _totalShares = LST.totalShares();
+    
+    // Calculate shares with rounding up (same as _calcSharesForStakeUp)
+    uint256 _shares = (_stakeTokensToWrap * _totalShares) / _totalSupply;
+    if ((_stakeTokensToWrap * _totalShares) % _totalSupply > 0) {
+      _shares += 1; // Round up
+    }
+    
+    // Fixed tokens are shares divided by SHARE_SCALE_FACTOR (same as _scaleDown in FixedGovLst)
+    return _shares / SHARE_SCALE_FACTOR;
   }
 
   // TODO: Does this cause rounding issues
