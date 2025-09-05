@@ -71,16 +71,12 @@ contract WrappedGovLst is ERC20Permit, Ownable {
       revert WrappedGovLst__InvalidAmount();
     }
 
-    uint256 _initialShares = FIXED_LST.balanceOf(address(this));
     LST.transferFrom(msg.sender, address(this), _lstAmountToWrap);
     // TODO: Add control flow for the off by 1 error
     // I think this should error in the tests
     FIXED_LST.convertToFixed(_lstAmountToWrap);
-    // The amount of tokens issued to the caller is based on number of shares actually issued to the wrapper
-    // token contract. The balance is the number of shares divided by the share scale factor. This means the holder may
-    // lose claim to a slight number of shares the wrapper contract takes possession of, meaning rounding favors the
-    // wrapper, which is desired.
-    _wrappedAmount = (FIXED_LST.balanceOf(address(this)) - _initialShares) / SHARE_SCALE_FACTOR;
+    // The fixed tokens are already scaled appropriately, so we just mint the same amount of wrapped tokens
+    _wrappedAmount = previewWrapRebasing(_lstAmountToWrap);
     _mint(msg.sender, _wrappedAmount);
 
     emit Wrapped(msg.sender, _lstAmountToWrap, _wrappedAmount);
@@ -95,7 +91,7 @@ contract WrappedGovLst is ERC20Permit, Ownable {
     }
 
     // uint256 _initialShares = FIXED_LST.balanceOf(address(this));
-	uint256 _wrappedAmount = previewWrapRebasing(_stakeTokensToWrap);
+	uint256 _wrappedAmount = previewWrapUnderlying(_stakeTokensToWrap);
     FIXED_LST.stake(_stakeTokensToWrap);
     // uint256 _wrappedAmount = (FIXED_LST.balanceOf(address(this)) - ) / SHARE_SCALE_FACTOR;
     return _wrappedAmount;
@@ -125,7 +121,7 @@ contract WrappedGovLst is ERC20Permit, Ownable {
   }
 
   // TODO: Does this cause rounding issues
-  function previewWrapUnderlying(uint256 _stakeTokensToWrap) external virtual returns (uint256) {
+  function previewWrapUnderlying(uint256 _stakeTokensToWrap) internal virtual returns (uint256) {
     // This may round up up by 1 wei. The preview
     // MUST return as close to and no more than the exact amount
     // We subtract 1 to always be over the number the of shares
