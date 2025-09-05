@@ -6,7 +6,6 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {GovLst} from "./GovLst.sol";
 import {Staker} from "staker/Staker.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
-import {FixedGovLst} from "./FixedGovLst.sol";
 
 /// @title WrappedGovLst
 /// @author [ScopeLift](https://scopelift.co)
@@ -31,8 +30,6 @@ contract WrappedGovLst is ERC20Permit, Ownable {
   /// @notice The address of the LST contract which will be wrapped.
   GovLst public immutable LST;
 
-  FixedGovLst public immutable FIXED_LST;
-
   /// @notice Local copy of the LST's scale factor that is stored at deployment for use in wrapper calculations.
   uint256 internal immutable SHARE_SCALE_FACTOR;
 
@@ -50,7 +47,6 @@ contract WrappedGovLst is ERC20Permit, Ownable {
     Ownable(_initialOwner)
   {
     LST = _lst;
-    FIXED_LST = _lst.FIXED_LST();
     SHARE_SCALE_FACTOR = _lst.SHARE_SCALE_FACTOR();
     _setDelegatee(_delegatee);
   }
@@ -65,114 +61,27 @@ contract WrappedGovLst is ERC20Permit, Ownable {
   /// @return _wrappedAmount The quantity of wrapped tokens issued to the caller.
   /// @dev The caller must approve at least the amount of tokens to wrap on the lst contract before calling. Amount to
   /// wrap may not be zero.
-  /// TODO: Rename wrapped rebasing
   function wrap(uint256 _lstAmountToWrap) external virtual returns (uint256 _wrappedAmount) {
     if (_lstAmountToWrap == 0) {
       revert WrappedGovLst__InvalidAmount();
     }
 
-    uint256 _initialShares = FIXED_LST.balanceOf(address(this));
+    uint256 _initialShares = LST.sharesOf(address(this));
     LST.transferFrom(msg.sender, address(this), _lstAmountToWrap);
-    // TODO: Add control flow for the off by 1 error
-    // I think this should error in the tests
-    FIXED_LST.convertToFixed(_lstAmountToWrap);
     // The amount of tokens issued to the caller is based on number of shares actually issued to the wrapper
     // token contract. The balance is the number of shares divided by the share scale factor. This means the holder may
     // lose claim to a slight number of shares the wrapper contract takes possession of, meaning rounding favors the
     // wrapper, which is desired.
-    _wrappedAmount = (FIXED_LST.balanceOf(address(this)) - _initialShares) / SHARE_SCALE_FACTOR;
+    _wrappedAmount = (LST.sharesOf(address(this)) - _initialShares) / SHARE_SCALE_FACTOR;
     _mint(msg.sender, _wrappedAmount);
 
     emit Wrapped(msg.sender, _lstAmountToWrap, _wrappedAmount);
-  }
-
-  // Everything converts to the rebasing
-  // can convert out to different things
-  // Must approve to FIXED_LST
-  function wrapUnderlying(uint256 _stakeTokensToWrap) public virtual returns (uint256) {
-    if (_stakeTokensToWrap == 0) {
-      revert WrappedGovLst__InvalidAmount();
-    }
-
-    // uint256 _initialShares = FIXED_LST.balanceOf(address(this));
-	uint256 _wrappedAmount = previewWrapRebasing(_stakeTokensToWrap);
-    FIXED_LST.stake(_stakeTokensToWrap);
-    // uint256 _wrappedAmount = (FIXED_LST.balanceOf(address(this)) - ) / SHARE_SCALE_FACTOR;
-    return _wrappedAmount;
-  }
-
-  function wrapFixed(uint256 _fixedTokensToWrap) external virtual returns (uint256) {
-    if (_fixedTokensToWrap == 0) {
-      revert WrappedGovLst__InvalidAmount();
-    }
-
-    uint256 _initialShares = FIXED_LST.balanceOf(address(this));
-    FIXED_LST.transferFrom(msg.sender, address(this), _fixedTokensToWrap);
-    uint256 _wrappedAmount = (FIXED_LST.balanceOf(address(this)) - _initialShares) / SHARE_SCALE_FACTOR;
-    return _wrappedAmount;
-  }
-
-  function previewWrapRebasing(uint256 _stakeTokensToWrap) internal virtual returns (uint256) {
-    // LST transfer
-    // - Get the shares for stake
-    uint256 _shares = _calcSharesForStakeUp(_stakeTokensToWrap);
-    // - Convert the shares to stake
-    uint256 _convertedStake = _calcStakeForShares(_shares);
-    // - Calculate shares with rounding up from stake
-    uint256 _finalShares = _calcSharesForStakeUp(_convertedStake);
-    // Than rebase
-    return _finalShares;
-  }
-
-  // TODO: Does this cause rounding issues
-  function previewWrapUnderlying(uint256 _stakeTokensToWrap) external virtual returns (uint256) {
-    // This may round up up by 1 wei. The preview
-    // MUST return as close to and no more than the exact amount
-    // We subtract 1 to always be over the number the of shares
-    //
-    // This can round up the shares,but on stake the shares are not rounded up
-    // Shares are rounded down
-    if (LST.totalSupply() == 0) {
-      return SHARE_SCALE_FACTOR * _stakeTokensToWrap;
-    }
-
-    uint256 _sharesForUnderlying = (_stakeTokensToWrap * LST.totalShares()) / LST.totalSupply();
-    return _sharesForUnderlying;
-  }
-
-  function previewWrapFixed(uint256 _fixedTokensToWrap) external virtual returns (uint256) {
-    uint256 _stake = _calcStakeForShares(_fixedTokensToWrap);
-    uint256 _shares = _calcSharesForStakeUp(_stake);
-    return _shares;
-  }
-
-  function _calcStakeForShares(uint256 _shares) internal virtual returns (uint256) {
-    if (LST.totalShares() == 0) {
-      return _shares / SHARE_SCALE_FACTOR;
-    }
-
-    return (_shares * LST.totalSupply()) / LST.totalShares();
-  }
-
-  function _calcSharesForStakeUp(uint256 _amount) internal virtual returns (uint256) {
-    if (LST.totalSupply() == 0) {
-      return SHARE_SCALE_FACTOR * _amount;
-    }
-
-    uint256 _result = (_amount * LST.totalShares()) / LST.totalSupply();
-
-    if (mulmod(_amount, LST.totalShares(), LST.totalSupply()) > 0) {
-      _result += 1;
-    }
-
-    return _result;
   }
 
   /// @notice Burn wrapped tokens to receive liquid stake tokens in return.
   /// @param _wrappedAmount The quantity of wrapped tokens to burn.
   /// @return _lstAmountUnwrapped The quantity of liquid staked tokens received in exchange for the wrapped tokens.
   /// @dev The caller must approve at least the amount wrapped tokens on the wrapper token contract.
-  /// TODO add an unwrap for each LST variant
   function unwrap(uint256 _wrappedAmount) external virtual returns (uint256 _lstAmountUnwrapped) {
     _lstAmountUnwrapped = LST.stakeForShares(_wrappedAmount * SHARE_SCALE_FACTOR);
 
@@ -186,9 +95,6 @@ contract WrappedGovLst is ERC20Permit, Ownable {
     LST.transfer(msg.sender, _lstAmountUnwrapped);
     emit Unwrapped(msg.sender, _lstAmountUnwrapped, _wrappedAmount);
   }
-
-  function unwrapToUnderlying() external virtual {}
-  function unwrapToFixed() external virtual {}
 
   /// @notice Method that can be called only by the owner to update the address to which all the wrapped token's voting
   /// weight will be delegated.
