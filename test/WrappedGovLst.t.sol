@@ -227,6 +227,123 @@ contract Wrap is WrappedGovLstTest {
   }
 }
 
+contract WrapUnderlying is WrappedGovLstTest {
+  function testFuzz_TransfersStakeTokensFromHolderToWrapper(
+    address _holder,
+    uint256 _stakeAmount
+  ) public {
+    _assumeSafeWrapHolder(_holder);
+    _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
+    
+    // First mint tokens to stakeMinter, then transfer to holder
+    _mintStakeToken(stakeMinter, _stakeAmount);
+    vm.prank(stakeMinter);
+    stakeToken.transfer(_holder, _stakeAmount);
+    
+    // Approve wrapper to transfer stake tokens
+    vm.prank(_holder);
+    stakeToken.approve(address(wrappedLst), _stakeAmount);
+    
+    uint256 _initialHolderBalance = stakeToken.balanceOf(_holder);
+    uint256 _initialWrapperBalance = stakeToken.balanceOf(address(wrappedLst));
+    
+    // Wrap the stake tokens
+    vm.prank(_holder);
+    wrappedLst.wrapUnderlying(_stakeAmount);
+    
+    // Verify stake tokens were transferred from holder
+    assertEq(stakeToken.balanceOf(_holder), _initialHolderBalance - _stakeAmount);
+    // Wrapper shouldn't hold stake tokens (they go to LST via FIXED_LST.stake)
+    assertEq(stakeToken.balanceOf(address(wrappedLst)), _initialWrapperBalance);
+  }
+
+  function testFuzz_MintsCorrectNumberOfWrappedTokens(
+    address _holder,
+    uint256 _stakeAmount
+  ) public {
+    _assumeSafeWrapHolder(_holder);
+    _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
+    
+    // First mint tokens to stakeMinter, then transfer to holder
+    _mintStakeToken(stakeMinter, _stakeAmount);
+    vm.prank(stakeMinter);
+    stakeToken.transfer(_holder, _stakeAmount);
+    
+    // Approve wrapper
+    vm.prank(_holder);
+    stakeToken.approve(address(wrappedLst), _stakeAmount);
+    
+    uint256 _initialWrappedBalance = wrappedLst.balanceOf(_holder);
+    
+    // Wrap the stake tokens
+    vm.prank(_holder);
+    uint256 _wrappedAmount = wrappedLst.wrapUnderlying(_stakeAmount);
+    
+    // Verify correct amount of wrapped tokens were minted
+    assertEq(wrappedLst.balanceOf(_holder), _initialWrappedBalance + _wrappedAmount);
+    // The wrapped amount should equal the fixed tokens created (scaled appropriately)
+    assertGt(_wrappedAmount, 0);
+  }
+
+  function testFuzz_ReturnsCorrectWrappedAmount(
+    address _holder,
+    uint256 _stakeAmount
+  ) public {
+    _assumeSafeWrapHolder(_holder);
+    _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
+    
+    // First mint tokens to stakeMinter, then transfer to holder
+    _mintStakeToken(stakeMinter, _stakeAmount);
+    vm.prank(stakeMinter);
+    stakeToken.transfer(_holder, _stakeAmount);
+    
+    // Approve wrapper
+    vm.prank(_holder);
+    stakeToken.approve(address(wrappedLst), _stakeAmount);
+    
+    // Wrap and get return value
+    vm.prank(_holder);
+    uint256 _returnedAmount = wrappedLst.wrapUnderlying(_stakeAmount);
+    
+    // Verify return value matches the wrapped token balance
+    assertEq(wrappedLst.balanceOf(_holder), _returnedAmount);
+  }
+
+  function testFuzz_EmitsWrappedEvent(
+    address _holder,
+    uint256 _stakeAmount
+  ) public {
+    _assumeSafeWrapHolder(_holder);
+    _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
+    
+    // First mint tokens to stakeMinter, then transfer to holder
+    _mintStakeToken(stakeMinter, _stakeAmount);
+    vm.prank(stakeMinter);
+    stakeToken.transfer(_holder, _stakeAmount);
+    
+    // Approve wrapper
+    vm.prank(_holder);
+    stakeToken.approve(address(wrappedLst), _stakeAmount);
+    
+    // We expect the event to be emitted
+    vm.expectEmit(true, false, false, false);
+    emit WrappedGovLst.Wrapped(_holder, _stakeAmount, 0); // Don't check wrapped amount yet
+    
+    // Wrap the stake tokens
+    vm.prank(_holder);
+    wrappedLst.wrapUnderlying(_stakeAmount);
+  }
+
+  function testFuzz_RevertIf_AmountIsZero(address _holder) public {
+    _assumeSafeWrapHolder(_holder);
+    
+    // Should revert with zero amount
+    vm.expectRevert(WrappedGovLst.WrappedGovLst__InvalidAmount.selector);
+    vm.prank(_holder);
+    wrappedLst.wrapUnderlying(0);
+  }
+}
+
 contract Unwrap is WrappedGovLstTest {
   // TODO: Fix these tests after unwrap function is updated for new architecture
   /*

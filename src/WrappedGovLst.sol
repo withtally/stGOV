@@ -3,6 +3,7 @@ pragma solidity ^0.8.23;
 
 import {ERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/ERC20Permit.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {GovLst} from "./GovLst.sol";
 import {Staker} from "staker/Staker.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
@@ -90,10 +91,25 @@ contract WrappedGovLst is ERC20Permit, Ownable {
       revert WrappedGovLst__InvalidAmount();
     }
 
-    // uint256 _initialShares = FIXED_LST.balanceOf(address(this));
-	uint256 _wrappedAmount = previewWrapUnderlying(_stakeTokensToWrap);
+    // User must have approved the wrapper to spend their stake tokens
+    IERC20 stakeToken = IERC20(address(LST.STAKE_TOKEN()));
+    stakeToken.transferFrom(msg.sender, address(this), _stakeTokensToWrap);
+    
+    // Approve FIXED_LST to transfer the stake tokens from wrapper
+    stakeToken.approve(address(FIXED_LST), _stakeTokensToWrap);
+    
+    // Calculate expected wrapped amount using preview
+    uint256 _wrappedAmount = previewWrapUnderlying(_stakeTokensToWrap);
+    
+    // Stake through FIXED_LST which will transfer tokens to LST and stake them
     FIXED_LST.stake(_stakeTokensToWrap);
-    // uint256 _wrappedAmount = (FIXED_LST.balanceOf(address(this)) - ) / SHARE_SCALE_FACTOR;
+    
+    // Mint wrapped tokens to the user
+    _mint(msg.sender, _wrappedAmount);
+    
+    // Emit event for consistency with wrap function
+    emit Wrapped(msg.sender, _stakeTokensToWrap, _wrappedAmount);
+    
     return _wrappedAmount;
   }
 
@@ -129,19 +145,19 @@ contract WrappedGovLst is ERC20Permit, Ownable {
   }
 
   // TODO: Does this cause rounding issues
-  function previewWrapUnderlying(uint256 _stakeTokensToWrap) internal virtual returns (uint256) {
-    // This may round up up by 1 wei. The preview
-    // MUST return as close to and no more than the exact amount
-    // We subtract 1 to always be over the number the of shares
-    //
-    // This can round up the shares,but on stake the shares are not rounded up
-    // Shares are rounded down
+  function previewWrapUnderlying(uint256 _stakeTokensToWrap) internal view virtual returns (uint256) {
+    // Calculate shares that will be created from staking (same as _calcSharesForStake)
+    uint256 _shares;
     if (LST.totalSupply() == 0) {
-      return SHARE_SCALE_FACTOR * _stakeTokensToWrap;
+      // First staker gets SHARE_SCALE_FACTOR * amount shares
+      _shares = SHARE_SCALE_FACTOR * _stakeTokensToWrap;
+    } else {
+      // Standard share calculation
+      _shares = (_stakeTokensToWrap * LST.totalShares()) / LST.totalSupply();
     }
-
-    uint256 _sharesForUnderlying = (_stakeTokensToWrap * LST.totalShares()) / LST.totalSupply();
-    return _sharesForUnderlying;
+    
+    // Fixed tokens are shares divided by SHARE_SCALE_FACTOR (same as _scaleDown in FixedGovLst)
+    return _shares / SHARE_SCALE_FACTOR;
   }
 
   function previewWrapFixed(uint256 _fixedTokensToWrap) external virtual returns (uint256) {
