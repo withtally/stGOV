@@ -155,11 +155,28 @@ contract WrappedGovLst is ERC20Permit, Ownable {
     return _fixedTokensToWrap;
   }
 
+  function previewUnwrap(uint256 _wrappedAmount) public view virtual returns (uint256) {
+    // Wrapped tokens are 1:1 with FIXED_LST tokens
+    // Convert to shares by scaling up
+    uint256 _shares = _wrappedAmount * SHARE_SCALE_FACTOR;
+    // Convert shares to rebasing tokens, rounding down to favor the protocol
+    return _calcStakeForSharesView(_shares);
+  }
+
   function _calcStakeForShares(uint256 _shares) internal virtual returns (uint256) {
     if (LST.totalShares() == 0) {
       return _shares / SHARE_SCALE_FACTOR;
     }
 
+    return (_shares * LST.totalSupply()) / LST.totalShares();
+  }
+
+  function _calcStakeForSharesView(uint256 _shares) internal view virtual returns (uint256) {
+    if (LST.totalShares() == 0) {
+      return _shares / SHARE_SCALE_FACTOR;
+    }
+
+    // Rounds down, favoring the protocol
     return (_shares * LST.totalSupply()) / LST.totalShares();
   }
 
@@ -183,16 +200,28 @@ contract WrappedGovLst is ERC20Permit, Ownable {
   /// @dev The caller must approve at least the amount wrapped tokens on the wrapper token contract.
   /// TODO add an unwrap for each LST variant
   function unwrap(uint256 _wrappedAmount) external virtual returns (uint256 _lstAmountUnwrapped) {
-    _lstAmountUnwrapped = LST.stakeForShares(_wrappedAmount * SHARE_SCALE_FACTOR);
-
-    if (_lstAmountUnwrapped == 0) {
+    if (_wrappedAmount == 0) {
       revert WrappedGovLst__InvalidAmount();
     }
 
-    // The number of shares moved back to the caller may actually be less than the number specified by the
-    // caller. This favors the wrapper contract, which is desired.
+    // Calculate the amount to unwrap using our preview function (rounds down to favor protocol)
+    _lstAmountUnwrapped = previewUnwrap(_wrappedAmount);
+
+    // Burn wrapped tokens from the user
     _burn(msg.sender, _wrappedAmount);
+
+    // Convert FIXED_LST tokens back to rebasing LST tokens
+    // We need to call convertToRebasing to properly update the FIXED_LST accounting
+    uint256 _actualLstAmount = FIXED_LST.convertToRebasing(_wrappedAmount);
+
+    // Use the lower of the two amounts to ensure we never give more than calculated
+    if (_actualLstAmount < _lstAmountUnwrapped) {
+      _lstAmountUnwrapped = _actualLstAmount;
+    }
+
+    // Transfer the rebasing LST tokens to the user
     LST.transfer(msg.sender, _lstAmountUnwrapped);
+
     emit Unwrapped(msg.sender, _lstAmountUnwrapped, _wrappedAmount);
   }
 
