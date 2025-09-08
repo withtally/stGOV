@@ -94,22 +94,22 @@ contract WrappedGovLst is ERC20Permit, Ownable {
     // User must have approved the wrapper to spend their stake tokens
     IERC20 stakeToken = IERC20(address(LST.STAKE_TOKEN()));
     stakeToken.transferFrom(msg.sender, address(this), _stakeTokensToWrap);
-    
+
     // Approve FIXED_LST to transfer the stake tokens from wrapper
     stakeToken.approve(address(FIXED_LST), _stakeTokensToWrap);
-    
+
     // Calculate expected wrapped amount using preview
     uint256 _wrappedAmount = previewWrapUnderlying(_stakeTokensToWrap);
-    
+
     // Stake through FIXED_LST which will transfer tokens to LST and stake them
     FIXED_LST.stake(_stakeTokensToWrap);
-    
+
     // Mint wrapped tokens to the user
     _mint(msg.sender, _wrappedAmount);
-    
+
     // Emit event for consistency with wrap function
     emit Wrapped(msg.sender, _stakeTokensToWrap, _wrappedAmount);
-    
+
     return _wrappedAmount;
   }
 
@@ -118,52 +118,41 @@ contract WrappedGovLst is ERC20Permit, Ownable {
       revert WrappedGovLst__InvalidAmount();
     }
 
-    uint256 _initialShares = FIXED_LST.balanceOf(address(this));
+    // Transfer fixed tokens from user to wrapper
     FIXED_LST.transferFrom(msg.sender, address(this), _fixedTokensToWrap);
-    uint256 _wrappedAmount = (FIXED_LST.balanceOf(address(this)) - _initialShares) / SHARE_SCALE_FACTOR;
+
+    // Calculate wrapped amount using preview (should be 1:1)
+    uint256 _wrappedAmount = previewWrapFixed(_fixedTokensToWrap);
+
+    // Mint wrapped tokens to user
+    _mint(msg.sender, _wrappedAmount);
+
+    // Emit event for consistency
+    emit Wrapped(msg.sender, _fixedTokensToWrap, _wrappedAmount);
+
     return _wrappedAmount;
   }
 
-  function previewWrapRebasing(uint256 _stakeTokensToWrap) internal view virtual returns (uint256) {
+  function previewWrapRebasing(uint256 _stakeTokensToWrap) public view virtual returns (uint256) {
     // Calculate the shares that will be transferred when converting to fixed
     // This needs to match the rounding behavior of _calcSharesForStakeUp in GovLst
-    if (LST.totalSupply() == 0) {
-      return _stakeTokensToWrap; // Initial case: 1:1 for first staker
-    }
-    
-    uint256 _totalSupply = LST.totalSupply();
-    uint256 _totalShares = LST.totalShares();
-    
-    // Calculate shares with rounding up (same as _calcSharesForStakeUp)
-    uint256 _shares = (_stakeTokensToWrap * _totalShares) / _totalSupply;
-    if ((_stakeTokensToWrap * _totalShares) % _totalSupply > 0) {
-      _shares += 1; // Round up
-    }
-    
-    // Fixed tokens are shares divided by SHARE_SCALE_FACTOR (same as _scaleDown in FixedGovLst)
-    return _shares / SHARE_SCALE_FACTOR;
+    return _calcSharesForStakeUp(_stakeTokensToWrap) / SHARE_SCALE_FACTOR;
   }
 
   // TODO: Does this cause rounding issues
-  function previewWrapUnderlying(uint256 _stakeTokensToWrap) internal view virtual returns (uint256) {
+  function previewWrapUnderlying(uint256 _stakeTokensToWrap) public view virtual returns (uint256) {
     // Calculate shares that will be created from staking (same as _calcSharesForStake)
-    uint256 _shares;
     if (LST.totalSupply() == 0) {
       // First staker gets SHARE_SCALE_FACTOR * amount shares
-      _shares = SHARE_SCALE_FACTOR * _stakeTokensToWrap;
-    } else {
-      // Standard share calculation
-      _shares = (_stakeTokensToWrap * LST.totalShares()) / LST.totalSupply();
+      return (SHARE_SCALE_FACTOR * _stakeTokensToWrap) / SHARE_SCALE_FACTOR;
     }
-    
+
     // Fixed tokens are shares divided by SHARE_SCALE_FACTOR (same as _scaleDown in FixedGovLst)
-    return _shares / SHARE_SCALE_FACTOR;
+    return ((_stakeTokensToWrap * LST.totalShares()) / LST.totalSupply()) / SHARE_SCALE_FACTOR;
   }
 
-  function previewWrapFixed(uint256 _fixedTokensToWrap) external virtual returns (uint256) {
-    uint256 _stake = _calcStakeForShares(_fixedTokensToWrap);
-    uint256 _shares = _calcSharesForStakeUp(_stake);
-    return _shares;
+  function previewWrapFixed(uint256 _fixedTokensToWrap) internal view virtual returns (uint256) {
+    return _fixedTokensToWrap;
   }
 
   function _calcStakeForShares(uint256 _shares) internal virtual returns (uint256) {
@@ -174,7 +163,7 @@ contract WrappedGovLst is ERC20Permit, Ownable {
     return (_shares * LST.totalSupply()) / LST.totalShares();
   }
 
-  function _calcSharesForStakeUp(uint256 _amount) internal virtual returns (uint256) {
+  function _calcSharesForStakeUp(uint256 _amount) internal view virtual returns (uint256) {
     if (LST.totalSupply() == 0) {
       return SHARE_SCALE_FACTOR * _amount;
     }
