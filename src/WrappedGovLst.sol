@@ -45,6 +45,7 @@ contract WrappedGovLst is ERC20Permit, Ownable {
   /// @param _lst The contract of the liquid stake token being wrapped.
   /// @param _delegatee The initial delegatee to whom the wrapper's voting weight will be delegated.
   /// @param _initialOwner The initial owner of the wrapper contract.
+  /// TODO Pre fund to handle rounding issues
   constructor(string memory _name, string memory _symbol, GovLst _lst, address _delegatee, address _initialOwner)
     ERC20Permit(_name)
     ERC20(_name, _symbol)
@@ -163,6 +164,12 @@ contract WrappedGovLst is ERC20Permit, Ownable {
     return _calcStakeForSharesView(_shares);
   }
 
+  function previewUnwrapToFixed(uint256 _wrappedAmount) public view virtual returns (uint256) {
+    // At worst 1 wei less than what has been requested will be returned.
+	// The preview will return the minimum amount of assets returned.
+    return _wrappedAmount - 1;
+  }
+
   function _calcStakeForShares(uint256 _shares) internal virtual returns (uint256) {
     if (LST.totalShares() == 0) {
       return _shares / SHARE_SCALE_FACTOR;
@@ -199,6 +206,7 @@ contract WrappedGovLst is ERC20Permit, Ownable {
   /// @return _lstAmountUnwrapped The quantity of liquid staked tokens received in exchange for the wrapped tokens.
   /// @dev The caller must approve at least the amount wrapped tokens on the wrapper token contract.
   /// TODO add an unwrap for each LST variant
+  /// Behaves like redeem in erc4626
   function unwrap(uint256 _wrappedAmount) external virtual returns (uint256 _lstAmountUnwrapped) {
     if (_wrappedAmount == 0) {
       revert WrappedGovLst__InvalidAmount();
@@ -225,8 +233,36 @@ contract WrappedGovLst is ERC20Permit, Ownable {
     emit Unwrapped(msg.sender, _lstAmountUnwrapped, _wrappedAmount);
   }
 
-  function unwrapToUnderlying() external virtual {}
-  function unwrapToFixed() external virtual {}
+  /// @notice Burn wrapped tokens to receive FIXED_LST tokens.
+  /// @param _wrappedAmount The quantity of wrapped tokens to burn.
+  /// @return _fixedTokensUnwrapped The quantity of FIXED_LST tokens received.
+  /// @dev Since wrapped tokens are 1:1 with FIXED_LST tokens, this is a simple transfer.
+  /// @dev May transfer up to 1 extra wei due to FIXED_LST's internal rounding.
+  function unwrapToFixed(uint256 _wrappedAmount) external virtual returns (uint256 _fixedTokensUnwrapped) {
+    if (_wrappedAmount == 0) {
+      revert WrappedGovLst__InvalidAmount();
+    }
+
+    // Burn wrapped tokens from the user first
+    _burn(msg.sender, _wrappedAmount);
+
+    // Check the wrapper's actual FIXED_LST balance before transfer
+    uint256 _wrapperBalanceBefore = FIXED_LST.balanceOf(address(this));
+    
+    // Transfer FIXED_LST tokens to the user (1:1 with wrapped tokens)
+    // The actual transfer amount might be 1 wei more due to FIXED_LST rounding
+    FIXED_LST.transfer(msg.sender, _wrappedAmount);
+    
+    // Calculate actual amount transferred by checking balance change
+    uint256 _wrapperBalanceAfter = FIXED_LST.balanceOf(address(this));
+    _fixedTokensUnwrapped = _wrapperBalanceBefore - _wrapperBalanceAfter;
+
+    // Emit event with actual transferred amount
+    emit Unwrapped(msg.sender, _fixedTokensUnwrapped, _wrappedAmount);
+    
+    // Return the actual amount transferred (may be up to 1 wei more than _wrappedAmount)
+    return _fixedTokensUnwrapped;
+  }
 
   /// @notice Method that can be called only by the owner to update the address to which all the wrapped token's voting
   /// weight will be delegated.
