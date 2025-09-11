@@ -14,7 +14,6 @@ contract WrappedGovLstTest is GovLstTest {
   string SYMBOL = "wtLST";
   address delegatee = makeAddr("Initial Delegatee");
   address wrappedLstOwner = makeAddr("Wrapped LST Owner");
-  uint256 constant PREFUND_AMOUNT = 1e9; // Small prefund amount to handle rounding (1 token)
 
   function setUp() public virtual override {
     super.setUp();

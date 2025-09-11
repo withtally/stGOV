@@ -218,6 +218,10 @@ contract WrappedGovLst is ERC20Permit, Ownable {
   /// This ensures no value is lost when converting rebasing tokens to fixed tokens.
   function _calcSharesForStakeUp(uint256 _amount) internal view virtual returns (uint256) {
     uint256 _result = _calcSharesForStake(_amount);
+    if (LST.totalSupply() == 0) {
+      return _result;
+    }
+
 
     // Add 1 if there's any remainder from the division
     if (mulmod(_amount, LST.totalShares(), LST.totalSupply()) > 0) {
