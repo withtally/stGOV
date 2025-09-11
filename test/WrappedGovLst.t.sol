@@ -28,6 +28,7 @@ contract WrappedGovLstTest is GovLstTest {
   function _assumeSafeWrapHolder(address _holder) public view {
     _assumeSafeHolder(_holder);
     vm.assume(_holder != address(wrappedLst));
+    vm.assume(_holder != address(delegateeFunder));
   }
 
   function _approveWrapperToTransferLstToken(address _holder) public {
