@@ -24,7 +24,7 @@ contract WrappedGovLstTest is GovLstTest {
 
     _unstakeOnDelegateeDeposit(delegateeFunder);
   }
-  
+
   function _assumeSafeWrapHolder(address _holder) public view {
     _assumeSafeHolder(_holder);
     vm.assume(_holder != address(wrappedLst));
@@ -87,14 +87,14 @@ contract Constructor is WrappedGovLstTest {
       abi.encode(lst.SHARE_SCALE_FACTOR())
     );
     vm.mockCall(_lst, abi.encodeWithSelector(fixedLstSelector), abi.encode(_mockFixedLst));
-    
+
     // Mock the FIXED_LST safeTransferFrom for prefunding
     vm.mockCall(
       _mockFixedLst,
       abi.encodeWithSelector(IERC20.transferFrom.selector, address(this), address(0), _prefundAmount),
       abi.encode(true)
     );
-    
+
     vm.mockCall(
       _lst,
       abi.encodeWithSelector(GovLst.fetchOrInitializeDepositForDelegatee.selector, _delegatee),

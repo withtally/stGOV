@@ -60,11 +60,14 @@ contract WrappedGovLst is ERC20Permit, Ownable {
   /// @param _delegatee The initial delegatee to whom the wrapper's voting weight will be delegated.
   /// @param _initialOwner The initial owner of the wrapper contract.
   /// @param _preFundWrapped The amount of FIXED_LST tokens to prefund the wrapper with (can be 0).
-  constructor(string memory _name, string memory _symbol, GovLst _lst, address _delegatee, address _initialOwner, uint256 _preFundWrapped)
-    ERC20Permit(_name)
-    ERC20(_name, _symbol)
-    Ownable(_initialOwner)
-  {
+  constructor(
+    string memory _name,
+    string memory _symbol,
+    GovLst _lst,
+    address _delegatee,
+    address _initialOwner,
+    uint256 _preFundWrapped
+  ) ERC20Permit(_name) ERC20(_name, _symbol) Ownable(_initialOwner) {
     LST = _lst;
     FIXED_LST = _lst.FIXED_LST();
     SHARE_SCALE_FACTOR = _lst.SHARE_SCALE_FACTOR();
@@ -98,7 +101,7 @@ contract WrappedGovLst is ERC20Permit, Ownable {
   /// @notice Deposit underlying stake tokens and receive wrapped tokens in exchange.
   /// @param _stakeTokensToWrap The quantity of underlying stake tokens to wrap.
   /// @return _wrappedAmount The quantity of wrapped tokens issued to the caller.
-  /// @dev The caller must approve at least the amount of tokens to wrap on the stake token contract before calling. 
+  /// @dev The caller must approve at least the amount of tokens to wrap on the stake token contract before calling.
   /// Amount to wrap may not be zero.
   function wrapUnderlying(uint256 _stakeTokensToWrap) public virtual returns (uint256) {
     if (_stakeTokensToWrap == 0) {
@@ -121,7 +124,7 @@ contract WrappedGovLst is ERC20Permit, Ownable {
   /// @notice Deposit fixed LST tokens and receive wrapped tokens in exchange.
   /// @param _fixedTokensToWrap The quantity of FIXED_LST tokens to wrap.
   /// @return _wrappedAmount The quantity of wrapped tokens issued to the caller.
-  /// @dev The caller must approve at least the amount of tokens to wrap on the FIXED_LST contract before calling. 
+  /// @dev The caller must approve at least the amount of tokens to wrap on the FIXED_LST contract before calling.
   /// Amount to wrap may not be zero.
   function wrapFixed(uint256 _fixedTokensToWrap) external virtual returns (uint256) {
     if (_fixedTokensToWrap == 0) {
@@ -221,7 +224,6 @@ contract WrappedGovLst is ERC20Permit, Ownable {
     if (LST.totalSupply() == 0) {
       return _result;
     }
-
 
     // Add 1 if there's any remainder from the division
     if (mulmod(_amount, LST.totalShares(), LST.totalSupply()) > 0) {
