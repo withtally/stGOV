@@ -4,26 +4,36 @@ pragma solidity ^0.8.23;
 import {ERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/ERC20Permit.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {GovLst} from "./GovLst.sol";
-import {Staker} from "staker/Staker.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {Staker} from "staker/Staker.sol";
+
 import {FixedGovLst} from "./FixedGovLst.sol";
+import {GovLst} from "./GovLst.sol";
 
 /// @title WrappedGovLst
 /// @author [ScopeLift](https://scopelift.co)
-/// @notice A wrapper contract for the liquid stake token. Whereas the LST is a rebasing token, the wrapper token
-/// has a fixed balance. While the balance is fixed, it is not 1:1 with the underlying token. As rewards are
-/// distributed to the LST contracts, the amount of liquid staked tokens that 1 wrapped token can be exchanged for
-/// increases. The voting weight for all tokens held by a given wrapper deployment is assigned to a singled delegatee,
-/// which is controlled by the wrapper's owner.
+/// @notice A wrapper contract that provides a non-rebasing interface to liquid stake tokens. The wrapper accepts
+/// stake tokens, rebasing LST, or fixed LST tokens. Wrapped tokens maintain 1:1 backing with fixed LST shares,
+/// allowing holders to benefit from staking rewards without balance changes and avoid off-by-one rounding issues when
+/// transferring tokens. The voting weight for all tokens held by a given wrapper deployment is assigned to a single
+/// delegatee, which is controlled by the wrapper's owner.
 contract WrappedGovLst is ERC20Permit, Ownable {
-  /// @notice Emitted when a holder wraps liquid stake tokens.
+  using SafeERC20 for FixedGovLst;
+
+  /// @notice Emitted when a holder wraps rebasing `GovLst` tokens.
   event WrappedRebasing(address indexed holder, uint256 rebasingAmount, uint256 wrappedAmount);
+
+  /// @notice Emitted when a holder wraps fixed `GovLst` tokens.
   event WrappedFixed(address indexed holder, uint256 fixedAmount, uint256 wrappedAmount);
+
+  /// @notice Emitted when a holder wraps underlying `GovLst` tokens.
   event WrappedUnderlying(address indexed holder, uint256 underlyingAmount, uint256 wrappedAmount);
 
-  /// @notice Emitted when a holder unwraps liquid stake tokens.
+  /// @notice Emitted when a holder unwraps wrapped tokens into rebseing `GovLst` tokens.
   event UnwrapRebasing(address indexed holder, uint256 lstAmount, uint256 wrappedAmount);
+
+  /// @notice Emitted when a holder unwraps wrapped tokens into fixed `GovLst` tokens.
   event UnwrapFixed(address indexed holder, uint256 lstAmount, uint256 wrappedAmount);
 
   /// @notice Emitted when the wrapper's owner updates the delegatee to which wrapped tokens voting weight is assigned.
@@ -35,6 +45,7 @@ contract WrappedGovLst is ERC20Permit, Ownable {
   /// @notice The address of the LST contract which will be wrapped.
   GovLst public immutable LST;
 
+  /// @notice The address of the FIXED_LST contract which will be wrapped and the asset that backs wrapped tokens 1:1.
   FixedGovLst public immutable FIXED_LST;
 
   /// @notice Local copy of the LST's scale factor that is stored at deployment for use in wrapper calculations.
@@ -49,7 +60,7 @@ contract WrappedGovLst is ERC20Permit, Ownable {
   /// @param _delegatee The initial delegatee to whom the wrapper's voting weight will be delegated.
   /// @param _initialOwner The initial owner of the wrapper contract.
   /// TODO Pre fund to handle rounding issues
-  constructor(string memory _name, string memory _symbol, GovLst _lst, address _delegatee, address _initialOwner)
+  constructor(string memory _name, string memory _symbol, GovLst _lst, address _delegatee, address _initialOwner, uint256 _preFundWrapped)
     ERC20Permit(_name)
     ERC20(_name, _symbol)
     Ownable(_initialOwner)
@@ -57,6 +68,7 @@ contract WrappedGovLst is ERC20Permit, Ownable {
     LST = _lst;
     FIXED_LST = _lst.FIXED_LST();
     SHARE_SCALE_FACTOR = _lst.SHARE_SCALE_FACTOR();
+	FIXED_LST.safeTransferFrom(msg.sender, address(this), _preFundWrapped);
     _setDelegatee(_delegatee);
   }
 
