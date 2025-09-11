@@ -156,7 +156,7 @@ contract WrappedGovLst is ERC20Permit, Ownable {
     return ((_stakeTokensToWrap * LST.totalShares()) / LST.totalSupply()) / SHARE_SCALE_FACTOR;
   }
 
-  function previewWrapFixed(uint256 _fixedTokensToWrap) internal view virtual returns (uint256) {
+  function previewWrapFixed(uint256 _fixedTokensToWrap) public view virtual returns (uint256) {
     return _fixedTokensToWrap;
   }
 
