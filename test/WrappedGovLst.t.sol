@@ -6,6 +6,7 @@ import {GovLstTest, GovLst} from "./GovLst.t.sol";
 import {Staker} from "staker/Staker.sol";
 import {WrappedGovLst, Ownable} from "../src/WrappedGovLst.sol";
 import {IERC20Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 contract WrappedGovLstTest is GovLstTest {
   WrappedGovLst wrappedLst;
@@ -13,17 +14,18 @@ contract WrappedGovLstTest is GovLstTest {
   string SYMBOL = "wtLST";
   address delegatee = makeAddr("Initial Delegatee");
   address wrappedLstOwner = makeAddr("Wrapped LST Owner");
+  uint256 constant PREFUND_AMOUNT = 1e9; // Small prefund amount to handle rounding (1 token)
 
   function setUp() public virtual override {
     super.setUp();
     Staker.DepositIdentifier _depositId = lst.fetchOrInitializeDepositForDelegatee(delegatee);
     _stakeOnDelegateeDeposit(_depositId, delegateeFunder);
 
-    wrappedLst = new WrappedGovLst(NAME, SYMBOL, lst, delegatee, wrappedLstOwner);
+    wrappedLst = new WrappedGovLst(NAME, SYMBOL, lst, delegatee, wrappedLstOwner, 0);
 
     _unstakeOnDelegateeDeposit(delegateeFunder);
   }
-
+  
   function _assumeSafeWrapHolder(address _holder) public view {
     _assumeSafeHolder(_holder);
     vm.assume(_holder != address(wrappedLst));
@@ -62,12 +64,14 @@ contract Constructor is WrappedGovLstTest {
     address _lst,
     address _delegatee,
     address _owner,
-    uint256 _depositId
+    uint256 _depositId,
+    uint256 _prefundAmount
   ) public {
     _assumeSafeMockAddress(_lst);
     _assumeSafeMockAddress(_delegatee);
     _assumeSafeMockAddress(_owner);
     vm.assume(_owner != address(0));
+    _prefundAmount = bound(_prefundAmount, 1, 1e18); // Bound prefund amount to reasonable range
 
     // Mock a fixed LST address
     address _mockFixedLst = makeAddr("MockFixedLst");
@@ -84,6 +88,14 @@ contract Constructor is WrappedGovLstTest {
       abi.encode(lst.SHARE_SCALE_FACTOR())
     );
     vm.mockCall(_lst, abi.encodeWithSelector(fixedLstSelector), abi.encode(_mockFixedLst));
+    
+    // Mock the FIXED_LST safeTransferFrom for prefunding
+    vm.mockCall(
+      _mockFixedLst,
+      abi.encodeWithSelector(IERC20.transferFrom.selector, address(this), address(0), _prefundAmount),
+      abi.encode(true)
+    );
+    
     vm.mockCall(
       _lst,
       abi.encodeWithSelector(GovLst.fetchOrInitializeDepositForDelegatee.selector, _delegatee),
@@ -99,7 +111,7 @@ contract Constructor is WrappedGovLstTest {
       abi.encode(address(0)) // in actuality this would return the defaultDelegatee, but we don't need to mock that
     );
 
-    WrappedGovLst _wrappedLst = new WrappedGovLst(_name, _symbol, GovLst(_lst), _delegatee, _owner);
+    WrappedGovLst _wrappedLst = new WrappedGovLst(_name, _symbol, GovLst(_lst), _delegatee, _owner, _prefundAmount);
 
     assertEq(_wrappedLst.name(), _name);
     assertEq(_wrappedLst.symbol(), _symbol);

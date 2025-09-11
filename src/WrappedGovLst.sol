@@ -59,7 +59,7 @@ contract WrappedGovLst is ERC20Permit, Ownable {
   /// @param _lst The contract of the liquid stake token being wrapped.
   /// @param _delegatee The initial delegatee to whom the wrapper's voting weight will be delegated.
   /// @param _initialOwner The initial owner of the wrapper contract.
-  /// TODO Pre fund to handle rounding issues
+  /// @param _preFundWrapped The amount of FIXED_LST tokens to prefund the wrapper with (can be 0).
   constructor(string memory _name, string memory _symbol, GovLst _lst, address _delegatee, address _initialOwner, uint256 _preFundWrapped)
     ERC20Permit(_name)
     ERC20(_name, _symbol)
@@ -68,7 +68,7 @@ contract WrappedGovLst is ERC20Permit, Ownable {
     LST = _lst;
     FIXED_LST = _lst.FIXED_LST();
     SHARE_SCALE_FACTOR = _lst.SHARE_SCALE_FACTOR();
-	FIXED_LST.safeTransferFrom(msg.sender, address(this), _preFundWrapped);
+    FIXED_LST.safeTransferFrom(msg.sender, address(this), _preFundWrapped);
     _setDelegatee(_delegatee);
   }
 
