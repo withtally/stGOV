@@ -18,10 +18,13 @@ import {FixedGovLst} from "./FixedGovLst.sol";
 /// which is controlled by the wrapper's owner.
 contract WrappedGovLst is ERC20Permit, Ownable {
   /// @notice Emitted when a holder wraps liquid stake tokens.
-  event Wrapped(address indexed holder, uint256 lstAmount, uint256 wrappedAmount);
+  event WrappedRebasing(address indexed holder, uint256 rebasingAmount, uint256 wrappedAmount);
+  event WrappedFixed(address indexed holder, uint256 fixedAmount, uint256 wrappedAmount);
+  event WrappedUnderlying(address indexed holder, uint256 underlyingAmount, uint256 wrappedAmount);
 
   /// @notice Emitted when a holder unwraps liquid stake tokens.
-  event Unwrapped(address indexed holder, uint256 lstAmount, uint256 wrappedAmount);
+  event UnwrapRebasing(address indexed holder, uint256 lstAmount, uint256 wrappedAmount);
+  event UnwrapFixed(address indexed holder, uint256 lstAmount, uint256 wrappedAmount);
 
   /// @notice Emitted when the wrapper's owner updates the delegatee to which wrapped tokens voting weight is assigned.
   event DelegateeSet(address indexed oldDelegatee, address indexed newDelegatee);
@@ -67,8 +70,7 @@ contract WrappedGovLst is ERC20Permit, Ownable {
   /// @return _wrappedAmount The quantity of wrapped tokens issued to the caller.
   /// @dev The caller must approve at least the amount of tokens to wrap on the lst contract before calling. Amount to
   /// wrap may not be zero.
-  /// TODO: Rename wrapped rebasing
-  function wrap(uint256 _lstAmountToWrap) external virtual returns (uint256 _wrappedAmount) {
+  function wrapRebasing(uint256 _lstAmountToWrap) external virtual returns (uint256 _wrappedAmount) {
     if (_lstAmountToWrap == 0) {
       revert WrappedGovLst__InvalidAmount();
     }
@@ -81,12 +83,13 @@ contract WrappedGovLst is ERC20Permit, Ownable {
     _wrappedAmount = previewWrapRebasing(_lstAmountToWrap);
     _mint(msg.sender, _wrappedAmount);
 
-    emit Wrapped(msg.sender, _lstAmountToWrap, _wrappedAmount);
+    emit WrappedRebasing(msg.sender, _lstAmountToWrap, _wrappedAmount);
   }
 
   // Everything converts to the rebasing
   // can convert out to different things
   // Must approve to FIXED_LST
+  // There could be some rounding weirdness
   function wrapUnderlying(uint256 _stakeTokensToWrap) public virtual returns (uint256) {
     if (_stakeTokensToWrap == 0) {
       revert WrappedGovLst__InvalidAmount();
@@ -109,7 +112,7 @@ contract WrappedGovLst is ERC20Permit, Ownable {
     _mint(msg.sender, _wrappedAmount);
 
     // Emit event for consistency with wrap function
-    emit Wrapped(msg.sender, _stakeTokensToWrap, _wrappedAmount);
+    emit WrappedUnderlying(msg.sender, _stakeTokensToWrap, _wrappedAmount);
 
     return _wrappedAmount;
   }
@@ -129,11 +132,12 @@ contract WrappedGovLst is ERC20Permit, Ownable {
     _mint(msg.sender, _wrappedAmount);
 
     // Emit event for consistency
-    emit Wrapped(msg.sender, _fixedTokensToWrap, _wrappedAmount);
+    emit WrappedFixed(msg.sender, _fixedTokensToWrap, _wrappedAmount);
 
     return _wrappedAmount;
   }
 
+  /// Return the number of vault shares or less
   function previewWrapRebasing(uint256 _stakeTokensToWrap) public view virtual returns (uint256) {
     // Calculate the shares that will be transferred when converting to fixed
     // This needs to match the rounding behavior of _calcSharesForStakeUp in GovLst
@@ -156,29 +160,21 @@ contract WrappedGovLst is ERC20Permit, Ownable {
     return _fixedTokensToWrap;
   }
 
-  function previewUnwrap(uint256 _wrappedAmount) public view virtual returns (uint256) {
+  function previewUnwrapToRebase(uint256 _wrappedAmount) public view virtual returns (uint256) {
     // Wrapped tokens are 1:1 with FIXED_LST tokens
     // Convert to shares by scaling up
     uint256 _shares = _wrappedAmount * SHARE_SCALE_FACTOR;
     // Convert shares to rebasing tokens, rounding down to favor the protocol
-    return _calcStakeForSharesView(_shares);
+    return _calcStakeForShares(_shares);
   }
 
   function previewUnwrapToFixed(uint256 _wrappedAmount) public view virtual returns (uint256) {
     // At worst 1 wei less than what has been requested will be returned.
-	// The preview will return the minimum amount of assets returned.
+    // The preview will return the minimum amount of assets returned.
     return _wrappedAmount - 1;
   }
 
-  function _calcStakeForShares(uint256 _shares) internal virtual returns (uint256) {
-    if (LST.totalShares() == 0) {
-      return _shares / SHARE_SCALE_FACTOR;
-    }
-
-    return (_shares * LST.totalSupply()) / LST.totalShares();
-  }
-
-  function _calcStakeForSharesView(uint256 _shares) internal view virtual returns (uint256) {
+  function _calcStakeForShares(uint256 _shares) internal view virtual returns (uint256) {
     if (LST.totalShares() == 0) {
       return _shares / SHARE_SCALE_FACTOR;
     }
@@ -205,32 +201,24 @@ contract WrappedGovLst is ERC20Permit, Ownable {
   /// @param _wrappedAmount The quantity of wrapped tokens to burn.
   /// @return _lstAmountUnwrapped The quantity of liquid staked tokens received in exchange for the wrapped tokens.
   /// @dev The caller must approve at least the amount wrapped tokens on the wrapper token contract.
-  /// TODO add an unwrap for each LST variant
   /// Behaves like redeem in erc4626
-  function unwrap(uint256 _wrappedAmount) external virtual returns (uint256 _lstAmountUnwrapped) {
+  function unwrapToRebase(uint256 _wrappedAmount) external virtual returns (uint256) {
     if (_wrappedAmount == 0) {
       revert WrappedGovLst__InvalidAmount();
     }
-
-    // Calculate the amount to unwrap using our preview function (rounds down to favor protocol)
-    _lstAmountUnwrapped = previewUnwrap(_wrappedAmount);
 
     // Burn wrapped tokens from the user
     _burn(msg.sender, _wrappedAmount);
 
     // Convert FIXED_LST tokens back to rebasing LST tokens
     // We need to call convertToRebasing to properly update the FIXED_LST accounting
-    uint256 _actualLstAmount = FIXED_LST.convertToRebasing(_wrappedAmount);
-
-    // Use the lower of the two amounts to ensure we never give more than calculated
-    if (_actualLstAmount < _lstAmountUnwrapped) {
-      _lstAmountUnwrapped = _actualLstAmount;
-    }
+    uint256 _lstAmountUnwrapped = FIXED_LST.convertToRebasing(_wrappedAmount);
 
     // Transfer the rebasing LST tokens to the user
     LST.transfer(msg.sender, _lstAmountUnwrapped);
 
-    emit Unwrapped(msg.sender, _lstAmountUnwrapped, _wrappedAmount);
+    emit UnwrapRebasing(msg.sender, _lstAmountUnwrapped, _wrappedAmount);
+    return _lstAmountUnwrapped;
   }
 
   /// @notice Burn wrapped tokens to receive FIXED_LST tokens.
@@ -248,18 +236,18 @@ contract WrappedGovLst is ERC20Permit, Ownable {
 
     // Check the wrapper's actual FIXED_LST balance before transfer
     uint256 _wrapperBalanceBefore = FIXED_LST.balanceOf(address(this));
-    
+
     // Transfer FIXED_LST tokens to the user (1:1 with wrapped tokens)
     // The actual transfer amount might be 1 wei more due to FIXED_LST rounding
     FIXED_LST.transfer(msg.sender, _wrappedAmount);
-    
+
     // Calculate actual amount transferred by checking balance change
     uint256 _wrapperBalanceAfter = FIXED_LST.balanceOf(address(this));
     _fixedTokensUnwrapped = _wrapperBalanceBefore - _wrapperBalanceAfter;
 
     // Emit event with actual transferred amount
-    emit Unwrapped(msg.sender, _fixedTokensUnwrapped, _wrappedAmount);
-    
+    emit UnwrapFixed(msg.sender, _fixedTokensUnwrapped, _wrappedAmount);
+
     // Return the actual amount transferred (may be up to 1 wei more than _wrappedAmount)
     return _fixedTokensUnwrapped;
   }
