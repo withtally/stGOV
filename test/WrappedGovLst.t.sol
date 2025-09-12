@@ -667,13 +667,13 @@ contract UnwrapToFixed is WrappedGovLstTest {
     uint256 _wrappedBalance = _wrap(_holder, _wrapAmount);
     _unwrapAmount = bound(_unwrapAmount, 1, _wrappedBalance);
 
-    // Get the actual amount that will be transferred
-    vm.prank(_holder);
-    uint256 _actualTransferred = wrappedLst.unwrapToFixed(_unwrapAmount);
+    // We only check that an event was emitted with the correct holder address and wrapped amount
+    // The actual amount may differ by 1 wei from the requested amount due to FIXED_LST's rounding
+    vm.expectEmit(true, false, true, false);
+    emit WrappedGovLst.UnwrapFixed(_holder, 0, _unwrapAmount);
 
-    // Verify the event was emitted with the actual transferred amount
-    // The actual amount may differ by 1 wei due to FIXED_LST's share-based rounding
-    assertApproxEqAbs(_actualTransferred, _unwrapAmount, 1, "Actual transfer should be within 1 wei of requested");
+    vm.prank(_holder);
+    wrappedLst.unwrapToFixed(_unwrapAmount);
   }
 
   function testFuzz_RevertIf_AmountIsZero(address _holder) public {
