@@ -378,7 +378,7 @@ contract GovLstTest is UnitTestBase, PercentAssertions, TestHelpers, Eip712Helpe
   function _distributeReward(uint80 _payoutAmount) internal {
     _setRewardParameters(_payoutAmount, 0, address(1));
     address _claimer = makeAddr("Claimer");
-    uint256 _rewardTokenAmount = 0.0001e18; // arbitrary amount of reward token
+    uint256 _rewardTokenAmount = 10e18; // arbitrary amount of reward token
     _mintStakeToken(_claimer, _payoutAmount);
     _approveLstAndClaimAndDistributeReward(_claimer, _rewardTokenAmount, _claimer, Staker.DepositIdentifier.wrap(1));
   }
