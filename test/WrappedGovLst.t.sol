@@ -197,7 +197,7 @@ contract WrapRebasing is WrappedGovLstTest {
     assertEq(_returnValue, wrappedLst.balanceOf(_holder) - _initialBalance);
   }
 
-  function testFuzz_EmitsAWrappedRebasingEvent(
+  function testFuzz_EmitsAWrapRebasingEvent(
     address _holder,
     uint256 _stakeAmount,
     uint80 _rewardAmount,
@@ -215,7 +215,7 @@ contract WrapRebasing is WrappedGovLstTest {
     uint256 _expectedWrappedTokens = wrappedLst.previewWrapRebasing(_wrapAmount);
 
     vm.expectEmit();
-    emit WrappedGovLst.WrappedRebasing(_holder, _wrapAmount, _expectedWrappedTokens); // We don't know the exact wrapped
+    emit WrappedGovLst.WrapRebasing(_holder, _wrapAmount, _expectedWrappedTokens); // We don't know the exact wrapped
       // amount
 
     _wrap(_holder, _wrapAmount);
@@ -313,7 +313,7 @@ contract WrapUnderlying is WrappedGovLstTest {
     assertEq(_returnedAmount, wrappedLst.balanceOf(_holder) - _initialWrappedBalance);
   }
 
-  function testFuzz_EmitsWrappedUnderlyingEvent(address _holder, uint256 _stakeAmount) public {
+  function testFuzz_EmitsWrapUnderlyingEvent(address _holder, uint256 _stakeAmount) public {
     _assumeSafeWrapHolder(_holder);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
 
@@ -330,7 +330,7 @@ contract WrapUnderlying is WrappedGovLstTest {
 
     // We expect the event to be emitted
     vm.expectEmit();
-    emit WrappedGovLst.WrappedUnderlying(_holder, _stakeAmount, _expectedWrappedTokens); // Don't check wrapped amount
+    emit WrappedGovLst.WrapUnderlying(_holder, _stakeAmount, _expectedWrappedTokens); // Don't check wrapped amount
       // yet
 
     // Wrap the stake tokens
@@ -415,7 +415,7 @@ contract WrapFixed is WrappedGovLstTest {
     assertEq(_returnedAmount, _fixedTokens);
   }
 
-  function testFuzz_EmitsWrappedEvent(address _holder, uint256 _stakeAmount) public {
+  function testFuzz_EmitsWrapEvent(address _holder, uint256 _stakeAmount) public {
     _assumeSafeWrapHolder(_holder);
     _stakeAmount = _boundToReasonableStakeTokenAmount(_stakeAmount);
 
@@ -430,7 +430,7 @@ contract WrapFixed is WrappedGovLstTest {
 
     // Expect event with exact values (1:1 wrapping)
     vm.expectEmit();
-    emit WrappedGovLst.WrappedFixed(_holder, _fixedTokens, _fixedTokens);
+    emit WrappedGovLst.WrapFixed(_holder, _fixedTokens, _fixedTokens);
 
     wrappedLst.wrapFixed(_fixedTokens);
     vm.stopPrank();

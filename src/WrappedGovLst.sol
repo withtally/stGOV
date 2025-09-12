@@ -22,13 +22,13 @@ contract WrappedGovLst is ERC20Permit, Ownable {
   using SafeERC20 for FixedGovLst;
 
   /// @notice Emitted when a holder wraps rebasing `GovLst` tokens.
-  event WrappedRebasing(address indexed holder, uint256 rebasingAmount, uint256 wrappedAmount);
+  event WrapRebasing(address indexed holder, uint256 rebasingAmount, uint256 wrappedAmount);
 
   /// @notice Emitted when a holder wraps fixed `GovLst` tokens.
-  event WrappedFixed(address indexed holder, uint256 fixedAmount, uint256 wrappedAmount);
+  event WrapFixed(address indexed holder, uint256 fixedAmount, uint256 wrappedAmount);
 
   /// @notice Emitted when a holder wraps underlying `GovLst` tokens.
-  event WrappedUnderlying(address indexed holder, uint256 underlyingAmount, uint256 wrappedAmount);
+  event WrapUnderlying(address indexed holder, uint256 underlyingAmount, uint256 wrappedAmount);
 
   /// @notice Emitted when a holder unwraps wrapped tokens into rebseing `GovLst` tokens.
   event UnwrapRebasing(address indexed holder, uint256 lstAmount, uint256 wrappedAmount);
@@ -96,7 +96,7 @@ contract WrappedGovLst is ERC20Permit, Ownable {
     _wrappedAmount = previewWrapRebasing(_lstAmountToWrap);
     _mint(msg.sender, _wrappedAmount);
 
-    emit WrappedRebasing(msg.sender, _lstAmountToWrap, _wrappedAmount);
+    emit WrapRebasing(msg.sender, _lstAmountToWrap, _wrappedAmount);
   }
 
   /// @notice Deposit underlying stake tokens and receive wrapped tokens in exchange.
@@ -117,7 +117,7 @@ contract WrappedGovLst is ERC20Permit, Ownable {
     FIXED_LST.stake(_stakeTokensToWrap);
     _mint(msg.sender, _wrappedAmount);
 
-    emit WrappedUnderlying(msg.sender, _stakeTokensToWrap, _wrappedAmount);
+    emit WrapUnderlying(msg.sender, _stakeTokensToWrap, _wrappedAmount);
 
     return _wrappedAmount;
   }
@@ -137,7 +137,7 @@ contract WrappedGovLst is ERC20Permit, Ownable {
     uint256 _wrappedAmount = previewWrapFixed(_fixedTokensToWrap);
     _mint(msg.sender, _wrappedAmount);
 
-    emit WrappedFixed(msg.sender, _fixedTokensToWrap, _wrappedAmount);
+    emit WrapFixed(msg.sender, _fixedTokensToWrap, _wrappedAmount);
 
     return _wrappedAmount;
   }
