@@ -221,7 +221,7 @@ contract WrapRebasing is WrappedGovLstTest {
     uint256 _expectedWrappedTokens = wrappedLst.previewWrapRebasing(_wrapAmount);
 
     vm.expectEmit();
-    emit WrappedGovLst.WrapRebasing(_holder, _wrapAmount, _expectedWrappedTokens); // We don't know the exact wrapped
+    emit WrappedGovLst.RebasingWrapped(_holder, _wrapAmount, _expectedWrappedTokens); // We don't know the exact wrapped
       // amount
 
     _wrap(_holder, _wrapAmount);
@@ -308,7 +308,7 @@ contract WrapUnderlying is WrappedGovLstTest {
     uint256 _expectedWrappedTokens = wrappedLst.previewWrapUnderlying(_stakeAmount);
 
     vm.expectEmit();
-    emit WrappedGovLst.WrapUnderlying(_holder, _stakeAmount, _expectedWrappedTokens);
+    emit WrappedGovLst.UnderlyingWrapped(_holder, _stakeAmount, _expectedWrappedTokens);
 
     vm.prank(_holder);
     wrappedLst.wrapUnderlying(_stakeAmount);
@@ -387,7 +387,7 @@ contract WrapFixed is WrappedGovLstTest {
     lst.FIXED_LST().approve(address(wrappedLst), _fixedTokens);
 
     vm.expectEmit();
-    emit WrappedGovLst.WrapFixed(_holder, _fixedTokens, _fixedTokens);
+    emit WrappedGovLst.FixedWrapped(_holder, _fixedTokens, _fixedTokens);
 
     wrappedLst.wrapFixed(_fixedTokens);
     vm.stopPrank();
@@ -497,7 +497,7 @@ contract UnwrapToRebase is WrappedGovLstTest {
     uint256 _previewUnwrapAmount = wrappedLst.previewUnwrapToRebase(_unwrapAmount);
 
     vm.expectEmit();
-    emit WrappedGovLst.UnwrapRebasing(_holder, _previewUnwrapAmount, _unwrapAmount);
+    emit WrappedGovLst.RebasingUnwrapped(_holder, _previewUnwrapAmount, _unwrapAmount);
     _unwrap(_holder, _unwrapAmount);
   }
 
@@ -670,7 +670,7 @@ contract UnwrapToFixed is WrappedGovLstTest {
     // We only check that an event was emitted with the correct holder address and wrapped amount
     // The actual amount may differ by 1 wei from the requested amount due to FIXED_LST's rounding
     vm.expectEmit(true, false, true, false);
-    emit WrappedGovLst.UnwrapFixed(_holder, 0, _unwrapAmount);
+    emit WrappedGovLst.FixedUnwrapped(_holder, 0, _unwrapAmount);
 
     vm.prank(_holder);
     wrappedLst.unwrapToFixed(_unwrapAmount);
