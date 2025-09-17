@@ -60,7 +60,7 @@ contract WrappedGovLst is ERC20Permit, Ownable {
   /// @param _delegatee The initial delegatee to whom the wrapper's voting weight will be delegated.
   /// @param _initialOwner The initial owner of the wrapper contract.
   /// @param _preFundWrapped The amount of FIXED_LST tokens to prefund the wrapper. If 0 some fixed tokens should be
-  /// sent affter deployment to the wrapper.
+  /// sent after deployment to the wrapper.
   constructor(
     string memory _name,
     string memory _symbol,
