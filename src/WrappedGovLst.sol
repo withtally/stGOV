@@ -72,7 +72,7 @@ contract WrappedGovLst is ERC20Permit, Ownable {
     LST = _lst;
     FIXED_LST = _lst.FIXED_LST();
     SHARE_SCALE_FACTOR = _lst.SHARE_SCALE_FACTOR();
-    FIXED_LST.safeTransferFrom(msg.sender, address(this), _preFundWrapped);
+    FIXED_LST.transferFrom(msg.sender, address(this), _preFundWrapped);
     _setDelegatee(_delegatee);
   }
 
