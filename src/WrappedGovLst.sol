@@ -81,6 +81,52 @@ contract WrappedGovLst is ERC20Permit, Ownable {
     return LST.delegateeForHolder(address(this));
   }
 
+  /// @notice Preview the amount of wrapped tokens that would be minted when wrapping rebasing LST tokens.
+  /// @param _rebasingTokensToWrap The amount of rebasing LST tokens to wrap.
+  /// @return The amount of wrapped tokens that would be minted.
+  /// @dev Returns the exact amount that would be minted by wrapRebasing.
+  function previewWrapRebasing(uint256 _rebasingTokensToWrap) public view virtual returns (uint256) {
+    // Calculate the shares that will be transferred when converting to fixed
+    // This match the rounding behavior of _calcSharesForStakeUp in GovLst
+    return _calcSharesForStakeUp(_rebasingTokensToWrap) / SHARE_SCALE_FACTOR;
+  }
+
+  /// @notice Preview the amount of wrapped tokens that would be minted when wrapping underlying stake tokens.
+  /// @param _stakeTokensToWrap The amount of underlying stake tokens to wrap.
+  /// @return The amount of wrapped tokens that would be minted.
+  /// @dev Simulates the staking process to determine the resulting wrapped token amount.
+  function previewWrapUnderlying(uint256 _stakeTokensToWrap) public view virtual returns (uint256) {
+    return _calcSharesForStake(_stakeTokensToWrap) / SHARE_SCALE_FACTOR;
+  }
+
+  /// @notice Preview the amount of wrapped tokens that would be minted when wrapping fixed liquid staking tokens.
+  /// @param _fixedTokensToWrap The amount of fixed liquid staking tokens to wrap.
+  /// @return The amount of wrapped tokens that would be minted.
+  /// @dev Wrapped tokens maintain 1:1 backing with fixed liquid staking tokens.
+  function previewWrapFixed(uint256 _fixedTokensToWrap) public view virtual returns (uint256) {
+    return _fixedTokensToWrap;
+  }
+
+  /// @notice Preview the amount of rebasing liquid stake tokens that would be received when unwrapping.
+  /// @param _wrappedAmount The amount of wrapped tokens to unwrap.
+  /// @return The amount of rebasing liquid stake tokens that would be received.
+  /// @dev Converts wrapped tokens to shares, then to rebasing tokens. Rounds down to favor the protocol.
+  function previewUnwrapToRebasing(uint256 _wrappedAmount) public view virtual returns (uint256) {
+    uint256 _shares = _wrappedAmount * SHARE_SCALE_FACTOR;
+    return _calcStakeForShares(_shares);
+  }
+
+  /// @notice Preview the amount of fixed liquid staking tokens that would be received when unwrapping.
+  /// @param _wrappedAmount The amount of wrapped tokens to unwrap.
+  /// @return The minimum amount of fixed liquid staking tokens that would be received.
+  /// @dev Returns a conservative estimate (1 wei less) to account for potential rounding in FIXED_LST transfer.
+  /// The actual amount received may be up to 1 wei more due to FIXED_LST's internal rounding behavior.
+  function previewUnwrapToFixed(uint256 _wrappedAmount) public view virtual returns (uint256) {
+    // At worst 1 wei less than what has been requested will be returned.
+    // The preview will return the minimum amount of assets returned.
+    return _wrappedAmount - 1;
+  }
+
   /// @notice Deposit liquid stake tokens and receive wrapped tokens in exchange.
   /// @param _lstAmountToWrap The quantity of liquid stake tokens to wrap.
   /// @return _wrappedAmount The quantity of wrapped tokens issued to the caller.
@@ -140,52 +186,6 @@ contract WrappedGovLst is ERC20Permit, Ownable {
     emit FixedWrapped(msg.sender, _fixedTokensToWrap, _wrappedAmount);
 
     return _wrappedAmount;
-  }
-
-  /// @notice Preview the amount of wrapped tokens that would be minted when wrapping rebasing LST tokens.
-  /// @param _rebasingTokensToWrap The amount of rebasing LST tokens to wrap.
-  /// @return The amount of wrapped tokens that would be minted.
-  /// @dev Returns the exact amount that would be minted by wrapRebasing.
-  function previewWrapRebasing(uint256 _rebasingTokensToWrap) public view virtual returns (uint256) {
-    // Calculate the shares that will be transferred when converting to fixed
-    // This match the rounding behavior of _calcSharesForStakeUp in GovLst
-    return _calcSharesForStakeUp(_rebasingTokensToWrap) / SHARE_SCALE_FACTOR;
-  }
-
-  /// @notice Preview the amount of wrapped tokens that would be minted when wrapping underlying stake tokens.
-  /// @param _stakeTokensToWrap The amount of underlying stake tokens to wrap.
-  /// @return The amount of wrapped tokens that would be minted.
-  /// @dev Simulates the staking process to determine the resulting wrapped token amount.
-  function previewWrapUnderlying(uint256 _stakeTokensToWrap) public view virtual returns (uint256) {
-    return _calcSharesForStake(_stakeTokensToWrap) / SHARE_SCALE_FACTOR;
-  }
-
-  /// @notice Preview the amount of wrapped tokens that would be minted when wrapping fixed liquid staking tokens.
-  /// @param _fixedTokensToWrap The amount of fixed liquid staking tokens to wrap.
-  /// @return The amount of wrapped tokens that would be minted.
-  /// @dev Wrapped tokens maintain 1:1 backing with fixed liquid staking tokens.
-  function previewWrapFixed(uint256 _fixedTokensToWrap) public view virtual returns (uint256) {
-    return _fixedTokensToWrap;
-  }
-
-  /// @notice Preview the amount of rebasing liquid stake tokens that would be received when unwrapping.
-  /// @param _wrappedAmount The amount of wrapped tokens to unwrap.
-  /// @return The amount of rebasing liquid stake tokens that would be received.
-  /// @dev Converts wrapped tokens to shares, then to rebasing tokens. Rounds down to favor the protocol.
-  function previewUnwrapToRebasing(uint256 _wrappedAmount) public view virtual returns (uint256) {
-    uint256 _shares = _wrappedAmount * SHARE_SCALE_FACTOR;
-    return _calcStakeForShares(_shares);
-  }
-
-  /// @notice Preview the amount of fixed liquid staking tokens that would be received when unwrapping.
-  /// @param _wrappedAmount The amount of wrapped tokens to unwrap.
-  /// @return The minimum amount of fixed liquid staking tokens that would be received.
-  /// @dev Returns a conservative estimate (1 wei less) to account for potential rounding in FIXED_LST transfer.
-  /// The actual amount received may be up to 1 wei more due to FIXED_LST's internal rounding behavior.
-  function previewUnwrapToFixed(uint256 _wrappedAmount) public view virtual returns (uint256) {
-    // At worst 1 wei less than what has been requested will be returned.
-    // The preview will return the minimum amount of assets returned.
-    return _wrappedAmount - 1;
   }
 
   /// @notice Burn wrapped tokens to receive liquid stake tokens in return.
@@ -280,7 +280,6 @@ contract WrappedGovLst is ERC20Permit, Ownable {
 
     return _result;
   }
-
 
   /// @notice Internal method that sets the deposit identifier for the delegate specified on the LST.
   function _setDelegatee(address _newDelegatee) internal virtual {
