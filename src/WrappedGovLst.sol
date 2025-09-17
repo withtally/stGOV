@@ -14,17 +14,17 @@ import {GovLst} from "./GovLst.sol";
 /// @title WrappedGovLst
 /// @author [ScopeLift](https://scopelift.co)
 /// @notice A wrapper contract that provides a non-rebasing interface to liquid stake tokens. The wrapper accepts
-/// stake tokens, rebasing GovLST, or fixed GovLST tokens. Wrapped tokens maintain 1:1 backing with fixed LST shares,
-/// allowing holders to benefit from staking rewards without balance changes and avoid off-by-one rounding issues when
-/// transferring tokens. The voting weight for all tokens held by a given wrapper deployment is assigned to a single
-/// delegatee, which is controlled by the wrapper's owner.
+/// stake tokens, rebasing `GovLST`, or `FixedGovLST` tokens. Wrapped tokens maintain 1:1 backing with `FixedGovLST`
+/// shares, allowing holders to benefit from staking rewards without balance changes and avoid off-by-one rounding
+/// issues when transferring tokens. The voting weight for all tokens held by a given wrapper deployment is assigned to
+/// a single delegatee, which is controlled by the wrapper's owner.
 contract WrappedGovLst is ERC20Permit, Ownable {
   using SafeERC20 for FixedGovLst;
 
   /// @notice Emitted when a holder wraps rebasing `GovLst` tokens.
   event RebasingWrapped(address indexed holder, uint256 rebasingAmount, uint256 wrappedAmount);
 
-  /// @notice Emitted when a holder wraps fixed `GovLst` tokens.
+  /// @notice Emitted when a holder wraps `FixedGovLst` tokens.
   event FixedWrapped(address indexed holder, uint256 fixedAmount, uint256 wrappedAmount);
 
   /// @notice Emitted when a holder wraps underlying `GovLst` tokens.
