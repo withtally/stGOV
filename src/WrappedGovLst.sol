@@ -19,7 +19,7 @@ import {GovLst} from "./GovLst.sol";
 /// issues when transferring tokens. The voting weight for all tokens held by a given wrapper deployment is assigned to
 /// a single delegatee, which is controlled by the wrapper's owner.
 contract WrappedGovLst is ERC20Permit, Ownable {
-  using SafeERC20 for FixedGovLst;
+  using SafeERC20 for IERC20;
 
   /// @notice Emitted when a holder wraps rebasing `GovLst` tokens.
   event RebasingWrapped(address indexed holder, uint256 rebasingAmount, uint256 wrappedAmount);
@@ -110,7 +110,7 @@ contract WrappedGovLst is ERC20Permit, Ownable {
     }
 
     IERC20 stakeToken = IERC20(address(LST.STAKE_TOKEN()));
-    stakeToken.transferFrom(msg.sender, address(this), _stakeTokensToWrap);
+    stakeToken.safeTransferFrom(msg.sender, address(this), _stakeTokensToWrap);
     stakeToken.approve(address(FIXED_LST), _stakeTokensToWrap);
 
     uint256 _wrappedAmount = previewWrapUnderlying(_stakeTokensToWrap);
