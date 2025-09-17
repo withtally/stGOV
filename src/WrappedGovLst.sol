@@ -188,50 +188,6 @@ contract WrappedGovLst is ERC20Permit, Ownable {
     return _wrappedAmount - 1;
   }
 
-  /// @notice Calculate the number of shares that would be created from staking a given amount.
-  /// @param _amount The amount of stake tokens to convert to shares.
-  /// @return The number of shares that would be created.
-  /// @dev Mirrors the share calculation logic from GovLst. Rounds down.
-  function _calcSharesForStake(uint256 _amount) internal view virtual returns (uint256) {
-    if (LST.totalSupply() == 0) {
-      return SHARE_SCALE_FACTOR * _amount;
-    }
-
-    return (_amount * LST.totalShares()) / LST.totalSupply();
-  }
-
-  /// @notice Calculate the amount of stake tokens that correspond to a given number of shares.
-  /// @param _shares The number of shares to convert to stake tokens.
-  /// @return The amount of stake tokens that the shares represent.
-  /// @dev Converts shares back to stake token amounts. Rounds down to favor the protocol.
-  function _calcStakeForShares(uint256 _shares) internal view virtual returns (uint256) {
-    if (LST.totalShares() == 0) {
-      return _shares / SHARE_SCALE_FACTOR;
-    }
-
-    // Rounds down, favoring the protocol
-    return (_shares * LST.totalSupply()) / LST.totalShares();
-  }
-
-  /// @notice Calculate the number of shares for a stake amount, rounding up.
-  /// @param _amount The amount of stake tokens to convert to shares.
-  /// @return The number of shares that would be created, rounded up.
-  /// @dev Similar to _calcSharesForStake but rounds up if there's any remainder.
-  /// This ensures no value is lost when converting rebasing tokens to fixed tokens.
-  function _calcSharesForStakeUp(uint256 _amount) internal view virtual returns (uint256) {
-    uint256 _result = _calcSharesForStake(_amount);
-    if (LST.totalSupply() == 0) {
-      return _result;
-    }
-
-    // Add 1 if there's any remainder from the division
-    if (mulmod(_amount, LST.totalShares(), LST.totalSupply()) > 0) {
-      _result += 1;
-    }
-
-    return _result;
-  }
-
   /// @notice Burn wrapped tokens to receive liquid stake tokens in return.
   /// @param _wrappedAmount The quantity of wrapped tokens to burn.
   /// @return _lstAmountUnwrapped The quantity of liquid staked tokens received in exchange for the wrapped tokens.
@@ -280,6 +236,51 @@ contract WrappedGovLst is ERC20Permit, Ownable {
     _checkOwner();
     _setDelegatee(_newDelegatee);
   }
+
+  /// @notice Calculate the number of shares that would be created from staking a given amount.
+  /// @param _amount The amount of stake tokens to convert to shares.
+  /// @return The number of shares that would be created.
+  /// @dev Mirrors the share calculation logic from GovLst. Rounds down.
+  function _calcSharesForStake(uint256 _amount) internal view virtual returns (uint256) {
+    if (LST.totalSupply() == 0) {
+      return SHARE_SCALE_FACTOR * _amount;
+    }
+
+    return (_amount * LST.totalShares()) / LST.totalSupply();
+  }
+
+  /// @notice Calculate the amount of stake tokens that correspond to a given number of shares.
+  /// @param _shares The number of shares to convert to stake tokens.
+  /// @return The amount of stake tokens that the shares represent.
+  /// @dev Converts shares back to stake token amounts. Rounds down to favor the protocol.
+  function _calcStakeForShares(uint256 _shares) internal view virtual returns (uint256) {
+    if (LST.totalShares() == 0) {
+      return _shares / SHARE_SCALE_FACTOR;
+    }
+
+    // Rounds down, favoring the protocol
+    return (_shares * LST.totalSupply()) / LST.totalShares();
+  }
+
+  /// @notice Calculate the number of shares for a stake amount, rounding up.
+  /// @param _amount The amount of stake tokens to convert to shares.
+  /// @return The number of shares that would be created, rounded up.
+  /// @dev Similar to _calcSharesForStake but rounds up if there's any remainder.
+  /// This ensures no value is lost when converting rebasing tokens to fixed tokens.
+  function _calcSharesForStakeUp(uint256 _amount) internal view virtual returns (uint256) {
+    uint256 _result = _calcSharesForStake(_amount);
+    if (LST.totalSupply() == 0) {
+      return _result;
+    }
+
+    // Add 1 if there's any remainder from the division
+    if (mulmod(_amount, LST.totalShares(), LST.totalSupply()) > 0) {
+      _result += 1;
+    }
+
+    return _result;
+  }
+
 
   /// @notice Internal method that sets the deposit identifier for the delegate specified on the LST.
   function _setDelegatee(address _newDelegatee) internal virtual {
