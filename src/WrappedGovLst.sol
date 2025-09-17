@@ -172,7 +172,7 @@ contract WrappedGovLst is ERC20Permit, Ownable {
   /// @param _wrappedAmount The amount of wrapped tokens to unwrap.
   /// @return The amount of rebasing liquid stake tokens that would be received.
   /// @dev Converts wrapped tokens to shares, then to rebasing tokens. Rounds down to favor the protocol.
-  function previewUnwrapToRebase(uint256 _wrappedAmount) public view virtual returns (uint256) {
+  function previewUnwrapToRebasing(uint256 _wrappedAmount) public view virtual returns (uint256) {
     uint256 _shares = _wrappedAmount * SHARE_SCALE_FACTOR;
     return _calcStakeForShares(_shares);
   }

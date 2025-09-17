@@ -422,7 +422,7 @@ contract UnwrapToRebase is WrappedGovLstTest {
 
     _unwrapAmount = bound(_unwrapAmount, 1, _wrappedBalance);
     uint256 _holderPriorBalance = lst.balanceOf(_holder);
-    uint256 _previewUnwrapAmount = wrappedLst.previewUnwrapToRebase(_unwrapAmount);
+    uint256 _previewUnwrapAmount = wrappedLst.previewUnwrapToRebasing(_unwrapAmount);
     uint256 _lstAmountUnwrapped = _unwrap(_holder, _unwrapAmount);
 
     assertApproxEqAbs(lst.balanceOf(_holder), _holderPriorBalance + _lstAmountUnwrapped, 1);
@@ -494,7 +494,7 @@ contract UnwrapToRebase is WrappedGovLstTest {
     _approveWrapperToTransferLstToken(_holder);
     uint256 _wrappedBalance = _wrap(_holder, _wrapAmount);
     _unwrapAmount = bound(_unwrapAmount, 1, _wrappedBalance);
-    uint256 _previewUnwrapAmount = wrappedLst.previewUnwrapToRebase(_unwrapAmount);
+    uint256 _previewUnwrapAmount = wrappedLst.previewUnwrapToRebasing(_unwrapAmount);
 
     vm.expectEmit();
     emit WrappedGovLst.RebasingUnwrapped(_holder, _previewUnwrapAmount, _unwrapAmount);
