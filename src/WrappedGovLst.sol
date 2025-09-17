@@ -180,12 +180,11 @@ contract WrappedGovLst is ERC20Permit, Ownable {
 
     FIXED_LST.transferFrom(msg.sender, address(this), _fixedTokensToWrap);
 
-    uint256 _wrappedAmount = previewWrapFixed(_fixedTokensToWrap);
-    _mint(msg.sender, _wrappedAmount);
+    _mint(msg.sender, _fixedTokensToWrap);
 
-    emit FixedWrapped(msg.sender, _fixedTokensToWrap, _wrappedAmount);
+    emit FixedWrapped(msg.sender, _fixedTokensToWrap, _fixedTokensToWrap);
 
-    return _wrappedAmount;
+    return _fixedTokensToWrap;
   }
 
   /// @notice Burn wrapped tokens to receive liquid stake tokens in return.
