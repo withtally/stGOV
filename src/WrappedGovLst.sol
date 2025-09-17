@@ -237,7 +237,7 @@ contract WrappedGovLst is ERC20Permit, Ownable {
   /// @return _lstAmountUnwrapped The quantity of liquid staked tokens received in exchange for the wrapped tokens.
   /// @dev The caller must approve at least the amount wrapped tokens on the wrapper token contract.
   /// Behaves like redeem in erc4626
-  function unwrapToRebase(uint256 _wrappedAmount) external virtual returns (uint256) {
+  function unwrapToRebasing(uint256 _wrappedAmount) external virtual returns (uint256) {
     if (_wrappedAmount == 0) {
       revert WrappedGovLst__InvalidAmount();
     }

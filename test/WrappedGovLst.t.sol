@@ -43,7 +43,7 @@ contract WrappedGovLstTest is GovLstTest {
 
   function _unwrap(address _holder, uint256 _amount) public returns (uint256 _unwrappedAmount) {
     vm.prank(_holder);
-    _unwrappedAmount = wrappedLst.unwrapToRebase(_amount);
+    _unwrappedAmount = wrappedLst.unwrapToRebasing(_amount);
   }
 
   function _stakeFixed(address _holder, uint256 _amount) internal returns (uint256) {
