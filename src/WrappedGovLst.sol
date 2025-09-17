@@ -109,9 +109,9 @@ contract WrappedGovLst is ERC20Permit, Ownable {
       revert WrappedGovLst__InvalidAmount();
     }
 
-    IERC20 stakeToken = IERC20(address(LST.STAKE_TOKEN()));
-    stakeToken.safeTransferFrom(msg.sender, address(this), _stakeTokensToWrap);
-    stakeToken.approve(address(FIXED_LST), _stakeTokensToWrap);
+    IERC20 _stakeToken = IERC20(address(LST.STAKE_TOKEN()));
+    _stakeToken.safeTransferFrom(msg.sender, address(this), _stakeTokensToWrap);
+    _stakeToken.approve(address(FIXED_LST), _stakeTokensToWrap);
 
     uint256 _wrappedAmount = previewWrapUnderlying(_stakeTokensToWrap);
     FIXED_LST.stake(_stakeTokensToWrap);
