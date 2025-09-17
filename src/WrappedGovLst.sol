@@ -27,7 +27,7 @@ contract WrappedGovLst is ERC20Permit, Ownable {
   /// @notice Emitted when a holder wraps `FixedGovLst` tokens.
   event FixedWrapped(address indexed holder, uint256 fixedAmount, uint256 wrappedAmount);
 
-  /// @notice Emitted when a holder wraps underlying `GovLst` tokens.
+  /// @notice Emitted when a holder wraps the underlying stake token.
   event UnderlyingWrapped(address indexed holder, uint256 underlyingAmount, uint256 wrappedAmount);
 
   /// @notice Emitted when a holder unwraps wrapped tokens into rebseing `GovLst` tokens.
