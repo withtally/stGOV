@@ -159,8 +159,7 @@ contract WrappedGovLst is ERC20Permit, Ownable {
     _stakeToken.safeTransferFrom(msg.sender, address(this), _stakeTokensToWrap);
     _stakeToken.approve(address(FIXED_LST), _stakeTokensToWrap);
 
-    uint256 _wrappedAmount = previewWrapUnderlying(_stakeTokensToWrap);
-    FIXED_LST.stake(_stakeTokensToWrap);
+    uint256 _wrappedAmount = FIXED_LST.stake(_stakeTokensToWrap);
     _mint(msg.sender, _wrappedAmount);
 
     emit UnderlyingWrapped(msg.sender, _stakeTokensToWrap, _wrappedAmount);

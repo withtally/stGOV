@@ -97,9 +97,10 @@ contract Constructor is WrappedGovLstTest {
     );
     vm.mockCall(_lst, abi.encodeWithSelector(fixedLstSelector), abi.encode(_mockFixedLst));
 
+    address _expectedWrappedLstAddress = vm.computeCreateAddress(address(this), vm.getNonce(address(this)));
     vm.mockCall(
       _mockFixedLst,
-      abi.encodeWithSelector(IERC20.transferFrom.selector, address(this), address(0), _prefundAmount),
+      abi.encodeWithSelector(IERC20.transferFrom.selector, address(this), _expectedWrappedLstAddress, _prefundAmount),
       abi.encode(true)
     );
 
@@ -111,7 +112,6 @@ contract Constructor is WrappedGovLstTest {
     vm.mockCall(_lst, abi.encodeWithSelector(GovLst.updateDeposit.selector, _depositId), "");
 
     // need wrappedLstAddress in order to mock the following call
-    address _expectedWrappedLstAddress = vm.computeCreateAddress(address(this), vm.getNonce(address(this)));
     vm.mockCall(
       _lst,
       abi.encodeWithSelector(GovLst.delegateeForHolder.selector, _expectedWrappedLstAddress),
