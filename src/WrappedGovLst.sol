@@ -14,14 +14,14 @@ import {GovLst} from "./GovLst.sol";
 /// @title WrappedGovLst
 /// @author [ScopeLift](https://scopelift.co)
 /// @notice A wrapper contract that provides a non-rebasing interface to liquid stake tokens. The wrapper accepts
-/// stake tokens, rebasing `GovLST`, or `FixedGovLST` tokens. Wrapped tokens maintain 1:1 backing with `FixedGovLST`
+/// stake tokens, `GovLST`, or `FixedGovLST` tokens. Wrapped tokens maintain 1:1 backing with `FixedGovLST`
 /// shares, allowing holders to benefit from staking rewards without balance changes and avoid off-by-one rounding
 /// issues when transferring tokens. The voting weight for all tokens held by a given wrapper deployment is assigned to
 /// a single delegatee, which is controlled by the wrapper's owner.
 contract WrappedGovLst is ERC20Permit, Ownable {
   using SafeERC20 for IERC20;
 
-  /// @notice Emitted when a holder wraps rebasing `GovLst` tokens.
+  /// @notice Emitted when a holder wraps `GovLst` tokens.
   event RebasingWrapped(address indexed holder, uint256 rebasingAmount, uint256 wrappedAmount);
 
   /// @notice Emitted when a holder wraps `FixedGovLst` tokens.
@@ -30,7 +30,7 @@ contract WrappedGovLst is ERC20Permit, Ownable {
   /// @notice Emitted when a holder wraps the underlying stake token.
   event UnderlyingWrapped(address indexed holder, uint256 underlyingAmount, uint256 wrappedAmount);
 
-  /// @notice Emitted when a holder unwraps tokens into rebasing `GovLst` tokens.
+  /// @notice Emitted when a holder unwraps tokens into `GovLst` tokens.
   event RebasingUnwrapped(address indexed holder, uint256 lstAmount, uint256 wrappedAmount);
 
   /// @notice Emitted when a holder unwraps tokens into `FixedGovLst` tokens.
@@ -42,10 +42,10 @@ contract WrappedGovLst is ERC20Permit, Ownable {
   /// @notice Emitted when a holder tries to wrap or unwrap 0 liquid stake tokens.
   error WrappedGovLst__InvalidAmount();
 
-  /// @notice The address of the LST contract which will be wrapped.
+  /// @notice The address of the `GovLst` contract which can be wrapped.
   GovLst public immutable LST;
 
-  /// @notice The address of the FIXED_LST contract which will be wrapped and the asset that backs wrapped tokens 1:1.
+  /// @notice The address of the `FixedGovLst` contract which backs the wrapped tokens 1:1 and can be wrapped.
   FixedGovLst public immutable FIXED_LST;
 
   /// @notice Local copy of the LST's scale factor that is stored at deployment for use in wrapper calculations.
@@ -81,10 +81,10 @@ contract WrappedGovLst is ERC20Permit, Ownable {
     return LST.delegateeForHolder(address(this));
   }
 
-  /// @notice Preview the amount of wrapped tokens that would be minted when wrapping rebasing LST tokens.
-  /// @param _rebasingTokensToWrap The amount of rebasing LST tokens to wrap.
+  /// @notice Preview the amount of wrapped tokens that would be minted when wrapping `GovLST` tokens.
+  /// @param _rebasingTokensToWrap The amount of `GovLST` tokens to wrap.
   /// @return The amount of wrapped tokens that would be minted.
-  /// @dev Returns the exact amount that would be minted by wrapRebasing.
+  /// @dev Returns the exact amount that would be minted by `wrapRebasing`.
   function previewWrapRebasing(uint256 _rebasingTokensToWrap) public view virtual returns (uint256) {
     // Calculate the shares that will be transferred when converting to fixed
     // This match the rounding behavior of _calcSharesForStakeUp in GovLst
@@ -167,8 +167,8 @@ contract WrappedGovLst is ERC20Permit, Ownable {
     return _wrappedAmount;
   }
 
-  /// @notice Deposit fixed LST tokens and receive wrapped tokens in exchange.
-  /// @param _fixedTokensToWrap The quantity of FIXED_LST tokens to wrap.
+  /// @notice Deposit `FixedGovLST` tokens and receive wrapped tokens in exchange.
+  /// @param _fixedTokensToWrap The quantity of `FixedGoLst` tokens to wrap.
   /// @return _wrappedAmount The quantity of wrapped tokens issued to the caller.
   /// @dev The caller must approve at least the amount of tokens to wrap on the FIXED_LST contract before calling.
   /// Amount to wrap may not be zero.
@@ -190,7 +190,6 @@ contract WrappedGovLst is ERC20Permit, Ownable {
   /// @param _wrappedAmount The quantity of wrapped tokens to burn.
   /// @return _lstAmountUnwrapped The quantity of liquid staked tokens received in exchange for the wrapped tokens.
   /// @dev The caller must approve at least the amount wrapped tokens on the wrapper token contract.
-  /// Behaves like redeem in erc4626
   function unwrapToRebasing(uint256 _wrappedAmount) external virtual returns (uint256) {
     if (_wrappedAmount == 0) {
       revert WrappedGovLst__InvalidAmount();
@@ -206,11 +205,11 @@ contract WrappedGovLst is ERC20Permit, Ownable {
     return _lstAmountUnwrapped;
   }
 
-  /// @notice Burn wrapped tokens to receive FIXED_LST tokens.
+  /// @notice Burn wrapped tokens to receive `FixedGovLst` tokens.
   /// @param _wrappedAmount The quantity of wrapped tokens to burn.
-  /// @return _fixedTokensUnwrapped The quantity of FIXED_LST tokens received.
-  /// @dev Since wrapped tokens are 1:1 with FIXED_LST tokens, this is a simple transfer.
-  /// @dev May transfer up to 1 extra wei due to FIXED_LST's internal rounding.
+  /// @return _fixedTokensUnwrapped The quantity of `FixedGovLst` tokens received.
+  /// @dev Since wrapped tokens are 1:1 with `FixedGovLst` tokens, this is a simple transfer.
+  /// @dev May transfer up to 1 extra wei due to FixedGovLst's internal rounding.
   function unwrapToFixed(uint256 _wrappedAmount) external virtual returns (uint256 _fixedTokensUnwrapped) {
     if (_wrappedAmount == 0) {
       revert WrappedGovLst__InvalidAmount();
