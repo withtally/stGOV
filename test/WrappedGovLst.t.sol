@@ -83,11 +83,13 @@ contract Constructor is WrappedGovLstTest {
 
     // Mock a fixed LST address
     address _mockFixedLst = makeAddr("MockFixedLst");
+    address _mockStakeToken = makeAddr("MockStakeToken");
 
     // The constructor calls these methods on the LST to set up its own deposit, so we mock them here when testing the
     // constructor with an arbitrary address for the LST.
     bytes4 shareScaleFactorSelector = hex"f5706759";
-    bytes4 fixedLstSelector = hex"52000ec7"; // FIXED_LST() selector - corrected
+    bytes4 fixedLstSelector = hex"52000ec7"; // FIXED_LST() selector
+    bytes4 stakeTokenSelector = bytes4(keccak256("STAKE_TOKEN()"));
 
     vm.mockCall(
       _lst,
@@ -96,6 +98,15 @@ contract Constructor is WrappedGovLstTest {
       abi.encode(lst.SHARE_SCALE_FACTOR())
     );
     vm.mockCall(_lst, abi.encodeWithSelector(fixedLstSelector), abi.encode(_mockFixedLst));
+    
+    vm.mockCall(_lst, abi.encodeWithSelector(stakeTokenSelector), abi.encode(_mockStakeToken));
+    
+    // Mock the approve call that WrappedGovLst makes on STAKE_TOKEN
+    vm.mockCall(
+      _mockStakeToken,
+      abi.encodeWithSelector(IERC20.approve.selector, _mockFixedLst, type(uint256).max),
+      abi.encode(true)
+    );
 
     address _expectedWrappedLstAddress = vm.computeCreateAddress(address(this), vm.getNonce(address(this)));
     vm.mockCall(
