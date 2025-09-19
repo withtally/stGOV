@@ -48,6 +48,9 @@ contract WrappedGovLst is ERC20Permit, Ownable {
   /// @notice The address of the `FixedGovLst` contract which backs the wrapped tokens 1:1 and can be wrapped.
   FixedGovLst public immutable FIXED_LST;
 
+  /// @notice The address of the `IERC20` token used in the underlying staker.
+  IERC20 public immutable STAKE_TOKEN;
+
   /// @notice Local copy of the LST's scale factor that is stored at deployment for use in wrapper calculations.
   uint256 internal immutable SHARE_SCALE_FACTOR;
 
@@ -73,6 +76,8 @@ contract WrappedGovLst is ERC20Permit, Ownable {
     FIXED_LST = _lst.FIXED_LST();
     SHARE_SCALE_FACTOR = _lst.SHARE_SCALE_FACTOR();
     FIXED_LST.transferFrom(msg.sender, address(this), _preFundWrapped);
+    STAKE_TOKEN = IERC20(address(LST.STAKE_TOKEN()));
+    STAKE_TOKEN.approve(address(FIXED_LST), type(uint256).max);
     _setDelegatee(_delegatee);
   }
 
@@ -155,9 +160,7 @@ contract WrappedGovLst is ERC20Permit, Ownable {
       revert WrappedGovLst__InvalidAmount();
     }
 
-    IERC20 _stakeToken = IERC20(address(LST.STAKE_TOKEN()));
-    _stakeToken.safeTransferFrom(msg.sender, address(this), _stakeTokensToWrap);
-    _stakeToken.approve(address(FIXED_LST), _stakeTokensToWrap);
+    STAKE_TOKEN.safeTransferFrom(msg.sender, address(this), _stakeTokensToWrap);
 
     uint256 _wrappedAmount = FIXED_LST.stake(_stakeTokensToWrap);
     _mint(msg.sender, _wrappedAmount);
