@@ -232,8 +232,8 @@ contract WrapRebasing is WrappedGovLstTest {
     uint256 _expectedWrappedTokens = wrappedLst.previewWrapRebasing(_wrapAmount);
 
     vm.expectEmit(true, false, true, false);
-    emit WrappedGovLst.RebasingWrapped(_holder, 0, _expectedWrappedTokens); // We don't know the exact wrapped
-      // amount
+    // We don't know the exact wrapped amount
+    emit WrappedGovLst.RebasingWrapped(_holder, 0, _expectedWrappedTokens);
 
     _wrap(_holder, _wrapAmount);
   }
@@ -505,10 +505,9 @@ contract UnwrapToRebase is WrappedGovLstTest {
     _approveWrapperToTransferLstToken(_holder);
     uint256 _wrappedBalance = _wrap(_holder, _wrapAmount);
     _unwrapAmount = bound(_unwrapAmount, 1, _wrappedBalance);
-    uint256 _previewUnwrapAmount = wrappedLst.previewUnwrapToRebasing(_unwrapAmount);
 
-    vm.expectEmit();
-    emit WrappedGovLst.RebasingUnwrapped(_holder, _previewUnwrapAmount, _unwrapAmount);
+    vm.expectEmit(true, false, true, false);
+    emit WrappedGovLst.RebasingUnwrapped(_holder, 0, _unwrapAmount);
     _unwrap(_holder, _unwrapAmount);
   }
 
