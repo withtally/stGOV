@@ -98,9 +98,9 @@ contract Constructor is WrappedGovLstTest {
       abi.encode(lst.SHARE_SCALE_FACTOR())
     );
     vm.mockCall(_lst, abi.encodeWithSelector(fixedLstSelector), abi.encode(_mockFixedLst));
-    
+
     vm.mockCall(_lst, abi.encodeWithSelector(stakeTokenSelector), abi.encode(_mockStakeToken));
-    
+
     // Mock the approve call that WrappedGovLst makes on STAKE_TOKEN
     vm.mockCall(
       _mockStakeToken,
