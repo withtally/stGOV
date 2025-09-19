@@ -88,7 +88,7 @@ contract WrappedGovLst is ERC20Permit, Ownable {
   function previewWrapRebasing(uint256 _rebasingTokensToWrap) public view virtual returns (uint256) {
     // Calculate the shares that will be transferred when converting to fixed
     // This match the rounding behavior of _calcSharesForStakeUp in GovLst
-    return _calcSharesForStakeUp(_rebasingTokensToWrap) / SHARE_SCALE_FACTOR;
+    return _calcSharesForStakeUp(_rebasingTokensToWrap - 1) / SHARE_SCALE_FACTOR;
   }
 
   /// @notice Preview the amount of wrapped tokens that would be minted when wrapping underlying stake tokens.
@@ -137,9 +137,9 @@ contract WrappedGovLst is ERC20Permit, Ownable {
       revert WrappedGovLst__InvalidAmount();
     }
 
-    LST.transferFrom(msg.sender, address(this), _lstAmountToWrap);
-    FIXED_LST.convertToFixed(_lstAmountToWrap);
-    _wrappedAmount = previewWrapRebasing(_lstAmountToWrap);
+    (, uint256 _receiverBalanceIncrease) =
+      LST.transferFromAndReturnBalanceDiffs(msg.sender, address(this), _lstAmountToWrap);
+    _wrappedAmount = FIXED_LST.convertToFixed(_receiverBalanceIncrease);
     _mint(msg.sender, _wrappedAmount);
 
     emit RebasingWrapped(msg.sender, _lstAmountToWrap, _wrappedAmount);
