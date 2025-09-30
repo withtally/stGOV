@@ -138,7 +138,7 @@ contract WrappedGovLst is ERC20Permit, Ownable {
   /// wrap may not be zero.
   /// @dev When wrapping a user may send at most 1 extra wei of `GovLst` tokens to the `WrappedGovLst` due
   /// to the initial `transferFrom`. A second transfer of `GovLst` tokens to the fixed alias address
-  /// `FixedGovLst` will use the initial wrapped amount rather than the converted amount ensuring that at most 1 extra wei is sent rather than 2.
+  /// will use the initial wrapped amount rather than the converted amount ensuring that at most 1 extra wei is sent rather than 2.
   function wrapRebasing(uint256 _lstAmountToWrap) external virtual returns (uint256 _wrappedAmount) {
     if (_lstAmountToWrap == 0) {
       revert WrappedGovLst__InvalidAmount();
