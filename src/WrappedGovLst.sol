@@ -199,12 +199,12 @@ contract WrappedGovLst is ERC20Permit, Ownable {
     _burn(msg.sender, _wrappedAmount);
 
     FIXED_LST.convertToRebasing(_wrappedAmount);
-    uint256 _amount = _calcStakeForShares(_wrappedAmount * SHARE_SCALE_FACTOR);
+    uint256 _lstAmountUnwrapped = _calcStakeForShares(_wrappedAmount * SHARE_SCALE_FACTOR);
 
-    LST.transfer(msg.sender, _amount);
+    LST.transfer(msg.sender, _lstAmountUnwrapped);
 
-    emit RebasingUnwrapped(msg.sender, _wrappedAmount, _amount);
-    return _amount;
+    emit RebasingUnwrapped(msg.sender, _wrappedAmount, _lstAmountUnwrapped);
+    return _lstAmountUnwrapped;
   }
 
   /// @notice Burn wrapped tokens to receive `FixedGovLst` tokens.
