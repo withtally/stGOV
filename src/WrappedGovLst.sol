@@ -83,7 +83,7 @@ contract WrappedGovLst is ERC20Permit, Ownable {
 
   /// @notice The address of the delegatee to which the wrapped token's voting weight is currently delegated.
   function delegatee() public view virtual returns (address) {
-    return LST.delegateeForHolder(address(this));
+    return FIXED_LST.delegateeForHolder(address(this));
   }
 
   /// @notice Preview the amount of wrapped tokens that would be minted when wrapping `GovLST` tokens.
@@ -284,6 +284,6 @@ contract WrappedGovLst is ERC20Permit, Ownable {
   function _setDelegatee(address _newDelegatee) internal virtual {
     emit DelegateeSet(delegatee(), _newDelegatee);
     depositId = LST.fetchOrInitializeDepositForDelegatee(_newDelegatee);
-    LST.updateDeposit(depositId);
+    FIXED_LST.updateDeposit(depositId);
   }
 }

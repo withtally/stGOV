@@ -3,6 +3,7 @@ pragma solidity ^0.8.23;
 
 import {console2} from "forge-std/Test.sol";
 import {GovLstTest, GovLst} from "./GovLst.t.sol";
+import {FixedGovLst} from "../../src/FixedGovLst.sol";
 import {Staker} from "staker/Staker.sol";
 import {WrappedGovLst, Ownable} from "../src/WrappedGovLst.sol";
 import {IERC20Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
@@ -62,7 +63,7 @@ contract Constructor is WrappedGovLstTest {
     assertEq(address(wrappedLst.LST()), address(lst));
     assertEq(address(wrappedLst.FIXED_LST()), address(lst.FIXED_LST()));
     assertEq(wrappedLst.delegatee(), delegatee);
-    assertEq(lst.delegateeForHolder(address(wrappedLst)), delegatee);
+    assertEq(wrappedLst.FIXED_LST().delegateeForHolder(address(wrappedLst)), delegatee);
     assertEq(wrappedLst.owner(), wrappedLstOwner);
   }
 
@@ -124,8 +125,8 @@ contract Constructor is WrappedGovLstTest {
 
     // need wrappedLstAddress in order to mock the following call
     vm.mockCall(
-      _lst,
-      abi.encodeWithSelector(GovLst.delegateeForHolder.selector, _expectedWrappedLstAddress),
+      _mockFixedLst,
+      abi.encodeWithSelector(FixedGovLst.delegateeForHolder.selector, _expectedWrappedLstAddress),
       abi.encode(address(0)) // in actuality this would return the defaultDelegatee, but we don't need to mock that
     );
 
@@ -717,7 +718,7 @@ contract SetDelegatee is WrappedGovLstTest {
     vm.prank(wrappedLstOwner);
     wrappedLst.setDelegatee(_newDelegatee);
 
-    assertEq(lst.delegateeForHolder(address(wrappedLst)), _newDelegatee);
+    assertEq(lst.FIXED_LST().delegateeForHolder(address(wrappedLst)), _newDelegatee);
   }
 
   function testFuzz_EmitsADelegateeSetEvent(address _newDelegatee) public {
