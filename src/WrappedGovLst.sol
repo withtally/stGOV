@@ -176,7 +176,7 @@ contract WrappedGovLst is ERC20Permit, Ownable {
   /// @return _wrappedAmount The quantity of wrapped tokens issued to the caller.
   /// @dev The caller must approve at least the amount of tokens to wrap on the `FixedGovLst` contract before calling.
   /// Amount to wrap may not be zero.
-  /// @dev When transferring using the `FixedGovLst` at most the receiver may receive 1 wei less
+  /// @dev When transferring using the `FixedGovLst` at most the `WrappedGoLst` may receive 1 wei less
   /// than the tokens sent. This is due to the conversion of shares into tokens in the underlying
   /// `GovLst`. Shares will be rounded down to tokens and the smaller amount of tokens will be
   /// converted back into shares leading to an up  to 1 wei difference with the sent amount and
