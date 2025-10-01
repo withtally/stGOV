@@ -181,7 +181,7 @@ contract WrappedGovLst is ERC20Permit, Ownable {
   /// @dev When transferring using the `FixedGovLst` at most the `WrappedGoLst` may receive 1 wei less
   /// than the tokens sent. This is due to the conversion of shares into tokens in the underlying
   /// `GovLst`. Shares will be rounded down to tokens and the smaller amount of tokens will be
-  /// converted back into shares leading to an up to 1 wei difference with the sent amount and
+  /// converted back into shares leading to an up to 1 wei difference between the sent amount and
   /// the received amount.
   function wrapFixed(uint256 _fixedTokensToWrap) external virtual returns (uint256) {
     if (_fixedTokensToWrap == 0) {
@@ -229,7 +229,7 @@ contract WrappedGovLst is ERC20Permit, Ownable {
   /// @dev When transferring using the `FixedGovLst` at most the receiver may receive one wei less
   /// than the tokens sent. This is due to the conversion of shares into tokens in the underlying
   /// `GovLst`. Shares will be rounded down to tokens and the smaller amount of tokens will be
-  /// converted back into shares leading to an up to 1 wei difference with the sent amount and
+  /// converted back into shares leading to an up to 1 wei difference between the sent amount and
   /// the received amount.
   function unwrapToFixed(uint256 _wrappedAmount) external virtual returns (uint256 _fixedTokensUnwrapped) {
     if (_wrappedAmount == 0) {
