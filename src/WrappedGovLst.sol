@@ -202,10 +202,10 @@ contract WrappedGovLst is ERC20Permit, Ownable {
   /// @return _lstAmountUnwrapped The quantity of liquid staked tokens received in exchange for the wrapped tokens.
   /// @dev The caller must approve at least the amount wrapped tokens on the wrapper token contract.
   /// @dev When unwraping from wrapped tokens to rebasing tokens the shares are converted to tokens
-  /// causing an at most loss of 1 wei. Immediately after they are transferred to the
-  /// `WrappedGovLst` which then transfers the tokens to the caller with the
-  /// original unwrap amount. Now at most 1 wei extra will be sent to the caller rather at most 2
-  /// wei when using the returned amount from `convertToRebasing`.
+  /// causing an at most loss of 1 wei. Unwrapping requires two transfers by the `GovLst`, one transfer
+  /// to the non-aliased `WrappedGovLst` and another transfer to the caller. Each transfer will send at
+  ///  amount and at most 1 wei extra. We avoid sending 2 wei extra to the caller by using the `_wrappedAmount`
+  /// in each transfer.
   function unwrapToRebasing(uint256 _wrappedAmount) external virtual returns (uint256) {
     if (_wrappedAmount == 0) {
       revert WrappedGovLst__InvalidAmount();
