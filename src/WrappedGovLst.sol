@@ -136,6 +136,11 @@ contract WrappedGovLst is ERC20Permit, Ownable {
   /// @return _wrappedAmount The quantity of wrapped tokens issued to the caller.
   /// @dev The caller must approve at least the amount of tokens to wrap on the lst contract before calling. Amount to
   /// wrap may not be zero.
+  /// @dev When wrapping, `GovLst` tokens are first transferred to `WrappedGovLst`. The transfer can result in the
+  /// `WrappedGovLst` balance increasing by at most 1 wei more than the transferred amount. A second transfer of
+  /// `GovLst` tokens to the fixed alias address of the `WrappedGovLst` will happen when converting to fixed tokens. This
+  /// transfer will use the initial wrapped amount rather than the balance increases from the first transfer, ensuring
+  /// that at most 1 extra wei is sent rather than 2.
   function wrapRebasing(uint256 _lstAmountToWrap) external virtual returns (uint256 _wrappedAmount) {
     if (_lstAmountToWrap == 0) {
       revert WrappedGovLst__InvalidAmount();
@@ -173,6 +178,11 @@ contract WrappedGovLst is ERC20Permit, Ownable {
   /// @return _wrappedAmount The quantity of wrapped tokens issued to the caller.
   /// @dev The caller must approve at least the amount of tokens to wrap on the `FixedGovLst` contract before calling.
   /// Amount to wrap may not be zero.
+  /// @dev When transferring using the `FixedGovLst` at most the `WrappedGoLst` may receive 1 wei less
+  /// than the tokens sent. This is due to the conversion of shares into tokens in the underlying
+  /// `GovLst`. Shares will be rounded down to tokens and the smaller amount of tokens will be
+  /// converted back into shares leading to an up to 1 wei difference between the sent amount and
+  /// the received amount.
   function wrapFixed(uint256 _fixedTokensToWrap) external virtual returns (uint256) {
     if (_fixedTokensToWrap == 0) {
       revert WrappedGovLst__InvalidAmount();
@@ -191,6 +201,10 @@ contract WrappedGovLst is ERC20Permit, Ownable {
   /// @param _wrappedAmount The quantity of wrapped tokens to burn.
   /// @return _lstAmountUnwrapped The quantity of liquid staked tokens received in exchange for the wrapped tokens.
   /// @dev The caller must approve at least the amount wrapped tokens on the wrapper token contract.
+  /// @dev When unwrapping wrapped tokens to rebasing tokens, the shares are converted to tokens, resulting in an at
+  /// most loss of 1 wei. Unwrapping requires two transfers by the `GovLst`, one transfer to the non-aliased
+  /// `WrappedGovLst` and another transfer to the caller. Each transfer will send the amount and at most 1 extra wei. We
+  /// avoid sending 2 extra wei to the caller by using the same token amount in the second transfer as the first.
   function unwrapToRebasing(uint256 _wrappedAmount) external virtual returns (uint256) {
     if (_wrappedAmount == 0) {
       revert WrappedGovLst__InvalidAmount();
@@ -203,7 +217,7 @@ contract WrappedGovLst is ERC20Permit, Ownable {
 
     LST.transfer(msg.sender, _lstAmountUnwrapped);
 
-    emit RebasingUnwrapped(msg.sender, _lstAmountUnwrapped, _wrappedAmount);
+    emit RebasingUnwrapped(msg.sender, _wrappedAmount, _lstAmountUnwrapped);
     return _lstAmountUnwrapped;
   }
 
@@ -212,6 +226,11 @@ contract WrappedGovLst is ERC20Permit, Ownable {
   /// @return _fixedTokensUnwrapped The quantity of `FixedGovLst` tokens received.
   /// @dev Since wrapped tokens are 1:1 with `FixedGovLst` tokens, this is a simple transfer.
   /// @dev May transfer up to 1 extra wei due to FixedGovLst's internal rounding.
+  /// @dev When transferring using the `FixedGovLst` at most the receiver may receive one wei less
+  /// than the tokens sent. This is due to the conversion of shares into tokens in the underlying
+  /// `GovLst`. Shares will be rounded down to tokens and the smaller amount of tokens will be
+  /// converted back into shares leading to an up to 1 wei difference between the sent amount and
+  /// the received amount.
   function unwrapToFixed(uint256 _wrappedAmount) external virtual returns (uint256 _fixedTokensUnwrapped) {
     if (_wrappedAmount == 0) {
       revert WrappedGovLst__InvalidAmount();
