@@ -136,10 +136,11 @@ contract WrappedGovLst is ERC20Permit, Ownable {
   /// @return _wrappedAmount The quantity of wrapped tokens issued to the caller.
   /// @dev The caller must approve at least the amount of tokens to wrap on the lst contract before calling. Amount to
   /// wrap may not be zero.
-  /// @dev When wrapping a user may send at most 1 extra wei of `GovLst` tokens to the `WrappedGovLst` due
-  /// to the initial `transferFrom`. A second transfer of `GovLst` tokens to the fixed alias address
-  /// will use the initial wrapped amount rather than the converted amount ensuring that at most 1 extra wei is sent
-  /// rather than 2.
+  /// @dev When wrapping `GovLst` tokens are first transferred to the `WrappedGovLst`, and the transfer can result in
+  /// its balance increasing by at most 1 wei more than the transferred amount.
+  /// A second transfer of `GovLst` tokens to the fixed alias address of the `WrappedGovLst` will happen
+  /// when converting to fixed tokens. This transfer will use the initial wrapped amount rather than the
+  // the balance increase from the first transfer ensuring that at most 1 extra wei is sent rather than 2.
   function wrapRebasing(uint256 _lstAmountToWrap) external virtual returns (uint256 _wrappedAmount) {
     if (_lstAmountToWrap == 0) {
       revert WrappedGovLst__InvalidAmount();
