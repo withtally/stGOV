@@ -145,7 +145,7 @@ contract WrappedGovLst is ERC20Permit, Ownable {
     _wrappedAmount = FIXED_LST.convertToFixed(_lstAmountToWrap);
     _mint(msg.sender, _wrappedAmount);
 
-    emit RebasingWrapped(msg.sender, _lstAmountToWrap, _wrappedAmount);
+    emit RebasingWrapped(msg.sender, _wrappedAmount, _lstAmountToWrap);
   }
 
   /// @notice Deposit underlying stake tokens and receive wrapped tokens in exchange.
