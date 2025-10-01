@@ -92,7 +92,7 @@ contract WrappedGovLst is ERC20Permit, Ownable {
   /// @dev Returns the minimum amount that would be minted by `wrapRebasing`.
   function previewWrapRebasing(uint256 _rebasingTokensToWrap) public view virtual returns (uint256) {
     // Calculate the shares that will be transferred when converting to fixed
-    return _calcSharesForStakeUp(_rebasingTokensToWrap - 1) / SHARE_SCALE_FACTOR;
+    return _calcSharesForStakeUp(_rebasingTokensToWrap) / SHARE_SCALE_FACTOR;
   }
 
   /// @notice Preview the amount of wrapped tokens that would be minted when wrapping underlying stake tokens.
@@ -117,7 +117,7 @@ contract WrappedGovLst is ERC20Permit, Ownable {
   /// @dev Converts wrapped tokens to shares, then to rebasing tokens. Rounds down to favor the protocol.
   function previewUnwrapToRebasing(uint256 _wrappedAmount) public view virtual returns (uint256) {
     uint256 _shares = _wrappedAmount * SHARE_SCALE_FACTOR;
-    return _calcStakeForShares(_shares) - 1;
+    return _calcStakeForShares(_shares);
   }
 
   /// @notice Preview the amount of fixed liquid staking tokens that would be received when unwrapping.
@@ -141,9 +141,8 @@ contract WrappedGovLst is ERC20Permit, Ownable {
       revert WrappedGovLst__InvalidAmount();
     }
 
-    (, uint256 _receiverBalanceIncrease) =
-      LST.transferFromAndReturnBalanceDiffs(msg.sender, address(this), _lstAmountToWrap);
-    _wrappedAmount = FIXED_LST.convertToFixed(_receiverBalanceIncrease);
+    LST.transferFrom(msg.sender, address(this), _lstAmountToWrap);
+    _wrappedAmount = FIXED_LST.convertToFixed(_lstAmountToWrap);
     _mint(msg.sender, _wrappedAmount);
 
     emit RebasingWrapped(msg.sender, _lstAmountToWrap, _wrappedAmount);
@@ -199,7 +198,8 @@ contract WrappedGovLst is ERC20Permit, Ownable {
 
     _burn(msg.sender, _wrappedAmount);
 
-    uint256 _lstAmountUnwrapped = FIXED_LST.convertToRebasing(_wrappedAmount);
+    FIXED_LST.convertToRebasing(_wrappedAmount);
+    uint256 _lstAmountUnwrapped = _calcStakeForShares(_wrappedAmount * SHARE_SCALE_FACTOR);
 
     LST.transfer(msg.sender, _lstAmountUnwrapped);
 
