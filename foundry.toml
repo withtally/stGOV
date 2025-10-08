@@ -15,7 +15,7 @@
 
 [profile.ci]
   fuzz = { runs = 3000 }
-  invariant = { runs = 100 }
+  invariant = { runs = 500 }
 
 [profile.prod]
   via-ir = true
@@ -32,7 +32,7 @@
 
 [invariant]
   call_override = false
-  depth = 50
+  depth = 100
   dictionary_weight = 80
   fail_on_revert = false
   include_push_bytes = true
