@@ -1034,9 +1034,7 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
       }
 
       if ((_delegatedBalanceToWithdraw + _undelegatedBalanceToWithdraw) > 0) {
-        STAKER.stakeMore(
-          _calcDepositId(_receiverState), _delegatedBalanceToWithdraw + _undelegatedBalanceToWithdraw
-        );
+        STAKER.stakeMore(_calcDepositId(_receiverState), _delegatedBalanceToWithdraw + _undelegatedBalanceToWithdraw);
       }
     }
 
