@@ -955,13 +955,93 @@ abstract contract GovLst is IERC20, IERC20Metadata, IERC20Permit, Ownable, Multi
     returns (uint256 _senderSharesDecrease, uint256 _receiverSharesIncrease)
   {
     _revertIfNotFixedLst();
-    uint256 _senderInitialShares = holderStates[_sender.fixedAlias()].shares;
-    uint256 _receiverInitialShares = holderStates[_receiver.fixedAlias()].shares;
-    uint256 _amount = stakeForShares(_shares);
-    _transfer(_sender.fixedAlias(), _receiver.fixedAlias(), _amount);
-    uint256 _senderFinalShares = holderStates[_sender.fixedAlias()].shares;
-    uint256 _receiverFinalShares = holderStates[_receiver.fixedAlias()].shares;
-    return (_senderInitialShares - _senderFinalShares, _receiverFinalShares - _receiverInitialShares);
+    if (_shares == 0) {
+      return (0, 0);
+    }
+
+    _sender = _sender.fixedAlias();
+    _receiver = _receiver.fixedAlias();
+
+    if (_sender == _receiver) {
+      return (0, 0);
+    }
+
+    Totals memory _totals = totals;
+    HolderState memory _senderState = holderStates[_sender];
+    HolderState memory _receiverState = holderStates[_receiver];
+
+    uint256 _senderDelegatedBalance;
+    uint256 _senderUndelegatedBalance;
+    uint256 _receiverBalanceIncrease;
+    uint256 _senderBalanceDecrease;
+
+    {
+      uint256 _value = stakeForShares(_shares);
+      uint256 _senderInitBalance = _calcBalanceOf(_senderState, _totals);
+      uint256 _receiverInitBalance = _calcBalanceOf(_receiverState, _totals);
+      _senderDelegatedBalance = _senderState.balanceCheckpoint;
+      _senderUndelegatedBalance = _senderInitBalance - _senderDelegatedBalance;
+
+      if (_value > _senderInitBalance) {
+        revert GovLst__InsufficientBalance();
+      }
+
+      uint128 _sharesToMove = SafeCast.toUint128(_shares);
+      _senderState.shares -= _sharesToMove;
+      _receiverState.shares += _sharesToMove;
+
+      _receiverBalanceIncrease = _calcBalanceOf(_receiverState, _totals) - _receiverInitBalance;
+      _senderBalanceDecrease = _senderInitBalance - _calcBalanceOf(_senderState, _totals);
+    }
+
+    if (!_isSameDepositId(_calcDepositId(_receiverState), DEFAULT_DEPOSIT_ID)) {
+      _receiverState.balanceCheckpoint += uint96(_receiverBalanceIncrease);
+    }
+
+    if (
+      _isSameDepositId(_calcDepositId(_receiverState), DEFAULT_DEPOSIT_ID)
+        && _isSameDepositId(_calcDepositId(_senderState), DEFAULT_DEPOSIT_ID)
+    ) {
+      holderStates[_sender] = _senderState;
+      holderStates[_receiver] = _receiverState;
+      return (_shares, _shares);
+    }
+
+    {
+      uint256 _valueRescoped = _senderBalanceDecrease;
+      uint256 _undelegatedBalanceToWithdraw;
+      uint256 _delegatedBalanceToWithdraw;
+
+      if (_valueRescoped > _senderUndelegatedBalance) {
+        _undelegatedBalanceToWithdraw = _senderUndelegatedBalance;
+        _delegatedBalanceToWithdraw = _valueRescoped - _undelegatedBalanceToWithdraw;
+        _senderState.balanceCheckpoint = uint96(_senderDelegatedBalance - _delegatedBalanceToWithdraw);
+
+        if (_isSameDepositId(_calcDepositId(_receiverState), _calcDepositId(_senderState))) {
+          _delegatedBalanceToWithdraw = 0;
+        } else {
+          STAKER.withdraw(_calcDepositId(_senderState), _delegatedBalanceToWithdraw);
+        }
+      } else {
+        _undelegatedBalanceToWithdraw = _valueRescoped;
+      }
+
+      _senderState.balanceCheckpoint =
+        _min(_senderState.balanceCheckpoint, uint96(_calcBalanceOf(_senderState, _totals)));
+
+      if (_undelegatedBalanceToWithdraw > 0) {
+        STAKER.withdraw(DEFAULT_DEPOSIT_ID, _undelegatedBalanceToWithdraw);
+      }
+
+      if ((_delegatedBalanceToWithdraw + _undelegatedBalanceToWithdraw) > 0) {
+        STAKER.stakeMore(_calcDepositId(_receiverState), _delegatedBalanceToWithdraw + _undelegatedBalanceToWithdraw);
+      }
+    }
+
+    holderStates[_sender] = _senderState;
+    holderStates[_receiver] = _receiverState;
+
+    return (_shares, _shares);
   }
 
   /// @notice Permissioned fixed LST helper method which moves rebasing LST tokens from a holder's alias back to his

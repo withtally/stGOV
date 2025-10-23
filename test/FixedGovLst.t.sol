@@ -2114,9 +2114,9 @@ contract Transfer is FixedGovLstTest {
     // The receiver updates their fixed delegatee.
     _updateFixedDelegatee(_receiver, _receiverDelegatee);
 
-    assertApproxEqAbs(fixedLst.balanceOf(_sender), _senderInitialBalance - _sendAmount, 1);
+    assertEq(fixedLst.balanceOf(_sender), _senderInitialBalance - _sendAmount);
     assertEq(fixedLst.balanceOf(_sender), lst.sharesOf(_sender.fixedAlias()) / SHARE_SCALE_FACTOR);
-    assertApproxEqAbs(fixedLst.balanceOf(_receiver), _sendAmount, 1);
+    assertEq(fixedLst.balanceOf(_receiver), _sendAmount);
     assertEq(fixedLst.balanceOf(_receiver), lst.sharesOf(_receiver.fixedAlias()) / SHARE_SCALE_FACTOR);
   }
 
